@@ -1,0 +1,27 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "nexo-crm",
+  "main": "index.mjs",
+  "compatibility_date": "2026-10-06",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./assets",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+  "triggers": { "crons": ["0 * * * *"] },
+  "vars": {
+    "OWNER_EMAIL": "",
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "WHATSAPP_API_VERSION": "v23.0",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nexo-crm",
+      "database_id": "REPLACE_WITH_DATABASE_ID",
+    },
+  ],
+}

@@ -1,3 +1,5 @@
+> Para la alternativa sin VPS con Cloudflare Free, consulta [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md). Este documento describe el servidor Python opcional.
+
 # Activar acceso privado y recordatorios automáticos
 
 La página en GitHub Pages sigue siendo el modo local. No puede ejecutar el servidor Python ni el trabajador de recordatorios. Los cambios de la biblioteca de mensajes funcionan en Pages; el login y la automatización se activan en un servidor que ejecute este proyecto.

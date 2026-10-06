@@ -9,3 +9,7 @@ __pycache__/
 *.sqlite3-shm
 crm-data/
 build-wheels/*.whl
+cloud/assets/
+cloud/.wrangler/
+cloud/wrangler.generated.json
+node_modules/

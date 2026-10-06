@@ -104,6 +104,7 @@ const assert = require("node:assert/strict");
     ),
   );
   await page.reload();
+  await page.waitForFunction(() => document.querySelector("#automation-name").value === "recordatorio_renovacion");
   assert(await page.locator("#automation-enabled").isChecked());
   assert.equal(
     await page.locator("#automation-name").inputValue(),

@@ -2,6 +2,10 @@
 
 Gestor de clientes y suscripciones con interfaz adaptable a móvil, inspirado en las referencias proporcionadas. La interfaz usa HTML, CSS y JavaScript; el modo privado añade un backend Python con Flask, Gunicorn y SQLite.
 
+## Opción privada en plan gratuito
+
+La nueva alternativa Cloudflare Workers + D1 + Access evita contratar un VPS. Incluye acceso exclusivo por correo, almacenamiento centralizado y cron horario. El despliegue completo está automatizado en `cloud/deploy.py`; consulta [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md) para conectar tu propia cuenta Free. Está preparado y probado localmente, pero pendiente de autorización para publicarlo. Los envíos automáticos de Meta pueden tener coste.
+
 ## Acceso privado y automatización
 
 Se añadió un servidor con login de administrador, SQLite y un trabajador de recordatorios automáticos a tres días del vencimiento. Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para activarlo con HTTPS, almacenamiento persistente y la API oficial de WhatsApp. GitHub Pages mantiene el modo local; no puede ejecutar estas funciones del servidor.
@@ -38,7 +42,7 @@ Variables: `{nombre}`, `{telefono}`, `{correo}`, `{servicio}`, `{perfil}`, `{ven
 
 ### Datos y límites
 
-En el modo local los datos se guardan en `localStorage` bajo `crm.workspace.v2`; en el modo privado se guardan en SQLite en el servidor. Los clientes de la versión inicial se leen y conservan en la primera actualización. El borrado de clientes no elimina movimientos financieros históricos. No se incluyen datos de las capturas ni registros de ejemplo en la aplicación.
+En el modo local los datos se guardan en `localStorage` bajo `crm.workspace.v2`; en el modo privado Python se guardan en SQLite; en Cloudflare se guardan en D1. Los clientes de la versión inicial se leen y conservan en la primera actualización. El borrado de clientes no elimina movimientos financieros históricos. No se incluyen datos de las capturas ni registros de ejemplo en la aplicación.
 
 El modo local de GitHub Pages no incluye autenticación ni sincronización. El modo servidor sí exige login y guarda los datos en SQLite; debe desplegarse con HTTPS según DEPLOYMENT.md. No incluye segundo factor, recuperación por correo ni cifrado del disco gestionado por la aplicación. Evita editar simultáneamente desde varias pestañas. Exporta respaldos regularmente. En el modo local, borrar los datos del navegador elimina los registros; en el modo servidor es necesario conservar y respaldar el disco persistente. El respaldo contiene datos personales y PIN de perfiles; debe conservarse de forma privada. Importar reemplaza el conjunto actual tras confirmación y validación. No guardes contraseñas reales dentro de plantillas o notas.
 

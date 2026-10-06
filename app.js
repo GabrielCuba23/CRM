@@ -1337,7 +1337,7 @@ async function refreshAutomationStatus() {
   try {
     const result = await api("/api/automation-status");
     const recent =
-      result.worker && Date.now() / 1000 - result.worker.checked < 180;
+      result.worker && Date.now() / 1000 - result.worker.checked < (result.intervalSeconds || 180) + 120;
     $("#automation-badge").textContent = !automation.enabled
       ? "Desactivado"
       : !result.configured
@@ -1404,6 +1404,11 @@ async function initializeSecurity() {
       "Nexo CRM · Sesión privada · Datos en el servidor.";
     const session = await api("/api/session");
     $("#owner-identity").textContent = `Administrador: ${session.email}`;
+    if(session.authProvider==='cloudflare-access'){
+      $('#password-form').hidden=true;
+      $('#security-description').textContent='Acceso exclusivo de tu correo mediante Cloudflare Access. El inicio de sesión se verifica antes de consultar tus datos.';
+      $('#server-auth-description').textContent='Cloudflare gestiona el inicio de sesión de la única cuenta autorizada. El CRM no almacena contraseñas de acceso al gestor.';
+    }
   }
   fillAutomationForm();
   if (!secureMode) {
@@ -1439,8 +1444,8 @@ $("#automation-form").addEventListener("submit", async (event) => {
 $("#refresh-automation").addEventListener("click", refreshAutomationStatus);
 $("#logout").addEventListener("click", async () => {
   try {
-    await api("/api/logout", { method: "POST", body: "{}" });
-    location.replace("/login");
+    const result=await api("/api/logout", { method: "POST", body: "{}" });
+    location.replace(result.logoutUrl || "/login");
   } catch (error) {
     notify(error.message);
   }
