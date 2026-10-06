@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nexo · Iniciar sesión</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="login.js" defer></script>
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <a class="brand" href="/login">◈ Nexo<span>CRM</span></a>
+      <p class="eyebrow">TU NEGOCIO, EN PRIVADO</p>
+      <h1>Bienvenido de nuevo</h1>
+      <p class="muted">Accede a tus clientes, mensajes y suscripciones.</p>
+      <form id="login-form">
+        <label
+          >Correo del administrador<input
+            name="email"
+            type="email"
+            required
+            autocomplete="username"
+            maxlength="254" /></label
+        ><label
+          >Contraseña<input
+            name="password"
+            type="password"
+            required
+            autocomplete="current-password"
+            maxlength="1024"
+        /></label>
+        <p id="login-error" class="error" role="alert"></p>
+        <button type="submit">Iniciar sesión →</button>
+      </form>
+      <p class="muted">
+        Solo la cuenta del administrador tiene acceso. La sesión caduca después
+        de 8 horas.
+      </p>
+    </main>
+  </body>
+</html>

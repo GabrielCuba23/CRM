@@ -14,16 +14,19 @@ export const defaultTemplates = [
   {
     id: "welcome",
     name: "Entrega de acceso",
+    context: "Entrega",
     body: "Hola {nombre} 👋\n\n*✅ {servicio}*\n\n*📧 Correo:* {correo}\n*☑️ Perfil:* {perfil}\n*📍 Vence:* {vence}\n\n¡Gracias por confiar en nosotros! Si necesitas ayuda, escríbenos.",
   },
   {
     id: "renew",
     name: "Recordatorio de renovación",
+    context: "Renovación",
     body: "Hola {nombre} 👋\nTu suscripción de *{servicio}* vence el *{vence}*.\n\n¿Deseas renovarla? Responde a este mensaje y te ayudamos. 🙌",
   },
   {
     id: "password",
     name: "Entrega con contraseña",
+    context: "Entrega",
     body: "Hola {nombre} 👋\n\n*✅ {servicio}*\n*📧 Correo:* {correo}\n*🔑 Contraseña:* {contrasena}\n*☑️ Perfil:* {perfil}\n*📍 Vence:* {vence}\n\n¡Disfruta tu servicio!",
   },
 ];
@@ -154,7 +157,9 @@ export function validateWorkspace(state) {
         c.name.trim() &&
         date(c.expires) &&
         Number.isInteger(c.price) &&
-        c.price >= 0,
+        c.price >= 0 &&
+        (c.reminderConsent === undefined ||
+          typeof c.reminderConsent === "boolean"),
     )
   )
     throw Error("Datos de clientes no válidos.");
@@ -174,7 +179,10 @@ export function validateWorkspace(state) {
     !state.templates.length ||
     !state.templates.every(
       (t) =>
-        strings(t, ["id", "name", "body"]) && t.name.trim() && t.body.trim(),
+        strings(t, ["id", "name", "body"]) &&
+        t.name.trim() &&
+        t.body.trim() &&
+        (t.context === undefined || typeof t.context === "string"),
     )
   )
     throw Error("Plantillas no válidas.");
@@ -225,6 +233,26 @@ export function validateWorkspace(state) {
     )
   )
     throw Error("Hay clientes con cuentas inexistentes.");
+  if (state.automation) {
+    const a = state.automation;
+    const allowed = fields.filter((field) => field !== "contrasena");
+    if (
+      typeof a.enabled !== "boolean" ||
+      !Number.isInteger(a.hour) ||
+      a.hour < 0 ||
+      a.hour > 23 ||
+      typeof a.templateName !== "string" ||
+      typeof a.language !== "string" ||
+      !/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(a.language) ||
+      (a.templateName && !/^[a-z0-9_]{1,512}$/.test(a.templateName)) ||
+      !Array.isArray(a.parameters) ||
+      a.parameters.length > 20 ||
+      a.parameters.some((v) => !allowed.includes(v))
+    )
+      throw Error("Configuración de automatización no válida.");
+    if (a.enabled && !a.templateName)
+      throw Error("Indica el nombre de la plantilla aprobada por Meta.");
+  }
   return state;
 }
 

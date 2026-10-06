@@ -9,4 +9,4 @@
 <symbol id="combos" viewBox="0 0 24 24"><path d="m12 2 10 5v10l-10 5-10-5V7Zm0 10L2 7m10 5 10-5m-10 5v10M7 4.5l10 5v4"/></symbol>
 <symbol id="settings" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></symbol>
 <symbol id="arrow" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
-</defs></svg>
+<symbol id="security" viewBox="0 0 24 24"><path d="m12 3 9 4v6c0 5-9 9-9 9s-9-4-9-9V7Z"/><path d="m8 12 3 3 5-6"/></symbol></defs></svg>

@@ -3,3 +3,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.venv/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+crm-data/
+build-wheels/*.whl

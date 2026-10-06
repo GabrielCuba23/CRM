@@ -51,6 +51,16 @@
             <use href="icons.svg#combos"></use>
           </svg>
           Combos</a
+        ><a href="#security" data-view="security"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#security"></use>
+          </svg>
+          Seguridad</a
+        ><a href="#automation" data-view="automation"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#renewals"></use>
+          </svg>
+          Automatización</a
         ><a href="#settings" data-view="settings"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#settings"></use>
@@ -74,7 +84,12 @@
           </p>
         </div>
         <div class="actions">
-          <button id="theme-toggle" class="secondary" aria-label="Cambiar tema">
+          <button id="logout" class="secondary" hidden>Cerrar sesión</button
+          ><button
+            id="theme-toggle"
+            class="secondary"
+            aria-label="Cambiar tema"
+          >
             ☾</button
           ><button id="new-account" class="secondary">Cuenta madre</button
           ><button id="new-client">＋ Nueva venta</button>
@@ -94,6 +109,7 @@
           <span>Suscripciones vencidas</span><strong id="expired">0</strong>
         </article>
       </div>
+      <p id="deployment-mode" class="mode-banner"></p>
       <p id="status" role="status" aria-live="polite"></p>
       <section id="home" class="view panel">
         <div class="hero">
@@ -258,8 +274,10 @@
       <section id="settings" class="view panel" hidden>
         <h2>Configuración y respaldo</h2>
         <p class="muted">
-          Esta versión funciona en este navegador. No tiene inicio de sesión ni
-          sincronización entre dispositivos.
+          <span id="storage-description"
+            >Esta versión funciona en este navegador. No tiene inicio de sesión
+            ni sincronización entre dispositivos.</span
+          >
         </p>
         <form id="settings-form">
           <div class="form-grid">
@@ -281,10 +299,12 @@
         <div class="inset">
           <h3>Tus datos, bajo tu control</h3>
           <p>
-            Los registros y plantillas se guardan localmente. Las contraseñas de
-            acceso se introducen al preparar el mensaje y no se almacenan. Un
-            respaldo contiene los datos personales de tus clientes: guárdalo en
-            un lugar privado.
+            <span id="backup-description"
+              >Los registros y plantillas se guardan localmente.</span
+            >
+            Las contraseñas de acceso se introducen al preparar el mensaje y no
+            se almacenan. Un respaldo contiene los datos personales de tus
+            clientes: guárdalo en un lugar privado.
           </p>
           <div class="actions">
             <button id="export-data" class="secondary">
@@ -351,13 +371,26 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">MENSAJES QUE TRABAJAN POR TI</p>
-            <h2>Plantillas de WhatsApp</h2>
+            <h2>Tu biblioteca de mensajes</h2>
             <p class="muted">
-              Personaliza el texto una vez. Completa los datos de cada cliente
-              automáticamente.
+              Crea tus propios mensajes para entrega, renovación, cobro,
+              promociones o cualquier otro contexto.
             </p>
           </div>
         </div>
+        <div class="toolbar">
+          <label class="search"
+            >Buscar mensaje<input
+              id="template-search"
+              type="search"
+              placeholder="Nombre, contexto o contenido" /></label
+          ><label
+            >Contexto<select id="context-filter">
+              <option value="all">Todos los contextos</option>
+            </select></label
+          >
+        </div>
+        <div id="template-library" class="template-library"></div>
         <form id="template-form">
           <div class="template-grid">
             <div>
@@ -368,8 +401,25 @@
                   required
                   maxlength="80"
               /></label>
+              <label
+                >Contexto del mensaje<input
+                  id="template-context"
+                  maxlength="80"
+                  list="template-contexts"
+                  placeholder="Por ejemplo: Soporte" /><datalist
+                  id="template-contexts"
+                >
+                  <option value="Entrega"></option>
+                  <option value="Renovación"></option>
+                  <option value="Cobro"></option>
+                  <option value="Promoción"></option>
+                  <option value="Soporte"></option>
+                  <option value="General"></option></datalist
+              ></label>
               <div class="actions">
-                <button type="button" id="add-template" class="secondary">
+                <button type="button" id="duplicate-template" class="secondary">
+                  Duplicar</button
+                ><button type="button" id="add-template" class="secondary">
                   ＋ Nueva plantilla</button
                 ><button type="button" id="delete-template" class="text-button">
                   Eliminar
@@ -393,11 +443,145 @@
                 Usa *texto* para negrita y _texto_ para cursiva en WhatsApp.
               </p>
               <button type="submit">Guardar plantilla</button>
+              <div class="inset">
+                <h3>Vista previa</h3>
+                <label
+                  >Completar con<select id="preview-client">
+                    <option value="">Datos de ejemplo</option>
+                  </select></label
+                >
+                <pre id="template-preview" class="message-preview"></pre>
+              </div>
             </div>
           </div>
         </form>
       </section>
-      <footer>Nexo CRM · Datos guardados en este navegador.</footer>
+      <section id="automation" class="view panel" hidden>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">RENOVACIONES SIN TAREAS MANUALES</p>
+            <h2>Recordatorio automático</h2>
+            <p class="muted">
+              Tres días antes del vencimiento, a la hora que elijas en Lima.
+            </p>
+          </div>
+          <span id="automation-badge" class="pill none">Sin conectar</span>
+        </div>
+        <p id="automation-availability" class="mode-banner"></p>
+        <form id="automation-form">
+          <label class="checkbox"
+            ><input id="automation-enabled" type="checkbox" /> Activar
+            recordatorios de renovación</label
+          >
+          <div class="form-grid">
+            <label
+              >Nombre de plantilla aprobada en Meta<input
+                id="automation-name"
+                placeholder="recordatorio_renovacion"
+                pattern="[a-z0-9_]+"
+                maxlength="512" /></label
+            ><label
+              >Idioma aprobado<input
+                id="automation-language"
+                value="es"
+                placeholder="es o es_PE"
+                required
+                maxlength="10" /></label
+            ><label
+              >Hora de envío (Lima)<input
+                id="automation-hour"
+                type="number"
+                min="0"
+                max="23"
+                required
+                value="9" /></label
+            ><label
+              >Variables de Meta, en orden<input
+                id="automation-parameters"
+                value="nombre, servicio, vence"
+                placeholder="nombre, servicio, vence"
+              /><small
+                >Se corresponden con {{1}}, {{2}}, {{3}} del cuerpo de la
+                plantilla aprobada.</small
+              ></label
+            >
+          </div>
+          <p class="muted">
+            Las plantillas de la biblioteca pueden tener cualquier texto para
+            envío manual. Para un envío automático iniciado por tu negocio, Meta
+            debe aprobar previamente la plantilla. No introduzcas tokens aquí.
+          </p>
+          <button>Guardar automatización</button>
+        </form>
+        <h3>Estado del servicio</h3>
+        <p id="worker-status" class="muted"></p>
+        <button id="refresh-automation" class="secondary">
+          Actualizar estado
+        </button>
+        <h3>Historial de recordatorios</h3>
+        <p class="muted">
+          «Aceptado por Meta» confirma que la API recibió el mensaje; no
+          confirma su entrega. Los resultados inciertos requieren revisión para
+          evitar mensajes duplicados.
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Vencimiento</th>
+                <th>Estado</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="reminder-history"></tbody>
+          </table>
+        </div>
+      </section>
+      <section id="security" class="view panel" hidden>
+        <h2>Acceso y seguridad</h2>
+        <p id="security-description" class="mode-banner"></p>
+        <div id="server-security" hidden>
+          <p id="owner-identity" class="muted"></p>
+          <p>
+            Cuenta única de administrador. Sesiones de 8 horas en cookies
+            HttpOnly. Los datos se almacenan en la base de datos del servidor.
+          </p>
+          <form id="password-form">
+            <h3>Cambiar contraseña</h3>
+            <label
+              >Contraseña actual<input
+                name="current"
+                type="password"
+                required
+                autocomplete="current-password"
+                maxlength="1024" /></label
+            ><label
+              >Nueva contraseña<input
+                name="next"
+                type="password"
+                required
+                minlength="12"
+                maxlength="1024"
+                autocomplete="new-password"
+            /></label>
+            <p class="muted">Al cambiarla se cerrarán todas las sesiones.</p>
+            <p id="password-status" role="status"></p>
+            <button>Cambiar contraseña</button>
+          </form>
+        </div>
+        <div id="local-migration" hidden class="inset">
+          <h3>Importar tus datos anteriores</h3>
+          <p>
+            Si tus clientes estaban en GitHub Pages, descarga allí un respaldo
+            JSON y restáuralo aquí desde Configuración. No se transfieren
+            automáticamente entre sitios.
+          </p>
+        </div>
+      </section>
+      <footer id="storage-footer">
+        Nexo CRM · Datos guardados en este navegador.
+      </footer>
     </main>
     <dialog id="client-dialog">
       <form id="client-form">
@@ -463,6 +647,9 @@
           /></label>
         </div>
         <label class="checkbox"
+          ><input name="reminderConsent" type="checkbox" /> El cliente autorizó
+          recibir recordatorios de renovación por WhatsApp.</label
+        ><label class="checkbox"
           ><input name="paid" type="checkbox" /> Registrar como cobrado en
           finanzas (solo nueva venta)</label
         ><label

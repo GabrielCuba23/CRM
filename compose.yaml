@@ -1,0 +1,22 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      CRM_DB_PATH: /data/crm.sqlite3
+    volumes:
+      - crm-data:/data
+  reminders:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "backend.worker"]
+    env_file: .env
+    environment:
+      CRM_DB_PATH: /data/crm.sqlite3
+    volumes:
+      - crm-data:/data
+volumes:
+  crm-data:

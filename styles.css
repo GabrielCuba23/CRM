@@ -785,3 +785,116 @@ button,
   stroke-linejoin: round;
   flex-shrink: 0;
 }
+.mode-banner {
+  background: #eeebfb;
+  border: 1px solid #ddd6f8;
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: #615191;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.template-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  max-height: 340px;
+  overflow: auto;
+  margin: 20px 0 28px;
+  padding: 3px;
+}
+.template-card {
+  background: #fafbfe;
+  color: #24314a;
+  border: 1px solid #dde2ed;
+  text-align: left;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+.template-card .pill {
+  justify-self: start;
+}
+.template-card strong {
+  font-size: 15px;
+}
+.template-card small {
+  font-weight: 400;
+  line-height: 1.6;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.template-card.chosen {
+  border-color: #a190ed;
+  background: #f4f0ff;
+}
+.message-preview {
+  font:
+    400 13px/1.8 system-ui,
+    sans-serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #293b4a;
+  background: #edf8f0;
+  padding: 18px;
+  border-radius: 12px;
+}
+.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  background: linear-gradient(140deg, #e9e8fc, #f4f7fb);
+}
+.login-shell {
+  margin: 30px 15px;
+  padding: 40px;
+  width: min(460px, calc(100vw - 30px));
+  border: 1px solid #dddff1;
+  border-radius: 24px;
+  background: white;
+  box-shadow: 0 20px 60px #33335b15;
+}
+.login-shell .brand {
+  display: block;
+  margin-bottom: 35px;
+}
+.login-shell h1 {
+  font-size: 28px;
+}
+.login-shell form {
+  margin-top: 25px;
+}
+.login-shell button {
+  width: 100%;
+}
+.dark .mode-banner {
+  background: #342e4c;
+  border-color: #504576;
+  color: #d7cafa;
+}
+.dark .template-card {
+  background: #273247;
+  color: #e4e9f5;
+  border-color: #3e4a62;
+}
+.dark .template-card.chosen {
+  background: #393255;
+  border-color: #8070b1;
+}
+.dark .message-preview {
+  background: #273e35;
+  color: #d8e9df;
+}
+aside nav {
+  margin-top: 20px;
+  gap: 2px;
+}
+aside {
+  overflow: auto;
+}
+aside > p {
+  padding-top: 20px;
+}
+#password-form {
+  max-width: 460px;
+}

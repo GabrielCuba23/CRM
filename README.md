@@ -1,8 +1,14 @@
 # Nexo · Gestor Streaming
 
-Gestor de clientes y suscripciones con interfaz adaptable a móvil, inspirado en las referencias proporcionadas. Funciona con HTML, CSS y JavaScript sin dependencias de ejecución externas.
+Gestor de clientes y suscripciones con interfaz adaptable a móvil, inspirado en las referencias proporcionadas. La interfaz usa HTML, CSS y JavaScript; el modo privado añade un backend Python con Flask, Gunicorn y SQLite.
 
-## Ejecutar
+## Acceso privado y automatización
+
+Se añadió un servidor con login de administrador, SQLite y un trabajador de recordatorios automáticos a tres días del vencimiento. Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para activarlo con HTTPS, almacenamiento persistente y la API oficial de WhatsApp. GitHub Pages mantiene el modo local; no puede ejecutar estas funciones del servidor.
+
+La biblioteca ahora permite crear, duplicar, buscar y organizar mensajes por cualquier contexto, con vista previa. Los mensajes manuales no están limitados a los tres ejemplos iniciales. La automatización usa una plantilla aprobada por Meta, configurada por nombre, idioma, hora y variables; está desactivada por defecto.
+
+## Ejecutar el modo local
 
 Con Python 3, desde la raíz del repositorio:
 
@@ -26,15 +32,15 @@ Abre la dirección del servidor en el navegador. Los módulos JavaScript requier
 
 ### WhatsApp
 
-Acepta móviles peruanos de 9 dígitos (por ejemplo `987654321`) o con prefijo `+51`, y números internacionales con código de país. Construye enlaces `https://wa.me/51987654321?text=...` usando codificación URL para preservar emojis, saltos de línea, tildes y caracteres especiales. El usuario confirma el envío en WhatsApp. No hay envío automático ni integración con la API de WhatsApp Business.
+Acepta móviles peruanos de 9 dígitos (por ejemplo `987654321`) o con prefijo `+51`, y números internacionales con código de país. Construye enlaces `https://wa.me/51987654321?text=...` usando codificación URL para preservar emojis, saltos de línea, tildes y caracteres especiales. El usuario confirma el envío en WhatsApp. El modo local no envía automáticamente. El modo servidor incorpora recordatorios mediante WhatsApp Cloud API; requiere credenciales y una plantilla aprobada.
 
 Variables: `{nombre}`, `{telefono}`, `{correo}`, `{servicio}`, `{perfil}`, `{vence}`, `{pin}`, `{contrasena}`, `{negocio}` y `{pago}`. Los asteriscos y guiones bajos se conservan para el formato de WhatsApp. La contraseña se introduce solo al preparar el mensaje y se limpia al cerrar el diálogo; no se guarda en los registros del CRM. Al añadirla o cambiarla, se vuelve a completar la plantilla seleccionada.
 
 ### Datos y límites
 
-Los datos se guardan en `localStorage` del navegador bajo `crm.workspace.v2`. Los clientes de la versión inicial se leen y conservan en la primera actualización. El borrado de clientes no elimina movimientos financieros históricos. No se incluyen datos de las capturas ni registros de ejemplo en la aplicación.
+En el modo local los datos se guardan en `localStorage` bajo `crm.workspace.v2`; en el modo privado se guardan en SQLite en el servidor. Los clientes de la versión inicial se leen y conservan en la primera actualización. El borrado de clientes no elimina movimientos financieros históricos. No se incluyen datos de las capturas ni registros de ejemplo en la aplicación.
 
-Esta versión es local: no incluye autenticación, cifrado del almacenamiento, sesiones de dispositivos, recuperación por correo ni sincronización entre usuarios. No sustituye un servidor seguro para producción. Evita editar simultáneamente desde varias pestañas. Exporta respaldos regularmente, ya que borrar los datos del navegador los elimina. El respaldo contiene datos personales y PIN de perfiles; debe conservarse de forma privada. Importar reemplaza el conjunto actual tras confirmación y validación. No guardes contraseñas reales dentro de plantillas o notas.
+El modo local de GitHub Pages no incluye autenticación ni sincronización. El modo servidor sí exige login y guarda los datos en SQLite; debe desplegarse con HTTPS según DEPLOYMENT.md. No incluye segundo factor, recuperación por correo ni cifrado del disco gestionado por la aplicación. Evita editar simultáneamente desde varias pestañas. Exporta respaldos regularmente. En el modo local, borrar los datos del navegador elimina los registros; en el modo servidor es necesario conservar y respaldar el disco persistente. El respaldo contiene datos personales y PIN de perfiles; debe conservarse de forma privada. Importar reemplaza el conjunto actual tras confirmación y validación. No guardes contraseñas reales dentro de plantillas o notas.
 
 ## Verificación
 

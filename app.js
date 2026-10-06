@@ -25,7 +25,50 @@ let clients = [],
   ledger = [],
   settings = { business: "Nexo Streaming", payments: "", dark: false },
   available = true,
-  recipient = null;
+  recipient = null,
+  automation = {
+    enabled: false,
+    templateName: "",
+    language: "es",
+    parameters: ["nombre", "servicio", "vence"],
+    hour: 9,
+  };
+let secureMode = false,
+  csrf = "",
+  serverRevision = 0,
+  saveInFlight = false;
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrf,
+      ...options.headers,
+    },
+  });
+  if (response.status === 401) {
+    location.replace("/login");
+    throw Error("Tu sesión caducó. Inicia sesión nuevamente.");
+  }
+  const result = await response.json();
+  if (!response.ok)
+    throw Error(result.error || "No se pudo completar la operación.");
+  return result;
+}
+const backendRequired =
+  document.querySelector('meta[name="crm-backend"]')?.content === "required";
+if (backendRequired) {
+  try {
+    const session = await api("/api/session");
+    secureMode = session.mode === "server";
+    csrf = session.csrf;
+    if (!secureMode) throw Error("Backend no disponible.");
+  } catch {
+    location.replace("/login");
+    throw Error("No se pudo verificar la sesión privada.");
+  }
+}
 const labels = {
   active: "Vigente",
   soon: "Por vencer",
@@ -44,23 +87,37 @@ function snapshot(overrides = {}) {
     combos,
     ledger,
     settings,
+    automation,
     ...overrides,
   };
 }
-function persistState(overrides = {}) {
+async function persistState(overrides = {}) {
   if (!available) {
     notify(
       "El almacenamiento no está disponible. No se guardaron los cambios.",
     );
     return false;
   }
+  if (saveInFlight) {
+    notify("Hay un cambio en curso. Espera antes de guardar otro.");
+    return false;
+  }
   try {
     const state = validateWorkspace(snapshot(overrides));
-    localStorage.setItem(workspaceKey, JSON.stringify(state));
+    saveInFlight = true;
+    if (secureMode) {
+      const result = await api("/api/workspace", {
+        method: "PUT",
+        body: JSON.stringify({ state, revision: serverRevision }),
+      });
+      serverRevision = result.revision;
+    } else localStorage.setItem(workspaceKey, JSON.stringify(state));
     return true;
   } catch (error) {
     notify(`No se pudieron guardar los cambios: ${error.message}`);
     return false;
+  } finally {
+    saveInFlight = false;
   }
 }
 function persist(key, value) {
@@ -69,10 +126,16 @@ function persist(key, value) {
   );
 }
 try {
-  const saved = localStorage.getItem(workspaceKey);
+  let saved;
+  if (secureMode) {
+    const result = await api("/api/workspace");
+    serverRevision = result.revision;
+    saved = JSON.stringify(result.state);
+  } else saved = localStorage.getItem(workspaceKey);
   if (saved) {
     const state = validateWorkspace(JSON.parse(saved));
     ({ clients, templates, accounts, combos, ledger, settings } = state);
+    automation = state.automation || automation;
   } else {
     const legacy = JSON.parse(localStorage.getItem(storageKey) || "[]");
     if (
@@ -173,15 +236,15 @@ function render() {
     );
     const actions = element("td", undefined, "row-actions");
     actions.append(
-      button("Renovar", () => openRenew(c)),
-      button("WhatsApp →", () => openMessage(c), "whatsapp"),
-      button("Editar", () => editClient(c)),
+      button("Renovar", async () => openRenew(c)),
+      button("WhatsApp →", async () => openMessage(c), "whatsapp"),
+      button("Editar", async () => editClient(c)),
       button(
         "Eliminar",
-        () => {
+        async () => {
           if (confirm(`¿Eliminar a ${c.name}?`)) {
             const next = clients.filter((x) => x.id !== c.id);
-            if (persist(storageKey, next)) {
+            if (await persist(storageKey, next)) {
               clients = next;
               render();
               notify("Cliente eliminado.");
@@ -216,11 +279,12 @@ function editClient(c = {}) {
     $("#client-form").elements.namedItem(key).value =
       key === "price" ? ((c.price || 0) / 100).toFixed(2) : c[key] || "";
   $("#client-title").textContent = c.id ? "Editar cliente" : "Nuevo cliente";
+  $("#client-form").elements.reminderConsent.checked = !!c.reminderConsent;
   $("#client-form").elements.paid.disabled = !!c.id;
   $("#client-dialog").showModal();
 }
-$("#new-client").addEventListener("click", () => editClient());
-$("#client-form").addEventListener("submit", (event) => {
+$("#new-client").addEventListener("click", async () => editClient());
+$("#client-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target));
   try {
@@ -228,6 +292,7 @@ $("#client-form").addEventListener("submit", (event) => {
     if (!data.name) throw Error("Introduce el nombre del cliente.");
     data.phone = normalizePhone(data.phone);
     data.price = cents(data.price || "0");
+    data.reminderConsent = data.reminderConsent === "on";
     if (data.expires && !validDate(data.expires))
       throw Error("Introduce un vencimiento válido.");
     if (data.accountId) {
@@ -267,7 +332,7 @@ $("#client-form").addEventListener("submit", (event) => {
             },
           ]
         : ledger;
-    if (persistState({ clients: next, ledger: nextLedger })) {
+    if (await persistState({ clients: next, ledger: nextLedger })) {
       clients = next;
       ledger = nextLedger;
       render();
@@ -282,29 +347,36 @@ $("#search").addEventListener("input", render);
 $("#filter").addEventListener("change", render);
 $("#account-filter").addEventListener("change", render);
 for (const close of document.querySelectorAll(".close"))
-  close.addEventListener("click", () => close.closest("dialog").close());
+  close.addEventListener("click", async () => close.closest("dialog").close());
 function templateOptions(select, selected) {
   select.replaceChildren(
     ...templates.map((t) => {
-      const option = element("option", t.name);
+      const option = element("option", `${t.context || "General"} · ${t.name}`);
       option.value = t.id;
       return option;
     }),
   );
   if (templates.some((t) => t.id === selected)) select.value = selected;
 }
+let selectedTemplateId = "";
 function loadTemplate() {
   const t = templates.find((t) => t.id === $("#template-select").value);
   $("#template-name").value = t.name;
   $("#template-body").value = t.body;
+  $("#template-context").value = t.context || "General";
+  selectedTemplateId = t.id;
+  previewTemplate();
 }
 function refreshTemplates(selected) {
   templateOptions($("#template-select"), selected);
   templateOptions($("#message-template"));
   loadTemplate();
+  renderTemplateLibrary();
 }
-$("#template-select").addEventListener("change", loadTemplate);
-$("#template-form").addEventListener("submit", (event) => {
+$("#template-select").addEventListener("change", () =>
+  switchTemplate($("#template-select").value),
+);
+$("#template-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = $("#template-name").value.trim(),
     body = $("#template-body").value.trim();
@@ -313,33 +385,41 @@ $("#template-form").addEventListener("submit", (event) => {
     return;
   }
   const id = $("#template-select").value;
-  const next = templates.map((t) => (t.id === id ? { id, name, body } : t));
-  if (persist(templateKey, next)) {
+  const context = $("#template-context").value.trim() || "General";
+  const next = templates.map((t) =>
+    t.id === id ? { id, name, body, context } : t,
+  );
+  if (await persist(templateKey, next)) {
     templates = next;
     refreshTemplates(id);
     notify("Plantilla guardada.");
   }
 });
-$("#add-template").addEventListener("click", () => {
+$("#add-template").addEventListener("click", async () => {
   const id = createId();
   const next = [
     ...templates,
-    { id, name: "Nueva plantilla", body: "Hola {nombre} 👋" },
+    {
+      id,
+      name: "Nueva plantilla",
+      body: "Hola {nombre} 👋",
+      context: "General",
+    },
   ];
-  if (persist(templateKey, next)) {
+  if (await persist(templateKey, next)) {
     templates = next;
     refreshTemplates(id);
     $("#template-name").focus();
   }
 });
-$("#delete-template").addEventListener("click", () => {
+$("#delete-template").addEventListener("click", async () => {
   if (templates.length === 1) {
     notify("Conserva al menos una plantilla.");
     return;
   }
   if (!confirm("¿Eliminar esta plantilla?")) return;
   const next = templates.filter((t) => t.id !== $("#template-select").value);
-  if (persist(templateKey, next)) {
+  if (await persist(templateKey, next)) {
     templates = next;
     refreshTemplates();
     notify("Plantilla eliminada.");
@@ -349,7 +429,7 @@ for (const key of fields)
   $("#variables").append(
     button(
       `{${key}}`,
-      () => {
+      async () => {
         const input = $("#template-body");
         input.setRangeText(
           `{${key}}`,
@@ -358,6 +438,7 @@ for (const key of fields)
           "end",
         );
         input.focus();
+        previewTemplate();
       },
       "variable",
     ),
@@ -396,14 +477,14 @@ function openMessage(c) {
   compose();
   $("#message-dialog").showModal();
 }
-$("#message-template").addEventListener("change", () => {
+$("#message-template").addEventListener("change", async () => {
   if (confirm("¿Reemplazar el mensaje con la plantilla seleccionada?"))
     compose();
   else $("#message-template").value = messageTemplateId;
 });
 $("#message-password").addEventListener("input", compose);
 $("#message-text").addEventListener("input", updateLink);
-$("#open-whatsapp").addEventListener("click", (event) => {
+$("#open-whatsapp").addEventListener("click", async (event) => {
   updateLink();
   if (!$("#open-whatsapp").hasAttribute("href")) event.preventDefault();
 });
@@ -416,13 +497,14 @@ $("#copy-message").addEventListener("click", async () => {
       "No se pudo copiar. Selecciona el texto y cópialo manualmente.";
   }
 });
-$("#message-dialog").addEventListener("close", () => {
+$("#message-dialog").addEventListener("close", async () => {
   $("#message-password").value = "";
   $("#message-text").value = "";
   $("#open-whatsapp").removeAttribute("href");
   recipient = null;
 });
 initializeModules();
+initializeSecurity();
 refreshTemplates();
 render();
 function refreshAccountOptions(selected = "") {
@@ -508,20 +590,20 @@ function accountCard(a, onlyFree = false) {
     ),
   );
   const actions = element("div", undefined, "actions");
-  const use = button("Asignar perfil →", () => useAccount(a));
+  const use = button("Asignar perfil →", async () => useAccount(a));
   use.disabled = !free.length || state === "expired";
   actions.append(use);
   if (!onlyFree)
     actions.append(
-      button("Editar", () => editAccount(a)),
-      button("Clientes", () => {
+      button("Editar", async () => editAccount(a)),
+      button("Clientes", async () => {
         $("#account-filter").value = a.id;
         location.hash = "customers";
         render();
       }),
       button(
         "Eliminar",
-        () => {
+        async () => {
           if (clients.some((c) => c.accountId === a.id)) {
             notify(
               "Libera o elimina los clientes vinculados antes de eliminar la cuenta.",
@@ -530,7 +612,7 @@ function accountCard(a, onlyFree = false) {
           }
           if (confirm(`¿Eliminar la cuenta ${a.email}?`)) {
             const next = accounts.filter((x) => x.id !== a.id);
-            if (persistState({ accounts: next })) {
+            if (await persistState({ accounts: next })) {
               accounts = next;
               refreshAccountOptions();
               render();
@@ -563,7 +645,7 @@ function renewalCard(c) {
   actions.append(
     button(
       "WhatsApp",
-      () => {
+      async () => {
         openMessage(c);
         $("#message-template").value = templates.some((t) => t.id === "renew")
           ? "renew"
@@ -572,10 +654,10 @@ function renewalCard(c) {
       },
       "whatsapp",
     ),
-    button("Renovar", () => openRenew(c)),
+    button("Renovar", async () => openRenew(c)),
     button(
       "Liberar perfil",
-      () => {
+      async () => {
         if (!c.accountId) {
           notify("Este cliente no tiene una cuenta madre asignada.");
           return;
@@ -588,7 +670,7 @@ function renewalCard(c) {
           const next = clients.map((x) =>
             x.id === c.id ? { ...x, accountId: "", profile: "" } : x,
           );
-          if (persistState({ clients: next })) {
+          if (await persistState({ clients: next })) {
             clients = next;
             render();
           }
@@ -658,7 +740,7 @@ function renderModules() {
     ...freeAccounts.map((a) => {
       const card = button(
         `${a.service} · ${availableProfiles(a, clients).length} perfiles libres`,
-        () => useAccount(a),
+        async () => useAccount(a),
         "platform-card",
       );
       return card;
@@ -698,7 +780,7 @@ function renderModules() {
       );
       const actions = element("div", undefined, "actions");
       actions.append(
-        button("Preparar oferta", () => {
+        button("Preparar oferta", async () => {
           if (!clients.length) {
             notify("Añade un cliente antes de preparar una oferta.");
             return;
@@ -718,10 +800,10 @@ function renderModules() {
         }),
         button(
           "Eliminar",
-          () => {
+          async () => {
             if (confirm(`¿Eliminar ${c.name}?`)) {
               const next = combos.filter((x) => x.id !== c.id);
-              if (persistState({ combos: next })) {
+              if (await persistState({ combos: next })) {
                 combos = next;
                 render();
               }
@@ -739,6 +821,7 @@ function renderModules() {
       element("p", "Crea tu primer combo de plataformas.", "empty"),
     );
   renderFinance();
+  renderTemplateLibrary();
 }
 function renderFinance() {
   const period = $("#finance-month").value;
@@ -772,14 +855,14 @@ function renderFinance() {
         action.append(
           button(
             "Eliminar",
-            () => {
+            async () => {
               if (
                 confirm(
                   "¿Eliminar este movimiento? No cambia el vencimiento del cliente.",
                 )
               ) {
                 const next = ledger.filter((x) => x.id !== m.id);
-                if (persistState({ ledger: next })) {
+                if (await persistState({ ledger: next })) {
                   ledger = next;
                   renderFinance();
                 }
@@ -888,13 +971,13 @@ function initializeModules() {
   refreshAccountOptions();
   setView();
   window.addEventListener("hashchange", setView);
-  $("#quick-sale").addEventListener("click", () => editClient());
-  $("#new-account").addEventListener("click", () => editAccount());
+  $("#quick-sale").addEventListener("click", async () => editClient());
+  $("#new-account").addEventListener("click", async () => editAccount());
   $("#client-account").addEventListener("change", chooseAccount);
   $("#account-search").addEventListener("input", renderModules);
   $("#renewal-search").addEventListener("input", renderModules);
   $("#finance-month").addEventListener("change", renderFinance);
-  $("#account-form").addEventListener("submit", (event) => {
+  $("#account-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
       const a = Object.fromEntries(new FormData(event.target));
@@ -909,7 +992,7 @@ function initializeModules() {
       const nextClients = clients.map((c) =>
         c.accountId === a.id ? { ...c, email: a.email, service: a.service } : c,
       );
-      if (persistState({ accounts: next, clients: nextClients })) {
+      if (await persistState({ accounts: next, clients: nextClients })) {
         accounts = next;
         clients = nextClients;
         refreshAccountOptions();
@@ -921,7 +1004,7 @@ function initializeModules() {
       $("#account-error").textContent = error.message;
     }
   });
-  $("#renew-form").addEventListener("submit", (event) => {
+  $("#renew-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
       const data = Object.fromEntries(new FormData(event.target));
@@ -953,7 +1036,7 @@ function initializeModules() {
               },
             ]
           : ledger;
-      if (persistState({ clients: next, ledger: nextLedger })) {
+      if (await persistState({ clients: next, ledger: nextLedger })) {
         clients = next;
         ledger = nextLedger;
         render();
@@ -964,12 +1047,12 @@ function initializeModules() {
       $("#renew-error").textContent = error.message;
     }
   });
-  $("#new-expense").addEventListener("click", () => {
+  $("#new-expense").addEventListener("click", async () => {
     $("#expense-form").reset();
     $("#expense-form").elements.date.value = todayLima();
     $("#expense-dialog").showModal();
   });
-  $("#expense-form").addEventListener("submit", (event) => {
+  $("#expense-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
       const data = Object.fromEntries(new FormData(event.target));
@@ -987,7 +1070,7 @@ function initializeModules() {
           amount,
         },
       ];
-      if (persistState({ ledger: next })) {
+      if (await persistState({ ledger: next })) {
         ledger = next;
         renderFinance();
         $("#expense-dialog").close();
@@ -997,7 +1080,7 @@ function initializeModules() {
       notify(error.message);
     }
   });
-  $("#combo-form").addEventListener("submit", (event) => {
+  $("#combo-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
       const data = Object.fromEntries(new FormData(event.target));
@@ -1006,7 +1089,7 @@ function initializeModules() {
       data.price = cents(data.price);
       data.id = createId();
       const next = [...combos, data];
-      if (persistState({ combos: next })) {
+      if (await persistState({ combos: next })) {
         combos = next;
         event.target.reset();
         renderModules();
@@ -1016,7 +1099,7 @@ function initializeModules() {
       notify(error.message);
     }
   });
-  $("#offer-form").addEventListener("submit", (event) => {
+  $("#offer-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const c = clients.find((c) => c.id === $("#combo-recipient").value),
       combo = combos.find((c) => c.id === event.target.dataset.comboId);
@@ -1050,26 +1133,26 @@ function initializeModules() {
       );
     }
   });
-  $("#settings-form").addEventListener("submit", (event) => {
+  $("#settings-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const next = {
       ...settings,
       business: $("#business-name").value.trim(),
       payments: $("#payment-methods").value.trim(),
     };
-    if (persistState({ settings: next })) {
+    if (await persistState({ settings: next })) {
       settings = next;
       notify("Configuración guardada.");
     }
   });
-  $("#theme-toggle").addEventListener("click", () => {
+  $("#theme-toggle").addEventListener("click", async () => {
     const next = { ...settings, dark: !settings.dark };
-    if (persistState({ settings: next })) {
+    if (await persistState({ settings: next })) {
       settings = next;
       document.documentElement.classList.toggle("dark", settings.dark);
     }
   });
-  $("#export-data").addEventListener("click", () => {
+  $("#export-data").addEventListener("click", async () => {
     if (!available) {
       $("#backup-status").textContent =
         "No se exportará un respaldo vacío: no se pudieron leer los datos originales.";
@@ -1099,8 +1182,10 @@ function initializeModules() {
         )
       )
         return;
-      localStorage.setItem(workspaceKey, JSON.stringify(state));
+      if (!(await persistState(state)))
+        throw Error("No se pudo guardar el respaldo.");
       ({ clients, templates, accounts, combos, ledger, settings } = state);
+      automation = state.automation || automation;
       available = true;
       refreshAccountOptions();
       refreshTemplates();
@@ -1108,6 +1193,7 @@ function initializeModules() {
       $("#business-name").value = settings.business;
       $("#payment-methods").value = settings.payments;
       document.documentElement.classList.toggle("dark", settings.dark);
+      fillAutomationForm();
       $("#backup-status").textContent = "Respaldo restaurado.";
       notify("Respaldo restaurado.");
     } catch (error) {
@@ -1118,3 +1204,257 @@ function initializeModules() {
     }
   });
 }
+
+function switchTemplate(id) {
+  const previous = templates.find((t) => t.id === selectedTemplateId);
+  const dirty =
+    previous &&
+    (previous.name !== $("#template-name").value ||
+      previous.body !== $("#template-body").value ||
+      (previous.context || "General") !== $("#template-context").value);
+  if (
+    dirty &&
+    !confirm("¿Descartar los cambios sin guardar de este mensaje?")
+  ) {
+    $("#template-select").value = selectedTemplateId;
+    return;
+  }
+  $("#template-select").value = id;
+  loadTemplate();
+  renderTemplateLibrary();
+}
+function renderTemplateLibrary() {
+  const current = $("#context-filter").value;
+  const contexts = [
+    ...new Set(templates.map((t) => t.context || "General")),
+  ].sort();
+  const all = element("option", "Todos los contextos");
+  all.value = "all";
+  $("#context-filter").replaceChildren(
+    all,
+    ...contexts.map((c) => {
+      const o = element("option", c);
+      o.value = c;
+      return o;
+    }),
+  );
+  $("#context-filter").value = contexts.includes(current) ? current : "all";
+  const query = $("#template-search").value.trim().toLocaleLowerCase();
+  const matches = templates
+    .filter(
+      (t) =>
+        (t.context || "General") === $("#context-filter").value ||
+        $("#context-filter").value === "all",
+    )
+    .filter((t) =>
+      [t.name, t.body, t.context || "General"].some((v) =>
+        v.toLocaleLowerCase().includes(query),
+      ),
+    );
+  $("#template-library").replaceChildren(
+    ...matches.map((t) => {
+      const card = button("", () => switchTemplate(t.id), "template-card");
+      card.classList.toggle("chosen", t.id === selectedTemplateId);
+      card.append(
+        element("span", t.context || "General", "pill none"),
+        element("strong", t.name),
+        element("small", t.body.slice(0, 120)),
+      );
+      return card;
+    }),
+  );
+  if (!matches.length)
+    $("#template-library").append(
+      element(
+        "p",
+        "No hay mensajes en esta selección. Crea uno con «Nueva plantilla».",
+        "muted",
+      ),
+    );
+  const selected = $("#preview-client").value;
+  const example = element("option", "Datos de ejemplo");
+  example.value = "";
+  $("#preview-client").replaceChildren(
+    example,
+    ...clients.map((c) => {
+      const o = element("option", c.name);
+      o.value = c.id;
+      return o;
+    }),
+  );
+  $("#preview-client").value = clients.some((c) => c.id === selected)
+    ? selected
+    : "";
+  previewTemplate();
+}
+function previewTemplate() {
+  const client = clients.find((c) => c.id === $("#preview-client").value) || {
+    name: "Tu cliente",
+    phone: "51987654321",
+    email: "cliente@example.com",
+    service: "Tu plataforma",
+    profile: "Perfil 1",
+    expires: todayLima(),
+    pin: "1234",
+  };
+  $("#template-preview").textContent = fillTemplate(
+    $("#template-body").value,
+    client,
+    "••••••",
+    settings,
+  );
+}
+$("#template-search").addEventListener("input", renderTemplateLibrary);
+$("#context-filter").addEventListener("change", renderTemplateLibrary);
+$("#preview-client").addEventListener("change", previewTemplate);
+$("#template-body").addEventListener("input", previewTemplate);
+$("#duplicate-template").addEventListener("click", async () => {
+  const id = createId();
+  const next = [
+    ...templates,
+    {
+      id,
+      name: `${$("#template-name").value.trim() || "Mensaje"} (copia)`,
+      context: $("#template-context").value.trim() || "General",
+      body: $("#template-body").value.trim() || "Hola {nombre}",
+    },
+  ];
+  if (await persist(templateKey, next)) {
+    templates = next;
+    refreshTemplates(id);
+    notify("Mensaje duplicado. Puedes editarlo libremente.");
+  }
+});
+function fillAutomationForm() {
+  $("#automation-enabled").checked = automation.enabled;
+  $("#automation-name").value = automation.templateName;
+  $("#automation-language").value = automation.language;
+  $("#automation-hour").value = automation.hour;
+  $("#automation-parameters").value = automation.parameters.join(", ");
+}
+async function refreshAutomationStatus() {
+  if (!secureMode) return;
+  try {
+    const result = await api("/api/automation-status");
+    const recent =
+      result.worker && Date.now() / 1000 - result.worker.checked < 180;
+    $("#automation-badge").textContent = !automation.enabled
+      ? "Desactivado"
+      : !result.configured
+        ? "Falta conectar API"
+        : !recent
+          ? "Trabajador sin conexión"
+          : "Activo";
+    $("#automation-badge").className =
+      `pill ${automation.enabled && result.configured && recent ? "active" : "none"}`;
+    $("#automation-availability").textContent = result.configured
+      ? "Las credenciales de WhatsApp están configuradas en el servidor. El envío usa la plantilla aprobada indicada abajo."
+      : "Faltan WHATSAPP_ACCESS_TOKEN y WHATSAPP_PHONE_NUMBER_ID en la configuración privada del servidor. No hay envíos reales habilitados.";
+    $("#worker-status").textContent = result.worker
+      ? `Última revisión: ${new Date(result.worker.checked * 1000).toLocaleString("es-PE", { timeZone: "America/Lima" })} · ${recent ? "Servicio conectado" : "No hay revisiones recientes"}`
+      : "El proceso de recordatorios todavía no se ha iniciado.";
+    const descriptions = {
+      processing: "Resultado pendiente de revisión",
+      accepted: "Aceptado por Meta",
+      rejected: "Rechazado",
+      uncertain: "Resultado incierto: revisar en Meta",
+      rate_limited: "Límite de Meta: se reintentará",
+    };
+    $("#reminder-history").replaceChildren(
+      ...result.reminders.map((r) => {
+        const tr = element("tr");
+        const c = clients.find((c) => c.id === r.client_id);
+        for (const text of [
+          c?.name || "Cliente eliminado",
+          formatDate(r.expires),
+          descriptions[r.state] || r.state,
+          r.error || "—",
+        ])
+          tr.append(element("td", text));
+        return tr;
+      }),
+    );
+    if (!result.reminders.length) {
+      const row = element("tr"),
+        cell = element("td", "Todavía no hay recordatorios procesados.");
+      cell.colSpan = 4;
+      row.append(cell);
+      $("#reminder-history").append(row);
+    }
+  } catch (error) {
+    $("#worker-status").textContent = error.message;
+  }
+}
+async function initializeSecurity() {
+  $("#logout").hidden = !secureMode;
+  $("#server-security").hidden = !secureMode;
+  $("#local-migration").hidden = !secureMode;
+  $("#deployment-mode").textContent = secureMode
+    ? "Modo privado · Datos en el servidor · Acceso exclusivo del administrador"
+    : "Modo local de GitHub Pages · Para login y recordatorios automáticos necesitas desplegar el servidor incluido en el proyecto.";
+  $("#security-description").textContent = secureMode
+    ? "Tu página y la API requieren una sesión válida. No hay registro público de usuarios."
+    : "Este sitio estático no ofrece protección por contraseña. La pantalla de login real está implementada en el backend y se activa al desplegarlo en un servidor con HTTPS.";
+  if (secureMode) {
+    $("#storage-description").textContent =
+      "Los datos se guardan en la base de datos privada del servidor y se consultan tras iniciar sesión.";
+    $("#backup-description").textContent =
+      "Los registros y plantillas se guardan en el servidor.";
+    $("#storage-footer").textContent =
+      "Nexo CRM · Sesión privada · Datos en el servidor.";
+    const session = await api("/api/session");
+    $("#owner-identity").textContent = `Administrador: ${session.email}`;
+  }
+  fillAutomationForm();
+  if (!secureMode) {
+    for (const input of $("#automation-form").elements) input.disabled = true;
+    $("#refresh-automation").disabled = true;
+    $("#automation-availability").textContent =
+      "El envío automático necesita un servidor activo y la API oficial de WhatsApp. GitHub Pages permite mensajes manuales mediante wa.me.";
+    $("#worker-status").textContent =
+      "No hay trabajador de recordatorios en el modo local.";
+  } else await refreshAutomationStatus();
+}
+$("#automation-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!secureMode) return;
+  const next = {
+    enabled: $("#automation-enabled").checked,
+    templateName: $("#automation-name").value.trim(),
+    language: $("#automation-language").value.trim(),
+    hour: Number($("#automation-hour").value),
+    parameters: $("#automation-parameters")
+      .value.split(",")
+      .map((v) => v.trim().replace(/^\{|\}$/g, ""))
+      .filter(Boolean),
+  };
+  if (await persistState({ automation: next })) {
+    automation = next;
+    notify(
+      "Regla de recordatorio guardada. Se revisa tres días antes del vencimiento de cada cliente con autorización.",
+    );
+    await refreshAutomationStatus();
+  }
+});
+$("#refresh-automation").addEventListener("click", refreshAutomationStatus);
+$("#logout").addEventListener("click", async () => {
+  try {
+    await api("/api/logout", { method: "POST", body: "{}" });
+    location.replace("/login");
+  } catch (error) {
+    notify(error.message);
+  }
+});
+$("#password-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("/api/password", {
+      method: "POST",
+      body: JSON.stringify(Object.fromEntries(new FormData(event.target))),
+    });
+    event.target.reset();
+    location.replace("/login");
+  } catch (error) {
+    $("#password-status").textContent = error.message;
+  }
+});
