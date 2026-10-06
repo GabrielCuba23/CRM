@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRM · Clientes</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><h1>Clientes</h1><p>Organiza tus contactos en un solo lugar.</p></header>
+    <section aria-labelledby="new-client">
+      <h2 id="new-client">Nuevo cliente</h2>
+      <form id="client-form">
+        <label>Nombre<input name="name" required maxlength="120" autocomplete="name"></label>
+        <label>Correo<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+        <label>Teléfono<input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>
+        <button type="submit">Guardar cliente</button>
+      </form>
+    </section>
+    <section aria-labelledby="client-list">
+      <h2 id="client-list">Lista de clientes</h2>
+      <label>Buscar<input id="search" type="search" placeholder="Nombre, correo o teléfono"></label>
+      <p id="status" role="status"></p>
+      <ul id="clients"></ul>
+    </section>
+  </main>
+</body>
+</html>
