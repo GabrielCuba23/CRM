@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-8H9v8H4a1 1 0 0 1-1-1Z"/></symbol>
+<symbol id="customers" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M2 21v-3a7 7 0 0 1 14 0v3M17 4a4 4 0 0 1 0 8m1 4a5 5 0 0 1 4 5"/></symbol>
+<symbol id="accounts" viewBox="0 0 24 24"><circle cx="16" cy="8" r="5"/><path d="m12 12-9 9v-4l3-3h3l3-3M18 7h.01"/></symbol>
+<symbol id="free" viewBox="0 0 24 24"><path d="m12 3 3 2 4 1 1 4 2 3-2 3-1 4-4 1-3 2-3-2-4-1-1-4-2-3 2-3 1-4 4-1Z"/><path d="m8 12 3 3 5-6"/></symbol>
+<symbol id="renewals" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 8v5l3 2M3 3 1 6m20-3 2 3M6 21l-2 2m14-2 2 2"/></symbol>
+<symbol id="finance" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18m-12 5h6"/></symbol>
+<symbol id="templates" viewBox="0 0 24 24"><path d="M21 16a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M7 8h10M7 12h7"/></symbol>
+<symbol id="combos" viewBox="0 0 24 24"><path d="m12 2 10 5v10l-10 5-10-5V7Zm0 10L2 7m10 5 10-5m-10 5v10M7 4.5l10 5v4"/></symbol>
+<symbol id="settings" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></symbol>
+<symbol id="arrow" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+</defs></svg>

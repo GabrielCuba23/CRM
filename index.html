@@ -1,30 +1,637 @@
 <!doctype html>
 <html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CRM · Clientes</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
-</head>
-<body>
-  <main>
-    <header><h1>Clientes</h1><p>Organiza tus contactos en un solo lugar.</p></header>
-    <section aria-labelledby="new-client">
-      <h2 id="new-client">Nuevo cliente</h2>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nexo · Gestor Streaming</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" type="module"></script>
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="#">◈ Nexo<span>CRM</span></a>
+      <nav aria-label="Principal">
+        <a href="#home" data-view="home"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#home"></use>
+          </svg>
+          Inicio</a
+        ><a href="#customers" data-view="customers"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#customers"></use>
+          </svg>
+          Clientes <span id="nav-clients"></span></a
+        ><a href="#accounts" data-view="accounts"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#accounts"></use>
+          </svg>
+          Cuentas <span id="nav-accounts"></span></a
+        ><a href="#free" data-view="free"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#free"></use>
+          </svg>
+          Perfiles libres <span id="nav-free"></span></a
+        ><a href="#renewals" data-view="renewals"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#renewals"></use>
+          </svg>
+          Renovaciones <span id="nav-renewals"></span></a
+        ><a href="#finance" data-view="finance"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#finance"></use>
+          </svg>
+          Finanzas</a
+        ><a href="#templates" data-view="templates"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#templates"></use>
+          </svg>
+          Mensajes</a
+        ><a href="#combos" data-view="combos"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#combos"></use>
+          </svg>
+          Combos</a
+        ><a href="#settings" data-view="settings"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#settings"></use>
+          </svg>
+          Configuración</a
+        >
+      </nav>
+      <p>
+        Tu negocio, conectado.<br /><small
+          >Mensajes personales en WhatsApp</small
+        >
+      </p>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">TU CENTRO DE OPERACIONES</p>
+          <h1>Gestor Streaming</h1>
+          <p class="muted">
+            <span id="today"></span> · Todo tu negocio, en un solo lugar.
+          </p>
+        </div>
+        <div class="actions">
+          <button id="theme-toggle" class="secondary" aria-label="Cambiar tema">
+            ☾</button
+          ><button id="new-account" class="secondary">Cuenta madre</button
+          ><button id="new-client">＋ Nueva venta</button>
+        </div>
+      </header>
+      <div class="metrics" id="summary">
+        <article>
+          <span>Clientes registrados</span><strong id="total">0</strong>
+        </article>
+        <article>
+          <span>Suscripciones vigentes</span><strong id="active">0</strong>
+        </article>
+        <article>
+          <span>Vencen en 7 días</span><strong id="soon">0</strong>
+        </article>
+        <article>
+          <span>Suscripciones vencidas</span><strong id="expired">0</strong>
+        </article>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section id="home" class="view panel">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">TODO LISTO PARA TU PRÓXIMA VENTA</p>
+            <h2>Más orden. Mejores conversaciones.</h2>
+            <p>
+              Asigna un perfil, controla su vencimiento y prepara el mensaje de
+              entrega en segundos.
+            </p>
+            <button id="quick-sale">Registrar una venta →</button>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            ◈<span>STREAMING / CRM</span>
+          </div>
+        </div>
+        <div class="section-head">
+          <h2>Venta rápida</h2>
+          <a href="#free" class="subtle-link">Ver perfiles disponibles →</a>
+        </div>
+        <div id="quick-platforms" class="cards"></div>
+        <div class="section-head">
+          <h2>Requieren atención</h2>
+          <a href="#renewals" class="subtle-link">Ver renovaciones →</a>
+        </div>
+        <div id="attention"></div>
+      </section>
+      <section id="accounts" class="view panel" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Cuentas madre</h2>
+            <p class="muted">
+              Inventario de plataformas, accesos y perfiles asignados.
+            </p>
+          </div>
+        </div>
+        <label
+          >Buscar cuenta<input
+            id="account-search"
+            type="search"
+            placeholder="Plataforma, correo o proveedor"
+        /></label>
+        <div id="account-cards" class="cards"></div>
+      </section>
+      <section id="free" class="view panel" hidden>
+        <h2>Perfiles libres</h2>
+        <p class="muted">
+          Elige una cuenta vigente y asigna su siguiente perfil disponible.
+        </p>
+        <div id="free-cards" class="cards"></div>
+      </section>
+      <section id="renewals" class="view panel" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Renovaciones</h2>
+            <p class="muted">
+              Vencidos y suscripciones que vencen en los próximos 7 días.
+            </p>
+          </div>
+          <button id="copy-numbers" class="secondary">Copiar números</button>
+        </div>
+        <label
+          >Buscar renovación<input
+            id="renewal-search"
+            type="search"
+            placeholder="Cliente o plataforma"
+        /></label>
+        <div id="renewal-list"></div>
+      </section>
+      <section id="finance" class="view panel" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Finanzas</h2>
+            <p class="muted">
+              Ventas cobradas, renovaciones y gastos en soles.
+            </p>
+          </div>
+          <button id="new-expense">＋ Gasto</button>
+        </div>
+        <label>Periodo<input id="finance-month" type="month" /></label>
+        <div class="metrics finance-metrics">
+          <article>
+            <span>Ingresos</span><strong id="income">S/ 0.00</strong>
+          </article>
+          <article>
+            <span>Gastos</span><strong id="expenses">S/ 0.00</strong>
+          </article>
+          <article>
+            <span>Ganancia</span><strong id="profit">S/ 0.00</strong>
+          </article>
+          <article>
+            <span>Renovaciones cobradas</span
+            ><strong id="renewal-count">0</strong>
+          </article>
+        </div>
+        <div class="template-grid">
+          <div class="inset">
+            <h3>Tendencia · últimos 6 meses</h3>
+            <div id="finance-chart" class="chart"></div>
+            <p class="muted">
+              <span class="income-dot">●</span> Ingresos ·
+              <span class="expense-dot">●</span> Gastos
+            </p>
+          </div>
+          <div class="inset">
+            <h3>Ingresos por plataforma</h3>
+            <div id="platform-income"></div>
+          </div>
+        </div>
+        <h3>Movimientos</h3>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th>Tipo</th>
+                <th>Importe</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="movements"></tbody>
+          </table>
+        </div>
+        <p id="finance-empty" class="empty">
+          No hay movimientos en este periodo.
+        </p>
+      </section>
+      <section id="combos" class="view panel" hidden>
+        <h2>Combos personalizados</h2>
+        <p class="muted">
+          Agrupa plataformas en una oferta y prepara un mensaje para tu cliente.
+        </p>
+        <form id="combo-form">
+          <div class="form-grid">
+            <label
+              >Nombre<input
+                name="name"
+                required
+                maxlength="80"
+                placeholder="Combo familiar" /></label
+            ><label
+              >Plataformas<input
+                name="services"
+                required
+                maxlength="250"
+                placeholder="Netflix, Disney+, Max" /></label
+            ><label
+              >Precio (S/)<input
+                name="price"
+                type="number"
+                min="0"
+                max="999999"
+                step="0.01"
+                required
+            /></label>
+          </div>
+          <button type="submit">＋ Guardar combo</button>
+        </form>
+        <div id="combo-cards" class="cards"></div>
+      </section>
+      <section id="settings" class="view panel" hidden>
+        <h2>Configuración y respaldo</h2>
+        <p class="muted">
+          Esta versión funciona en este navegador. No tiene inicio de sesión ni
+          sincronización entre dispositivos.
+        </p>
+        <form id="settings-form">
+          <div class="form-grid">
+            <label
+              >Nombre del negocio<input
+                id="business-name"
+                maxlength="80" /></label
+            ><label
+              >Medios de pago<textarea
+                id="payment-methods"
+                rows="3"
+                maxlength="500"
+                placeholder="Yape, Plin, transferencia…"
+              ></textarea>
+            </label>
+          </div>
+          <button>Guardar configuración</button>
+        </form>
+        <div class="inset">
+          <h3>Tus datos, bajo tu control</h3>
+          <p>
+            Los registros y plantillas se guardan localmente. Las contraseñas de
+            acceso se introducen al preparar el mensaje y no se almacenan. Un
+            respaldo contiene los datos personales de tus clientes: guárdalo en
+            un lugar privado.
+          </p>
+          <div class="actions">
+            <button id="export-data" class="secondary">
+              Descargar respaldo JSON</button
+            ><label class="button secondary file-label"
+              >Restaurar respaldo<input
+                id="import-data"
+                type="file"
+                accept=".json,application/json"
+            /></label>
+          </div>
+          <p id="backup-status" role="status"></p>
+        </div>
+      </section>
+      <section id="customers" class="view panel" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Tu cartera de clientes</h2>
+            <p class="muted">
+              Gestiona accesos, vencimientos y conversaciones.
+            </p>
+          </div>
+          <span class="badge">WhatsApp listo</span>
+        </div>
+        <div class="toolbar">
+          <label class="search"
+            >Buscar cliente<input
+              id="search"
+              type="search"
+              placeholder="Nombre, correo, teléfono o servicio" /></label
+          ><label
+            >Cuenta madre<select id="account-filter">
+              <option value="all">Todas las cuentas</option>
+            </select></label
+          ><label
+            >Estado<select id="filter">
+              <option value="all">Todos los estados</option>
+              <option value="active">Vigentes</option>
+              <option value="soon">Próximos a vencer</option>
+              <option value="expired">Vencidos</option>
+              <option value="none">Sin vencimiento</option>
+            </select></label
+          >
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Servicio / perfil</th>
+                <th>Vencimiento</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="clients"></tbody>
+          </table>
+        </div>
+        <p id="empty" class="empty">
+          Tu próxima relación con un cliente empieza aquí.<br />Añade tu primer
+          cliente para preparar un mensaje.
+        </p>
+      </section>
+      <section id="templates" class="view panel" hidden>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">MENSAJES QUE TRABAJAN POR TI</p>
+            <h2>Plantillas de WhatsApp</h2>
+            <p class="muted">
+              Personaliza el texto una vez. Completa los datos de cada cliente
+              automáticamente.
+            </p>
+          </div>
+        </div>
+        <form id="template-form">
+          <div class="template-grid">
+            <div>
+              <label>Plantilla<select id="template-select"></select></label
+              ><label
+                >Nombre de la plantilla<input
+                  id="template-name"
+                  required
+                  maxlength="80"
+              /></label>
+              <div class="actions">
+                <button type="button" id="add-template" class="secondary">
+                  ＋ Nueva plantilla</button
+                ><button type="button" id="delete-template" class="text-button">
+                  Eliminar
+                </button>
+              </div>
+              <p class="muted">
+                Variables disponibles: pulsa para insertarlas.
+              </p>
+              <div id="variables" class="variables"></div>
+            </div>
+            <div>
+              <label
+                >Contenido<textarea
+                  id="template-body"
+                  rows="9"
+                  required
+                  maxlength="4000"
+                ></textarea>
+              </label>
+              <p class="muted">
+                Usa *texto* para negrita y _texto_ para cursiva en WhatsApp.
+              </p>
+              <button type="submit">Guardar plantilla</button>
+            </div>
+          </div>
+        </form>
+      </section>
+      <footer>Nexo CRM · Datos guardados en este navegador.</footer>
+    </main>
+    <dialog id="client-dialog">
       <form id="client-form">
-        <label>Nombre<input name="name" required maxlength="120" autocomplete="name"></label>
-        <label>Correo<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
-        <label>Teléfono<input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>
-        <button type="submit">Guardar cliente</button>
+        <div class="section-head">
+          <h2 id="client-title">Nuevo cliente</h2>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <input name="id" type="hidden" />
+        <div class="form-grid">
+          <label
+            >Nombre<input
+              name="name"
+              required
+              maxlength="120"
+              autocomplete="name" /></label
+          ><label
+            >WhatsApp<input
+              name="phone"
+              type="tel"
+              required
+              placeholder="+51 987 654 321"
+              autocomplete="tel"
+            /><small
+              >Para Perú, escribe los 9 dígitos o incluye +51.</small
+            ></label
+          ><label
+            >Cuenta madre<select name="accountId" id="client-account">
+              <option value="">Sin cuenta madre</option>
+            </select></label
+          ><label
+            >Correo de acceso<input
+              name="email"
+              type="email"
+              maxlength="254"
+              autocomplete="off" /></label
+          ><label
+            >Servicio<input
+              name="service"
+              placeholder="HBO Max, Netflix…"
+              maxlength="80" /></label
+          ><label
+            >Perfil<input
+              name="profile"
+              placeholder="Perfil 1"
+              maxlength="80" /></label
+          ><label
+            >Fecha de vencimiento<input name="expires" type="date"
+          /></label>
+        </div>
+        <div class="form-grid">
+          <label
+            >Precio de venta (S/)<input
+              name="price"
+              type="number"
+              min="0"
+              max="999999"
+              step="0.01"
+              value="0" /></label
+          ><label
+            >PIN del perfil<input name="pin" maxlength="20" autocomplete="off"
+          /></label>
+        </div>
+        <label class="checkbox"
+          ><input name="paid" type="checkbox" /> Registrar como cobrado en
+          finanzas (solo nueva venta)</label
+        ><label
+          >Notas<textarea name="notes" rows="2" maxlength="1000"></textarea>
+        </label>
+        <p id="client-error" class="error" role="alert"></p>
+        <div class="actions end">
+          <button type="button" class="secondary close">Cancelar</button
+          ><button type="submit">Guardar cliente</button>
+        </div>
       </form>
-    </section>
-    <section aria-labelledby="client-list">
-      <h2 id="client-list">Lista de clientes</h2>
-      <label>Buscar<input id="search" type="search" placeholder="Nombre, correo o teléfono"></label>
-      <p id="status" role="status"></p>
-      <ul id="clients"></ul>
-    </section>
-  </main>
-</body>
+    </dialog>
+    <dialog id="message-dialog">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">PREPARA TU CONVERSACIÓN</p>
+          <h2>Enviar por WhatsApp</h2>
+        </div>
+        <button class="icon-button close" aria-label="Cerrar">×</button>
+      </div>
+      <p id="recipient"></p>
+      <label>Plantilla<select id="message-template"></select></label
+      ><label
+        >Mensaje editable<textarea
+          id="message-text"
+          rows="10"
+          maxlength="8000"
+        ></textarea></label
+      ><label
+        >Contraseña de acceso (opcional)<input
+          id="message-password"
+          type="password"
+          autocomplete="off"
+        /><small
+          >Solo para completar {contrasena}. No se guarda en el CRM.</small
+        ></label
+      >
+      <p id="message-error" class="error" role="alert"></p>
+      <p class="muted">
+        Se abrirá WhatsApp con este texto. Revisa el destinatario y confirma el
+        envío allí.
+      </p>
+      <div class="actions end">
+        <button id="copy-message" class="secondary">Copiar mensaje</button
+        ><a
+          id="open-whatsapp"
+          class="button whatsapp"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Abrir WhatsApp →</a
+        >
+      </div>
+    </dialog>
+    <dialog id="account-dialog">
+      <form id="account-form">
+        <div class="section-head">
+          <h2>Cuenta madre</h2>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <input name="id" type="hidden" />
+        <div class="form-grid">
+          <label
+            >Plataforma<input
+              name="service"
+              required
+              maxlength="80"
+              placeholder="Netflix" /></label
+          ><label
+            >Correo de acceso<input
+              name="email"
+              type="email"
+              required
+              maxlength="254" /></label
+          ><label>Proveedor<input name="provider" maxlength="120" /></label
+          ><label
+            >Vencimiento<input name="expires" type="date" required /></label
+          ><label
+            >Número de perfiles<input
+              name="capacity"
+              type="number"
+              min="1"
+              max="50"
+              value="5"
+              required
+          /></label>
+        </div>
+        <p class="muted">
+          Los perfiles asignados siguen ocupados hasta liberar o eliminar la
+          venta, incluso si vencieron.
+        </p>
+        <p id="account-error" class="error" role="alert"></p>
+        <div class="actions end">
+          <button type="button" class="secondary close">Cancelar</button
+          ><button>Guardar cuenta</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="renew-dialog">
+      <form id="renew-form">
+        <div class="section-head">
+          <h2>Renovar suscripción</h2>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <input name="id" type="hidden" />
+        <p id="renew-name"></p>
+        <label
+          >Nuevo vencimiento<input name="expires" type="date" required /></label
+        ><label
+          >Importe cobrado (S/)<input
+            name="amount"
+            type="number"
+            min="0"
+            max="999999"
+            step="0.01"
+            required /></label
+        ><label class="checkbox"
+          ><input name="paid" type="checkbox" checked /> Registrar cobro en
+          finanzas</label
+        >
+        <p id="renew-error" class="error" role="alert"></p>
+        <div class="actions end">
+          <button type="button" class="secondary close">Cancelar</button
+          ><button>Confirmar renovación</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="expense-dialog">
+      <form id="expense-form">
+        <div class="section-head">
+          <h2>Registrar gasto</h2>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <label
+          >Concepto<input name="description" required maxlength="200" /></label
+        ><label>Fecha<input name="date" type="date" required /></label
+        ><label
+          >Importe (S/)<input
+            name="amount"
+            type="number"
+            min="0.01"
+            max="999999"
+            step="0.01"
+            required
+        /></label>
+        <div class="actions end">
+          <button type="button" class="secondary close">Cancelar</button
+          ><button>Guardar gasto</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="offer-dialog">
+      <form id="offer-form">
+        <div class="section-head">
+          <h2>Enviar oferta</h2>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <p id="offer-name"></p>
+        <label
+          >Destinatario<select id="combo-recipient" required></select></label
+        ><button>Preparar mensaje</button>
+      </form>
+    </dialog>
+  </body>
 </html>
