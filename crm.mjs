@@ -1,3 +1,4 @@
+import { validatePurchaseLinks } from "./procurement.mjs";
 import { validateGrowth } from "./growth.mjs";
 export const fields = [
   "nombre",
@@ -343,6 +344,7 @@ export function validateWorkspace(state) {
   )
     throw Error("Confirmaciones de envío no válidas.");
   if (state.growth !== undefined) validateGrowth(state.growth);
+  validatePurchaseLinks(state);
   return state;
 }
 

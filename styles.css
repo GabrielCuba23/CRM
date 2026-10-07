@@ -990,3 +990,24 @@ select {
     gap: 6px;
   }
 }
+
+/* Keep supplier forms and long catalog labels within the mobile grid. */
+.form-grid > *,
+.cards > * {
+  min-width: 0;
+}
+#supplier-section select {
+  width: 100%;
+}
+.metrics > article {
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  .finance-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .finance-metrics strong {
+    font-size: 22px;
+    overflow-wrap: anywhere;
+  }
+}

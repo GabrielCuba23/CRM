@@ -132,15 +132,37 @@ def validate_workspace(state):
     for r in growth['interactions']:
         if not r['clientId'] or not r['occurredAt'] or r['kind'] not in ['comment','dm','review'] or r['outcome'] not in ['open','answered','won']:
             fail()
+    procurement = state.get('procurement', {'suppliers': [], 'offers': []})
+    procurement_keys = {'suppliers': ['id','name','email','phone','notes'], 'offers': ['id','name','supplierId','type','costCents','intervalMonths','capacity','notes']}
+    if not isinstance(procurement, dict):
+        fail()
+    for key, fields in procurement_keys.items():
+        rows = procurement.get(key)
+        if not isinstance(rows, list) or len(rows) > 10000 or any(not strings(r, [k for k in fields if k not in ['costCents','intervalMonths','capacity']]) or not r['id'] or not r['name'].strip() for r in rows) or len({r['id'] for r in rows}) != len(rows):
+            fail()
+    for o in procurement['offers']:
+        if o['type'] not in ['product','business'] or not any(s['id'] == o['supplierId'] for s in procurement['suppliers']) or not amount(o['costCents']) or type(o['intervalMonths']) is not int or not 0 <= o['intervalMonths'] <= 36 or type(o['capacity']) is not int or not 1 <= o['capacity'] <= 50:
+            fail()
+    for a in state['accounts']:
+        if any(k in a and not isinstance(a[k], str) for k in ['supplierId','offerId']) or ('costCents' in a and not amount(a['costCents'])) or ('costIntervalMonths' in a and (type(a['costIntervalMonths']) is not int or not 0 <= a['costIntervalMonths'] <= 36)):
+            fail()
+        if a.get('supplierId') and not any(s['id'] == a['supplierId'] for s in procurement['suppliers']):
+            fail()
+        if a.get('offerId') and not any(o['id'] == a['offerId'] and o['supplierId'] == a.get('supplierId') and o['type'] == 'product' for o in procurement['offers']):
+            fail()
+    for m in state['ledger']:
+        if any(k in m and (not isinstance(m[k], str) or len(m[k]) > 8000) for k in ['supplierId','offerId','accountId','category','reference']):
+            fail()
     # Preserve explicit account credentials, but never arbitrary tokens or unknown fields.
     keys = {
         'clients': ['id', 'name', 'email', 'phone', 'whatsappUsername', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent'],
-        'accounts': ['id', 'service', 'email', 'provider', 'expires', 'capacity', 'password'],
+        'accounts': ['id', 'service', 'email', 'provider', 'expires', 'capacity', 'password', 'supplierId','offerId','costCents','costIntervalMonths'],
         'templates': ['id', 'name', 'body', 'context'],
         'combos': ['id', 'name', 'services', 'price'],
-        'ledger': ['id', 'description', 'service', 'kind', 'date', 'amount', 'clientId'],
+        'ledger': ['id', 'description', 'service', 'kind', 'date', 'amount', 'clientId','supplierId','offerId','accountId','category','reference'],
     }
     clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark', 'crmName', 'logoDataUrl'] if k in settings}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
+    clean['procurement'] = {key: [{k:r[k] for k in fields} for r in procurement[key]] for key,fields in procurement_keys.items()}
     clean['growth'] = {key: [{k: r[k] for k in fields} for r in growth[key]] for key, fields in growth_keys.items()}
     clean['growth']['scoring'] = {k: growth['scoring'][k] for k in ['email','phone','active','paid']}
     clean['rules'] = [{k: r[k] for k in ['id', 'name', 'templateId', 'delivery', 'enabled', 'daysBefore', 'hour', 'services']} | {'meta': {k: r['meta'][k] for k in ['templateName', 'language', 'parameters']}} for r in rules]

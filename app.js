@@ -1,3 +1,5 @@
+import { emptyProcurement, accountMargin } from "./procurement.mjs";
+import { initializeProcurement } from "./procurement-ui.mjs";
 import { emptyGrowth } from "./growth.mjs";
 import { initializeGrowth } from "./growth-ui.mjs";
 import {
@@ -37,6 +39,7 @@ let rules = [],
   authProvider = "",
   externalTaskStates = new Map(),
   externalCompleted = new Set();
+let procurement = emptyProcurement();
 let growth = emptyGrowth();
 let clients = [],
   templates = [],
@@ -112,6 +115,7 @@ function snapshot(overrides = {}) {
     rules,
     taskReceipts,
     growth,
+    procurement,
     ...overrides,
   };
 }
@@ -162,6 +166,7 @@ try {
     automation = state.automation || automation;
     rules = state.rules || [];
     taskReceipts = state.taskReceipts || [];
+    procurement = state.procurement || emptyProcurement();
     growth = state.growth || emptyGrowth();
   } else {
     const legacy = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -629,6 +634,12 @@ function editAccount(a = {}) {
   ])
     $("#account-form").elements.namedItem(key).value =
       a[key] || (key === "capacity" ? 5 : "");
+  procurementUI.accountOptions(a);
+  $("#account-form").elements.cost.value =
+    a.costCents === undefined ? "" : (a.costCents / 100).toFixed(2);
+  $("#account-form").elements.costIntervalMonths.value =
+    a.costIntervalMonths ?? 1;
+  procurementUI.costPreview();
   $("#account-password").type = "password";
   $("#toggle-account-password").textContent = "Mostrar contraseña";
   $("#account-error").textContent = "";
@@ -919,6 +930,17 @@ function renderFinance() {
           `${m.kind === "expense" ? "−" : ""}${money(m.amount)}`,
         ])
           row.append(element("td", text));
+        if (m.supplierId) {
+          const supplier = procurement.suppliers.find(
+            (s) => s.id === m.supplierId,
+          );
+          row.children[1].append(
+            element(
+              "small",
+              `${supplier?.name || "Proveedor histórico"} · ${m.category === "operating" ? "Gasto operativo" : "Compra de producto"}${m.reference ? " · Ref. " + m.reference : ""}`,
+            ),
+          );
+        }
         const action = element("td");
         action.append(
           button(
@@ -944,6 +966,7 @@ function renderFinance() {
       }),
   );
   $("#finance-empty").hidden = movements.length > 0;
+  document.dispatchEvent(new Event("finance-updated"));
   const platforms = new Map();
   for (const m of movements.filter((m) => m.kind !== "expense"))
     platforms.set(
@@ -1052,6 +1075,11 @@ function initializeModules() {
       a.id ||= createId();
       a.service = a.service.trim();
       a.capacity = Number(a.capacity);
+      a.costIntervalMonths = Number(a.costIntervalMonths);
+      if (a.cost.trim() !== "") a.costCents = cents(a.cost);
+      delete a.cost;
+      const supplier = procurement.suppliers.find((s) => s.id === a.supplierId);
+      if (supplier) a.provider = supplier.name;
       if (!a.service || !validDate(a.expires))
         throw Error("Completa la plataforma y un vencimiento válido.");
       const next = accounts.some((x) => x.id === a.id)
@@ -1257,12 +1285,15 @@ function initializeModules() {
         )
       )
         return;
+      state.procurement ||= emptyProcurement();
+      state.growth ||= emptyGrowth();
       if (!(await persistState(state)))
         throw Error("No se pudo guardar el respaldo.");
       ({ clients, templates, accounts, combos, ledger, settings } = state);
       automation = state.automation || automation;
       rules = state.rules || [];
       taskReceipts = state.taskReceipts || [];
+      procurement = state.procurement || emptyProcurement();
       growth = state.growth || emptyGrowth();
       available = true;
       pendingLogo = settings.logoDataUrl || "";
@@ -2256,6 +2287,7 @@ navigator.serviceWorker?.addEventListener("controllerchange", () =>
 applyBrand();
 
 function showAssignedPassword() {
+  document.dispatchEvent(new Event("client-cost-updated"));
   const input = $("#client-account-password");
   input.value =
     accounts.find((a) => a.id === $("#client-account").value)?.password || "";
@@ -2272,3 +2304,20 @@ $("#client-dialog").addEventListener("close", () => {
   $("#client-account-password").value = "";
   $("#client-account-password").type = "password";
 });
+
+const procurementUI = initializeProcurement({
+  getState: snapshot,
+  today: todayLima,
+  money,
+  cents,
+  createId,
+  notify,
+  save: async (overrides) => {
+    if (!(await persistState(overrides))) return false;
+    if (overrides.procurement) procurement = overrides.procurement;
+    if (overrides.ledger) ledger = overrides.ledger;
+    renderFinance();
+    return true;
+  },
+});
+window.addEventListener("hashchange", () => procurementUI.render());

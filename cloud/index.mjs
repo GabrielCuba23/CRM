@@ -16,6 +16,8 @@ const privateAssets = new Set([
   "/crm.mjs",
   "/automation.mjs",
   "/bulk.mjs",
+  "/procurement.mjs",
+  "/procurement-ui.mjs",
   "/growth.mjs",
   "/growth-ui.mjs",
   "/vendor/exceljs-4.4.0.min.js",

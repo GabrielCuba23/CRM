@@ -89,3 +89,17 @@ CRM_TEST_URL=http://127.0.0.1:8000/ NODE_PATH=/tmp/crm-browser-tools/node_module
 ```
 
 La importación de Excel utiliza ExcelJS 4.4.0 incluido localmente bajo licencia MIT; no depende de un CDN. Las fórmulas en XLSX no se evalúan y se rechazan; el CSV exportado neutraliza contenido interpretable como fórmula.
+
+## Proveedores, compras y rentabilidad
+
+En Finanzas → Proveedores puedes registrar contactos y mantener un catálogo de productos para revender (Netflix, Adobe, Spotify, etc.) y herramientas del negocio (hosting, CRM, Canva, GPT, etc.). Cada producto/servicio tiene coste en soles, periodo mensual/trimestral/semestral/anual o pago único y, para reventa, capacidad de perfiles. Permite editar y eliminar registros sin referencias; los proveedores/productos con cuentas o pagos vinculados se conservan para mantener la trazabilidad.
+
+En Cuenta madre elige proveedor y producto: carga servicio, coste, periodo y capacidad. Puedes ajustar el coste real de esa cuenta; queda guardado como copia independiente. Cambiar el precio del catálogo no modifica cuentas ni pagos anteriores. Las cuentas antiguas sin coste conservan sus datos y muestran «Coste sin definir»; no se les inventa un coste cero.
+
+Finanzas muestra el coste total, coste por perfil (dividido entre todos los perfiles disponibles), suma de precios de perfiles asignados y margen previsto de cada cuenta. Nuevo cliente muestra coste y margen de su perfil al asignar la cuenta. Compara costes y precios para el mismo periodo; no es una contabilidad de devengos ni un indicador de cobros confirmados. Los perfiles asignados vencidos siguen incluidos hasta liberarlos. No hay un precio de venta impuesto por el catálogo.
+
+Ejemplo: cuenta de S/40 con 5 perfiles → S/8 por perfil. Vender un perfil a S/12 produce margen de S/4 para ese perfil; con solo ese perfil asignado el margen previsto de la cuenta es S/−28. Con los cinco a S/12, el margen previsto es S/20, antes de herramientas y otros gastos.
+
+Registrar pago permite indicar fecha, importe, cuenta vinculada, concepto y referencia de comprobante. Usa el coste guardado de la cuenta vinculada. Crea un gasto real con identificadores de proveedor/producto/cuenta y categoría compra u operativo; aparece en los movimientos y en el total pagado al proveedor del mes. Una referencia no vacía es única por proveedor para evitar duplicar un pago: si divides un comprobante en varios gastos usa referencias distintas por partida. Sin referencia pueden registrarse pagos legítimos repetidos; no se ejecutan pagos bancarios.
+
+Las herramientas muestran un presupuesto mensual equivalente (anual ÷12, por ejemplo) que incluye cada servicio registrado una vez y excluye pagos únicos. Es una previsión, no un gasto cobrado; solo Registrar pago modifica gastos/ganancia. No hay cobros recurrentes automáticos. Los datos y enlaces se incluyen en respaldos JSON y se conservan tanto en el modo local como en Python/Cloudflare.

@@ -207,6 +207,103 @@
             ><button id="new-expense" class="secondary">＋ Gasto</button>
           </div>
         </div>
+        <details id="supplier-section" class="inset">
+          <summary>
+            <strong>Proveedores, productos y herramientas del negocio</strong>
+          </summary>
+          <p>
+            Guarda precios de compra por proveedor. Los costes previstos y los
+            pagos registrados se muestran por separado.
+          </p>
+          <div class="form-grid">
+            <form id="supplier-form">
+              <h3>Añadir / editar proveedor</h3>
+              <label>Nombre<input name="name" required maxlength="120" /></label
+              ><label
+                >Correo<input
+                  name="email"
+                  type="email"
+                  maxlength="254" /></label
+              ><label
+                >Teléfono / contacto<input
+                  name="phone"
+                  maxlength="100" /></label
+              ><label
+                >Notas<textarea name="notes" maxlength="2000"></textarea></label
+              ><button>Guardar proveedor</button
+              ><button id="supplier-reset" type="button" class="secondary">
+                Nuevo
+              </button>
+            </form>
+            <form id="supplier-offer-form">
+              <h3>Producto o herramienta</h3>
+              <label
+                >Proveedor<select
+                  id="offer-supplier"
+                  name="supplierId"
+                  required
+                ></select></label
+              ><label
+                >Producto / servicio<input
+                  name="name"
+                  required
+                  maxlength="120"
+                  placeholder="Netflix, Adobe, hosting, Canva, GPT…" /></label
+              ><label
+                >Uso<select name="type">
+                  <option value="product">Producto para revender</option>
+                  <option value="business">
+                    Herramienta del negocio / gasto operativo
+                  </option>
+                </select></label
+              ><label
+                >Coste total por periodo (S/)<input
+                  name="cost"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required /></label
+              ><label
+                >Periodo<select name="intervalMonths">
+                  <option value="1">Mensual</option>
+                  <option value="3">Trimestral</option>
+                  <option value="6">Semestral</option>
+                  <option value="12">Anual</option>
+                  <option value="0">Pago único</option>
+                </select></label
+              ><label
+                >Perfiles por cuenta (productos)<input
+                  name="capacity"
+                  type="number"
+                  min="1"
+                  max="50"
+                  value="5"
+                  required /></label
+              ><label
+                >Notas<textarea name="notes" maxlength="2000"></textarea></label
+              ><button>Guardar producto / servicio</button
+              ><button id="offer-reset" type="button" class="secondary">
+                Nuevo
+              </button>
+            </form>
+          </div>
+          <h3>Directorio de proveedores</h3>
+          <div id="suppliers-list" class="cards"></div>
+          <h3>Catálogo y pagos</h3>
+          <p id="operating-budget"></p>
+          <div id="supplier-offers" class="cards"></div>
+        </details>
+        <div class="inset">
+          <h3>Rentabilidad por cuenta y perfil</h3>
+          <p>
+            Compara el coste de la cuenta con los precios de sus perfiles
+            asignados, para el mismo periodo. Es margen previsto, no cobro
+            confirmado. Incluye perfiles ocupados aunque estén vencidos. Los
+            gastos operativos se descuentan en el resultado financiero cuando
+            registras su pago.
+          </p>
+          <div id="account-margins" class="cards"></div>
+        </div>
         <label>Periodo<input id="finance-month" type="month" /></label>
         <div class="metrics finance-metrics">
           <article>
@@ -1053,6 +1150,7 @@
         ><label
           >Notas<textarea name="notes" rows="2" maxlength="1000"></textarea>
         </label>
+        <p id="client-cost-info" class="muted"></p>
         <p id="client-error" class="error" role="alert"></p>
         <div class="actions end">
           <button type="button" class="secondary close">Cancelar</button
@@ -1279,7 +1377,9 @@
               >Se guarda con la cuenta y en los respaldos. No aparece en las
               listas.</small
             ></label
-          ><label>Proveedor<input name="provider" maxlength="120" /></label
+          ><label
+            >Proveedor (nombre libre)<input name="provider" maxlength="120"
+          /></label>
           ><label
             >Vencimiento<input name="expires" type="date" required /></label
           ><label
@@ -1292,6 +1392,45 @@
               required
           /></label>
         </div>
+        <div class="form-grid">
+          <label
+            >Proveedor registrado<select
+              id="account-supplier"
+              name="supplierId"
+            >
+              <option value="">Sin proveedor registrado</option>
+            </select></label
+          ><label
+            >Producto del proveedor<select id="account-offer" name="offerId">
+              <option value="">Coste manual</option>
+            </select></label
+          ><label
+            >Coste total de la cuenta (S/)<input
+              id="account-cost"
+              name="cost"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Sin definir"
+            /><small
+              >Se guarda una copia del coste para esta cuenta; editar el
+              catálogo no cambia sus costes anteriores.</small
+            ></label
+          ><label
+            >Periodo del coste<select name="costIntervalMonths">
+              <option value="1">Mensual</option>
+              <option value="3">Trimestral</option>
+              <option value="6">Semestral</option>
+              <option value="12">Anual</option>
+              <option value="0">Pago único</option>
+            </select></label
+          >
+        </div>
+        <p id="account-cost-preview"></p>
+        <p class="muted">
+          Para registrar el pago de esta cuenta, usa Finanzas → Proveedores →
+          Registrar pago. Guardar la cuenta por sí solo no genera un gasto.
+        </p>
         <p class="muted">
           Los perfiles asignados siguen ocupados hasta liberar o eliminar la
           venta, incluso si vencieron.
@@ -1361,6 +1500,41 @@
           Importar clientes válidos
         </button>
       </div>
+    </dialog>
+    <dialog id="supplier-payment-dialog">
+      <form id="supplier-payment-form">
+        <div class="section-head">
+          <h2>Registrar pago a proveedor</h2>
+          <button type="button" class="secondary" id="supplier-payment-close">
+            Cerrar
+          </button>
+        </div>
+        <input name="offerId" type="hidden" /><label
+          >Cuenta madre vinculada (opcional)<select
+            id="payment-account"
+            name="accountId"
+          ></select
+          ><small
+            >Seleccionarla carga el coste guardado de esa cuenta.</small
+          ></label
+        ><label>Fecha de pago<input name="date" type="date" required /></label
+        ><label
+          >Importe pagado (S/)<input
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required /></label
+        ><label
+          >Concepto<input name="description" maxlength="200" required /></label
+        ><label
+          >Comprobante / referencia (opcional)<input
+            name="reference"
+            maxlength="120"
+        /></label>
+        <p id="supplier-payment-error" role="alert"></p>
+        <button>Registrar gasto pagado</button>
+      </form>
     </dialog>
     <dialog id="income-dialog">
       <form id="income-form">

@@ -1,3 +1,4 @@
+import { validatePurchaseLinks } from "../procurement.mjs";
 import { emptyGrowth, validateGrowth } from "../growth.mjs";
 import { defaultTemplates, validateWorkspace, validDate } from "../crm.mjs";
 export function emptyState() {
@@ -46,6 +47,10 @@ export function cleanState(raw) {
       "expires",
       "capacity",
       "password",
+      "supplierId",
+      "offerId",
+      "costCents",
+      "costIntervalMonths",
     ],
     templates: ["id", "name", "body", "context"],
     combos: ["id", "name", "services", "price"],
@@ -57,9 +62,15 @@ export function cleanState(raw) {
       "kind",
       "amount",
       "clientId",
+      "supplierId",
+      "offerId",
+      "accountId",
+      "category",
+      "reference",
     ],
   };
   const state = {
+    procurement: validatePurchaseLinks(raw),
     growth: validateGrowth(raw.growth || emptyGrowth()),
     version: 2,
     settings: Object.fromEntries(
