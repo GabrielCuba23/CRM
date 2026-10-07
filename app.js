@@ -1,3 +1,13 @@
+import { emptyGrowth } from "./growth.mjs";
+import { initializeGrowth } from "./growth-ui.mjs";
+import {
+  prepareClientImport,
+  parseCSV,
+  readExcelRows,
+  exportClientCSV,
+  exportClientExcel,
+  clientColumns,
+} from "./bulk.mjs";
 import { buildRuleTasks, deliveryLabels } from "./automation.mjs";
 import {
   fields,
@@ -27,6 +37,7 @@ let rules = [],
   authProvider = "",
   externalTaskStates = new Map(),
   externalCompleted = new Set();
+let growth = emptyGrowth();
 let clients = [],
   templates = [],
   accounts = [],
@@ -100,6 +111,7 @@ function snapshot(overrides = {}) {
     automation,
     rules,
     taskReceipts,
+    growth,
     ...overrides,
   };
 }
@@ -150,6 +162,7 @@ try {
     automation = state.automation || automation;
     rules = state.rules || [];
     taskReceipts = state.taskReceipts || [];
+    growth = state.growth || emptyGrowth();
   } else {
     const legacy = JSON.parse(localStorage.getItem(storageKey) || "[]");
     if (
@@ -215,9 +228,14 @@ function render() {
   const query = $("#search").value.trim().toLocaleLowerCase();
   const matches = clients.filter(
     (c) =>
-      [c.name, c.email, c.phone, c.service, c.profile].some((v) =>
-        v.toLocaleLowerCase().includes(query),
-      ) &&
+      [
+        c.name,
+        c.email,
+        c.phone,
+        c.whatsappUsername || "",
+        c.service,
+        c.profile,
+      ].some((v) => v.toLocaleLowerCase().includes(query)) &&
       ($("#account-filter").value === "all" ||
         c.accountId === $("#account-filter").value) &&
       ($("#filter").value === "all" ||
@@ -235,7 +253,7 @@ function render() {
     identity.append(
       element("strong", c.name),
       element("small", c.email || "Sin correo"),
-      element("small", c.phone || "Sin teléfono"),
+      element("small", c.phone || c.whatsappUsername || "Sin contacto"),
     );
     const service = element("td");
     service.append(
@@ -250,6 +268,7 @@ function render() {
     );
     const actions = element("td", undefined, "row-actions");
     actions.append(
+      button("Ficha 360", () => growthUI.showContact(c)),
       button("Renovar", async () => openRenew(c)),
       button("WhatsApp →", async () => openMessage(c), "whatsapp"),
       button("Editar", async () => editClient(c)),
@@ -282,6 +301,7 @@ function editClient(c = {}) {
     "id",
     "name",
     "phone",
+    "whatsappUsername",
     "email",
     "service",
     "profile",
@@ -296,6 +316,8 @@ function editClient(c = {}) {
   $("#client-title").textContent = c.id ? "Editar cliente" : "Nuevo cliente";
   $("#client-form").elements.reminderConsent.checked = !!c.reminderConsent;
   $("#client-form").elements.paid.disabled = !!c.id;
+  $("#client-form").elements.paid.checked = !c.id;
+  showAssignedPassword();
   $("#client-dialog").showModal();
 }
 $("#new-client").addEventListener("click", async () => editClient());
@@ -305,7 +327,8 @@ $("#client-form").addEventListener("submit", async (event) => {
   try {
     data.name = data.name.trim();
     if (!data.name) throw Error("Introduce el nombre del cliente.");
-    data.phone = normalizePhone(data.phone);
+    data.phone = data.phone.trim() ? normalizePhone(data.phone) : "";
+    data.whatsappUsername = (data.whatsappUsername || "").trim();
     data.price = cents(data.price || "0");
     data.reminderConsent = data.reminderConsent === "on";
     if (data.expires && !validDate(data.expires))
@@ -334,7 +357,7 @@ $("#client-form").addEventListener("submit", async (event) => {
       ? clients.map((c) => (c.id === data.id ? data : c))
       : [...clients, data];
     const nextLedger =
-      isNew && paid
+      isNew && paid && data.price > 0
         ? [
             ...ledger,
             {
@@ -342,6 +365,7 @@ $("#client-form").addEventListener("submit", async (event) => {
               kind: "sale",
               date: todayLima(),
               description: `Venta · ${data.name}`,
+              clientId: data.id,
               service: data.service,
               amount: data.price,
             },
@@ -352,7 +376,13 @@ $("#client-form").addEventListener("submit", async (event) => {
       ledger = nextLedger;
       render();
       $("#client-dialog").close();
-      notify("Cliente guardado.");
+      notify(
+        isNew
+          ? paid && data.price > 0
+            ? `Venta guardada y cobro registrado: ${money(data.price)}.`
+            : "Cliente guardado sin cobro registrado. Puedes registrar su ingreso desde Finanzas → Ingreso / venta."
+          : "Cliente actualizado. No se duplicó su venta.",
+      );
     }
   } catch (error) {
     $("#client-error").textContent = error.message;
@@ -371,6 +401,11 @@ function templateOptions(select, selected) {
       return option;
     }),
   );
+  if (select.id === "message-template") {
+    const option = element("option", "Mensaje libre · sin plantilla");
+    option.value = "__custom";
+    select.append(option);
+  }
   if (templates.some((t) => t.id === selected)) select.value = selected;
 }
 let selectedTemplateId = "";
@@ -476,6 +511,10 @@ function updateLink() {
 let messageTemplateId = "";
 function compose() {
   messageTemplateId = $("#message-template").value;
+  if (messageTemplateId === "__custom") {
+    updateLink();
+    return;
+  }
   const t = templates.find((t) => t.id === $("#message-template").value);
   $("#message-text").value = fillTemplate(
     t.body,
@@ -489,16 +528,21 @@ function openMessage(c) {
   currentTask = null;
   $("#confirm-task").hidden = true;
   recipient = c;
-  $("#message-password").value = "";
-  $("#recipient").textContent = `Para ${c.name} · ${c.phone || "Sin teléfono"}`;
+  $("#message-template-editor").hidden = true;
+  $("#message-password").value =
+    accounts.find((a) => a.id === c.accountId)?.password || "";
+  $("#recipient").textContent =
+    `Para ${c.name} · ${c.phone || c.whatsappUsername || "Sin número: puedes copiar el mensaje"}`;
   templateOptions($("#message-template"));
   compose();
   $("#message-dialog").showModal();
 }
 $("#message-template").addEventListener("change", async () => {
-  if (confirm("¿Reemplazar el mensaje con la plantilla seleccionada?"))
+  if (confirm("¿Reemplazar el mensaje con la plantilla seleccionada?")) {
+    if ($("#message-template").value === "__custom")
+      $("#message-text").value = "";
     compose();
-  else $("#message-template").value = messageTemplateId;
+  } else $("#message-template").value = messageTemplateId;
 });
 $("#message-password").addEventListener("input", compose);
 $("#message-text").addEventListener("input", updateLink);
@@ -555,6 +599,7 @@ function refreshAccountOptions(selected = "") {
 function chooseAccount() {
   const form = $("#client-form");
   const account = accounts.find((a) => a.id === form.elements.accountId.value);
+  showAssignedPassword();
   if (!account) return;
   const free = availableProfiles(
     account,
@@ -578,11 +623,14 @@ function editAccount(a = {}) {
     "service",
     "email",
     "provider",
+    "password",
     "expires",
     "capacity",
   ])
     $("#account-form").elements.namedItem(key).value =
       a[key] || (key === "capacity" ? 5 : "");
+  $("#account-password").type = "password";
+  $("#toggle-account-password").textContent = "Mostrar contraseña";
   $("#account-error").textContent = "";
   $("#account-dialog").showModal();
 }
@@ -1140,7 +1188,11 @@ function initializeModules() {
         ),
     );
     try {
-      const phones = [...new Set(selected.map((c) => normalizePhone(c.phone)))];
+      const phones = [
+        ...new Set(
+          selected.filter((c) => c.phone).map((c) => normalizePhone(c.phone)),
+        ),
+      ];
       if (!phones.length) {
         notify("No hay números en esta selección.");
         return;
@@ -1159,9 +1211,12 @@ function initializeModules() {
       ...settings,
       business: $("#business-name").value.trim(),
       payments: $("#payment-methods").value.trim(),
+      crmName: $("#crm-name").value.trim() || "Nexo CRM",
+      logoDataUrl: pendingLogo,
     };
     if (await persistState({ settings: next })) {
       settings = next;
+      applyBrand();
       notify("Configuración guardada.");
     }
   });
@@ -1208,7 +1263,10 @@ function initializeModules() {
       automation = state.automation || automation;
       rules = state.rules || [];
       taskReceipts = state.taskReceipts || [];
+      growth = state.growth || emptyGrowth();
       available = true;
+      pendingLogo = settings.logoDataUrl || "";
+      applyBrand();
       refreshAccountOptions();
       refreshTemplates();
       render();
@@ -1801,3 +1859,416 @@ $("#refresh-integration").addEventListener("click", () =>
 );
 renderRules();
 refreshIntegrations();
+
+$("#toggle-account-password").addEventListener("click", () => {
+  const input = $("#account-password");
+  input.type = input.type === "password" ? "text" : "password";
+  $("#toggle-account-password").textContent =
+    input.type === "password" ? "Mostrar contraseña" : "Ocultar contraseña";
+});
+$("#account-dialog").addEventListener("close", () => {
+  $("#account-password").value = "";
+  $("#account-password").type = "password";
+});
+
+$("#message-new-template").addEventListener("click", () => {
+  $("#message-template-editor").hidden = false;
+  for (const id of [
+    "#message-new-name",
+    "#message-new-context",
+    "#message-new-body",
+    "#message-new-error",
+  ]) {
+    const node = $(id);
+    if ("value" in node) node.value = "";
+    else node.textContent = "";
+  }
+  $("#message-contexts").replaceChildren(
+    ...[...new Set(templates.map((t) => t.context || "General"))].map(
+      (context) => {
+        const option = element("option");
+        option.value = context;
+        return option;
+      },
+    ),
+  );
+  $("#message-new-name").focus();
+});
+$("#message-cancel-template").addEventListener("click", () => {
+  $("#message-template-editor").hidden = true;
+});
+$("#message-free").addEventListener("click", () => {
+  if (
+    $("#message-text").value &&
+    !confirm("¿Empezar un mensaje libre y reemplazar el texto actual?")
+  )
+    return;
+  $("#message-template").value = "__custom";
+  messageTemplateId = "__custom";
+  $("#message-text").value = "";
+  $("#message-template-editor").hidden = true;
+  updateLink();
+  $("#message-text").focus();
+});
+for (const field of fields)
+  $("#message-new-variables").append(
+    button(
+      `{${field}}`,
+      () => {
+        const input = $("#message-new-body");
+        input.setRangeText(
+          `{${field}}`,
+          input.selectionStart,
+          input.selectionEnd,
+          "end",
+        );
+        input.focus();
+      },
+      "variable",
+    ),
+  );
+$("#message-save-template").addEventListener("click", async () => {
+  const template = {
+    id: createId(),
+    name: $("#message-new-name").value.trim(),
+    context: $("#message-new-context").value.trim() || "General",
+    body: $("#message-new-body").value.trim(),
+  };
+  if (!template.name || !template.body) {
+    $("#message-new-error").textContent =
+      "Escribe un nombre y el texto de tu plantilla.";
+    return;
+  }
+  const next = [...templates, template];
+  if (!(await persist(templateKey, next))) {
+    $("#message-new-error").textContent =
+      "No se pudo guardar. Revisa el aviso del gestor.";
+    return;
+  }
+  templates = next;
+  refreshTemplates(template.id);
+  templateOptions($("#message-template"), template.id);
+  compose();
+  $("#message-template-editor").hidden = true;
+  notify(
+    "Plantilla y categoría guardadas. Puedes reutilizarlas para cualquier cliente.",
+  );
+});
+function openIncome() {
+  const form = $("#income-form");
+  form.reset();
+  form.elements.date.value = todayLima();
+  $("#income-error").textContent = "";
+  const none = element("option", "Ingreso sin vincular cliente");
+  none.value = "";
+  $("#income-client").replaceChildren(
+    none,
+    ...clients.map((c) => {
+      const option = element("option", c.name + " · " + c.service);
+      option.value = c.id;
+      return option;
+    }),
+  );
+  $("#income-dialog").showModal();
+}
+$("#new-income").addEventListener("click", openIncome);
+$("#income-client").addEventListener("change", () => {
+  const c = clients.find((c) => c.id === $("#income-client").value);
+  if (!c) return;
+  const form = $("#income-form");
+  form.elements.amount.value = (c.price / 100).toFixed(2);
+  form.elements.service.value = c.service;
+  form.elements.description.value = `${form.elements.kind.value === "renewal" ? "Renovación" : "Venta"} · ${c.name}`;
+});
+$("#income-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const data = Object.fromEntries(new FormData(event.target));
+    data.amount = cents(data.amount);
+    if (data.amount <= 0 || !validDate(data.date) || !data.description.trim())
+      throw Error(
+        "Indica fecha, descripción e importe cobrado mayor que cero.",
+      );
+    const client = clients.find((c) => c.id === data.clientId);
+    if (data.clientId && !client) throw Error("Cliente no disponible.");
+    if (
+      client &&
+      data.kind === "sale" &&
+      ledger.some(
+        (m) =>
+          m.kind === "sale" &&
+          (m.clientId === client.id ||
+            (!m.clientId &&
+              m.description === `Venta · ${client.name}` &&
+              m.service === client.service)),
+      )
+    )
+      throw Error(
+        "Este cliente ya tiene una venta registrada. Usa Renovación para un nuevo periodo o revisa el movimiento existente.",
+      );
+    const entry = {
+      ...data,
+      id: createId(),
+      description: data.description.trim(),
+    };
+    if (!entry.clientId) delete entry.clientId;
+    const next = [...ledger, entry];
+    if (await persistState({ ledger: next })) {
+      ledger = next;
+      $("#finance-month").value = data.date.slice(0, 7);
+      renderFinance();
+      $("#income-dialog").close();
+      notify("Ingreso registrado en Finanzas.");
+    } else $("#income-error").textContent = $("#status").textContent;
+  } catch (error) {
+    $("#income-error").textContent = error.message;
+  }
+});
+
+$("#add-customer").addEventListener("click", () => {
+  $("#account-filter").value = "all";
+  $("#search").value = "";
+  $("#filter").value = "all";
+  render();
+  editClient();
+});
+function downloadClientFile(content, type, filename) {
+  const url = URL.createObjectURL(new Blob([content], { type })),
+    link = element("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$("#export-clients-csv").addEventListener("click", () => {
+  downloadClientFile(
+    exportClientCSV(clients),
+    "text/csv;charset=utf-8",
+    `clientes-${todayLima()}.csv`,
+  );
+  notify(`Descargada la cartera completa: ${clients.length} clientes.`);
+});
+$("#export-clients-xlsx").addEventListener("click", async () => {
+  try {
+    const bytes = await exportClientExcel(clients, globalThis.ExcelJS);
+    downloadClientFile(
+      bytes,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      `clientes-${todayLima()}.xlsx`,
+    );
+    notify(`Descargada la cartera completa: ${clients.length} clientes.`);
+  } catch (error) {
+    notify(error.message);
+  }
+});
+let pendingClientImport = null;
+$("#import-clients").addEventListener("click", () => {
+  pendingClientImport = null;
+  $("#client-import-file").value = "";
+  $("#client-import-status").textContent = "";
+  $("#client-import-preview").replaceChildren();
+  $("#confirm-client-import").disabled = true;
+  $("#client-import-dialog").showModal();
+});
+$("#download-client-example").addEventListener("click", () => {
+  const example = {
+    id: "",
+    name: "Nombre de ejemplo",
+    phone: "",
+    whatsappUsername: "",
+    email: "",
+    service: "Max",
+    profile: "",
+    expires: "",
+    price: 0,
+    pin: "",
+    notes: "",
+    accountId: "",
+    reminderConsent: false,
+  };
+  downloadClientFile(
+    exportClientCSV([example]),
+    "text/csv;charset=utf-8",
+    "plantilla-clientes.csv",
+  );
+});
+$("#client-import-file").addEventListener("change", async (event) => {
+  pendingClientImport = null;
+  $("#confirm-client-import").disabled = true;
+  $("#client-import-preview").replaceChildren();
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 5 * 1024 * 1024)
+      throw Error("El archivo supera 5 MB. Divide la importación.");
+    let rows;
+    if (/\.csv$/i.test(file.name)) rows = parseCSV(await file.text());
+    else if (/\.xlsx$/i.test(file.name))
+      rows = await readExcelRows(await file.arrayBuffer(), globalThis.ExcelJS);
+    else throw Error("Usa CSV o Excel .xlsx; convierte archivos .xls a .xlsx.");
+    const result = prepareClientImport(rows, snapshot());
+    pendingClientImport = result;
+    const invalid = result.preview.filter((r) =>
+        r.status.startsWith("Error"),
+      ).length,
+      duplicates = result.preview.filter((r) =>
+        r.status.startsWith("Duplicado"),
+      ).length;
+    $("#client-import-status").textContent =
+      `${result.clients.length} válidos · ${duplicates} duplicados omitidos · ${invalid} filas con errores. Vista previa de hasta 200 filas.`;
+    const table = element("table"),
+      head = element("tr");
+    for (const text of ["Fila", "Cliente", "Resultado"])
+      head.append(element("th", text));
+    table.append(head);
+    for (const row of result.preview.slice(0, 200)) {
+      const tr = element("tr");
+      for (const text of [row.row, row.name, row.status])
+        tr.append(element("td", String(text)));
+      table.append(tr);
+    }
+    $("#client-import-preview").append(table);
+    $("#confirm-client-import").textContent =
+      `Importar ${result.clients.length} clientes válidos`;
+    $("#confirm-client-import").disabled = !result.clients.length;
+  } catch (error) {
+    $("#client-import-status").textContent = error.message;
+  }
+});
+$("#confirm-client-import").addEventListener("click", async () => {
+  if (!pendingClientImport?.clients.length) return;
+  const next = [...clients, ...pendingClientImport.clients];
+  if (await persistState({ clients: next })) {
+    const count = pendingClientImport.clients.length;
+    clients = next;
+    pendingClientImport = null;
+    $("#account-filter").value = "all";
+    $("#filter").value = "all";
+    $("#search").value = "";
+    render();
+    $("#client-import-dialog").close();
+    notify(`Importados ${count} clientes. No se crearon cobros financieros.`);
+  } else $("#client-import-status").textContent = $("#status").textContent;
+});
+$("#client-import-dialog").addEventListener("close", () => {
+  pendingClientImport = null;
+  $("#client-import-file").value = "";
+});
+
+const growthUI = initializeGrowth({
+  getState: snapshot,
+  today: todayLima,
+  save: async (next) => {
+    if (!(await persistState({ growth: next }))) return false;
+    growth = next;
+    return true;
+  },
+  openMessage,
+  notify,
+});
+window.addEventListener("hashchange", () => growthUI.render());
+
+let pendingLogo = settings.logoDataUrl || "";
+let installPrompt = null;
+function applyBrand() {
+  const name = settings.crmName || "Nexo CRM",
+    logo = settings.logoDataUrl || "app-icon.svg";
+  document.title = name;
+  $("#brand-name").textContent = name;
+  $("#crm-heading").textContent = name;
+  $("#brand-logo").src = logo;
+  $("#crm-logo-preview").src = logo;
+  $("#crm-name").value = settings.crmName || "";
+  $("#storage-footer").textContent =
+    `${name} · ${secureMode ? "Sesión privada · Datos en el servidor" : "Datos guardados en este navegador"}.`;
+  if (navigator.serviceWorker?.controller)
+    navigator.serviceWorker.controller.postMessage({
+      type: "brand",
+      name,
+      logo: settings.logoDataUrl || "",
+    });
+}
+$("#crm-logo-file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    if (
+      file.size > 100000 ||
+      !["image/png", "image/jpeg", "image/webp"].includes(file.type)
+    )
+      throw Error("Elige PNG, JPG o WebP de hasta 100 KB.");
+    const bitmap = await createImageBitmap(file);
+    bitmap.close();
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingLogo = reader.result;
+      $("#crm-logo-preview").src = pendingLogo;
+      $("#crm-logo-status").textContent =
+        "Vista previa lista. Pulsa Guardar configuración para aplicar.";
+    };
+    reader.readAsDataURL(file);
+  } catch (error) {
+    $("#crm-logo-status").textContent = error.message;
+    e.target.value = "";
+  }
+});
+$("#remove-crm-logo").onclick = () => {
+  pendingLogo = "";
+  $("#crm-logo-file").value = "";
+  $("#crm-logo-preview").src = "app-icon.svg";
+  $("#crm-logo-status").textContent =
+    "Pulsa Guardar configuración para restablecer el logo.";
+};
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $("#install-app").hidden = false;
+});
+$("#install-app").onclick = async () => {
+  if (!installPrompt) return;
+  await installPrompt.prompt();
+  const result = await installPrompt.userChoice;
+  $("#install-status").textContent =
+    result.outcome === "accepted"
+      ? "Instalación solicitada."
+      : "Puedes instalarla más adelante desde el menú del navegador.";
+  installPrompt = null;
+  $("#install-app").hidden = true;
+};
+if ("serviceWorker" in navigator)
+  navigator.serviceWorker
+    .register("./sw.js")
+    .then(() => navigator.serviceWorker.ready)
+    .then((reg) => {
+      (navigator.serviceWorker.controller || reg.active)?.postMessage({
+        type: "brand",
+        name: settings.crmName || "Nexo CRM",
+        logo: settings.logoDataUrl || "",
+      });
+    })
+    .catch(() => {
+      $("#install-status").textContent =
+        "La instalación no está disponible en este navegador; puedes usar la web.";
+    });
+navigator.serviceWorker?.addEventListener("controllerchange", () =>
+  applyBrand(),
+);
+applyBrand();
+
+function showAssignedPassword() {
+  const input = $("#client-account-password");
+  input.value =
+    accounts.find((a) => a.id === $("#client-account").value)?.password || "";
+  input.type = "password";
+  $("#toggle-client-account-password").textContent = "Mostrar contraseña";
+}
+$("#toggle-client-account-password").onclick = () => {
+  const input = $("#client-account-password");
+  input.type = input.type === "password" ? "text" : "password";
+  $("#toggle-client-account-password").textContent =
+    input.type === "password" ? "Mostrar contraseña" : "Ocultar contraseña";
+};
+$("#client-dialog").addEventListener("close", () => {
+  $("#client-account-password").value = "";
+  $("#client-account-password").type = "password";
+});

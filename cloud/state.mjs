@@ -1,3 +1,4 @@
+import { emptyGrowth, validateGrowth } from "../growth.mjs";
 import { defaultTemplates, validateWorkspace, validDate } from "../crm.mjs";
 export function emptyState() {
   return {
@@ -26,6 +27,7 @@ export function cleanState(raw) {
       "id",
       "name",
       "phone",
+      "whatsappUsername",
       "email",
       "service",
       "profile",
@@ -36,15 +38,34 @@ export function cleanState(raw) {
       "price",
       "reminderConsent",
     ],
-    accounts: ["id", "service", "email", "provider", "expires", "capacity"],
+    accounts: [
+      "id",
+      "service",
+      "email",
+      "provider",
+      "expires",
+      "capacity",
+      "password",
+    ],
     templates: ["id", "name", "body", "context"],
     combos: ["id", "name", "services", "price"],
-    ledger: ["id", "description", "date", "service", "kind", "amount"],
+    ledger: [
+      "id",
+      "description",
+      "date",
+      "service",
+      "kind",
+      "amount",
+      "clientId",
+    ],
   };
   const state = {
+    growth: validateGrowth(raw.growth || emptyGrowth()),
     version: 2,
     settings: Object.fromEntries(
-      ["business", "payments", "dark"].map((k) => [k, raw.settings[k]]),
+      ["business", "payments", "dark", "crmName", "logoDataUrl"]
+        .filter((k) => raw.settings[k] !== undefined)
+        .map((k) => [k, raw.settings[k]]),
     ),
     automation: raw.automation || emptyState().automation,
   };

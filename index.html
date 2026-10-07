@@ -4,12 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nexo · Gestor Streaming</title>
+    <meta name="theme-color" content="#7356ed" />
+    <link id="app-manifest" rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="vendor/exceljs-4.4.0.min.js" defer></script>
     <script src="app.js" type="module"></script>
   </head>
   <body>
     <aside>
-      <a class="brand" href="#">◈ Nexo<span>CRM</span></a>
+      <a class="brand" href="#home"
+        ><img id="brand-logo" src="app-icon.svg" alt="" /><strong
+          id="brand-name"
+          >Nexo</strong
+        ><span>CRM</span></a
+      >
       <nav aria-label="Principal">
         <a href="#home" data-view="home"
           ><svg class="nav-icon" aria-hidden="true">
@@ -71,6 +80,8 @@
           </svg>
           Configuración</a
         >
+        <a href="#marketing" data-view="marketing">Marketing</a
+        ><a href="#social" data-view="social">Redes sociales</a>
       </nav>
       <p>
         Tu negocio, conectado.<br /><small
@@ -82,7 +93,7 @@
       <header>
         <div>
           <p class="eyebrow">TU CENTRO DE OPERACIONES</p>
-          <h1>Gestor Streaming</h1>
+          <h1 id="crm-heading">Gestor Streaming</h1>
           <p class="muted">
             <span id="today"></span> · Todo tu negocio, en un solo lugar.
           </p>
@@ -191,7 +202,10 @@
               Ventas cobradas, renovaciones y gastos en soles.
             </p>
           </div>
-          <button id="new-expense">＋ Gasto</button>
+          <div class="actions">
+            <button id="new-income">+ Ingreso / venta</button
+            ><button id="new-expense" class="secondary">＋ Gasto</button>
+          </div>
         </div>
         <label>Periodo<input id="finance-month" type="month" /></label>
         <div class="metrics finance-metrics">
@@ -284,6 +298,27 @@
           >
         </p>
         <form id="settings-form">
+          <h3>Marca y apariencia</h3>
+          <label
+            >Nombre libre del CRM<input
+              id="crm-name"
+              maxlength="80"
+              placeholder="Nexo CRM" /></label
+          ><label
+            >Logo propio (PNG, JPG o WebP, hasta 100 KB)<input
+              id="crm-logo-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp" /></label
+          ><img
+            id="crm-logo-preview"
+            src="app-icon.svg"
+            alt="Vista previa del logo"
+            width="64"
+            height="64"
+          /><button id="remove-crm-logo" type="button" class="secondary">
+            Restablecer logo
+          </button>
+          <p id="crm-logo-status" role="status"></p>
           <div class="form-grid">
             <label
               >Nombre del negocio<input
@@ -301,14 +336,26 @@
           <button>Guardar configuración</button>
         </form>
         <div class="inset">
+          <h3>Tu CRM en el móvil</h3>
+          <p>
+            En Android, abre esta web con Chrome y pulsa Instalar app o Añadir a
+            pantalla de inicio en el menú ⋮. En iPhone: Safari → Compartir →
+            Añadir a pantalla de inicio. Se necesita conexión a Internet. GitHub
+            Pages guarda datos por navegador; la sincronización requiere el
+            servidor privado.
+          </p>
+          <button id="install-app" type="button" hidden>Instalar app</button>
+          <p id="install-status" role="status"></p>
+        </div>
+        <div class="inset">
           <h3>Tus datos, bajo tu control</h3>
           <p>
             <span id="backup-description"
               >Los registros y plantillas se guardan localmente.</span
             >
-            Las contraseñas de acceso se introducen al preparar el mensaje y no
-            se almacenan. Un respaldo contiene los datos personales de tus
-            clientes: guárdalo en un lugar privado.
+            El respaldo incluye los datos personales de tus clientes y las
+            contraseñas que guardes en cuentas madre: guárdalo en un lugar
+            privado.
           </p>
           <div class="actions">
             <button id="export-data" class="secondary">
@@ -331,7 +378,16 @@
               Gestiona accesos, vencimientos y conversaciones.
             </p>
           </div>
-          <span class="badge">WhatsApp listo</span>
+          <div class="actions">
+            <button id="add-customer">+ Nuevo cliente</button
+            ><button id="import-clients" class="secondary">
+              Importar CSV / Excel</button
+            ><button id="export-clients-csv" class="secondary">
+              Descargar CSV</button
+            ><button id="export-clients-xlsx" class="secondary">
+              Descargar Excel
+            </button>
+          </div>
         </div>
         <div class="toolbar">
           <label class="search"
@@ -465,6 +521,211 @@
           </div>
         </form>
       </section>
+      <section id="marketing" class="view panel" hidden>
+        <p class="eyebrow">CONOCE A TUS CONTACTOS</p>
+        <h2>Marketing</h2>
+        <p>
+          Segmentos dinámicos, puntuación configurable y borradores de campañas.
+          El envío externo está pendiente de conexión.
+        </p>
+        <div class="form-grid">
+          <form id="segment-form" class="inset">
+            <h3>Crear segmento / lista</h3>
+            <label>Nombre<input name="name" required maxlength="120" /></label
+            ><label
+              >Buscar en contactos<input name="query" maxlength="200" /></label
+            ><label
+              >Servicio<input
+                name="service"
+                maxlength="80"
+                placeholder="Vacío: todos" /></label
+            ><label
+              >Estado<select name="status">
+                <option value="all">Todos</option>
+                <option value="active">Vigente</option>
+                <option value="soon">Por vencer</option>
+                <option value="expired">Vencido</option>
+                <option value="none">Sin fecha</option>
+              </select></label
+            ><label
+              >Puntuación mínima<input
+                name="minScore"
+                type="number"
+                min="0"
+                max="100"
+                value="0"
+                required /></label
+            ><label
+              >Buyer persona: necesidades y perfil<textarea
+                name="persona"
+                maxlength="2000"
+              ></textarea></label
+            ><button>Guardar segmento</button>
+          </form>
+          <div class="inset">
+            <h3>Puntuación de contactos</h3>
+            <p>
+              Modelo inicial basado en datos registrados. Máximo: 100 puntos.
+            </p>
+            <form id="score-form">
+              <label
+                >Correo válido<input
+                  name="email"
+                  type="number"
+                  min="0"
+                  max="100"
+                  required /></label
+              ><label
+                >Teléfono registrado<input
+                  name="phone"
+                  type="number"
+                  min="0"
+                  max="100"
+                  required /></label
+              ><label
+                >Servicio vigente<input
+                  name="active"
+                  type="number"
+                  min="0"
+                  max="100"
+                  required /></label
+              ><label
+                >Pago registrado<input
+                  name="paid"
+                  type="number"
+                  min="0"
+                  max="100"
+                  required /></label
+              ><button>Guardar puntuación</button>
+            </form>
+            <h3>Segmentos guardados</h3>
+            <div id="segments-list"></div>
+          </div>
+        </div>
+        <form id="campaign-form" class="inset">
+          <h3>Preparar campaña</h3>
+          <div class="form-grid">
+            <label>Nombre<input name="name" required maxlength="120" /></label
+            ><label
+              >Canal<select name="channel">
+                <option value="whatsapp">WhatsApp manual</option>
+                <option value="email">Email · borrador</option>
+                <option value="rss">RSS · borrador</option>
+              </select></label
+            ><label
+              >Lista<select
+                name="segmentId"
+                id="campaign-segment"
+              ></select></label
+            ><label>Asunto<input name="subject" maxlength="200" /></label>
+          </div>
+          <label
+            >Contenido personalizado<textarea
+              name="body"
+              required
+              maxlength="8000"
+              rows="4"
+              placeholder="Hola {nombre}…"
+            ></textarea>
+          </label>
+          <p>
+            Admite las variables de Mensajes. Guardar prepara el borrador; no
+            envía mensajes ni publica RSS.
+          </p>
+          <button>Guardar borrador</button>
+        </form>
+        <div id="campaigns-list" class="cards"></div>
+        <div id="marketing-audience" class="inset" hidden></div>
+        <div class="inset">
+          <h3>Conexiones y siguientes etapas</h3>
+          <p>
+            Google Ads · Meta Ads · Email · RSS: sin conectar. Enriquecimiento,
+            SEO y seguimiento web: pendientes de implementación y proveedor. No
+            se recopilan visitas desde esta pantalla.
+          </p>
+        </div>
+      </section>
+      <section id="social" class="view panel" hidden>
+        <p class="eyebrow">RELACIONES EN UN SOLO LUGAR</p>
+        <h2>Gestor de redes sociales</h2>
+        <p>
+          Planifica contenido y registra comentarios, mensajes y reseñas en la
+          ficha de cada contacto. Redes sin conectar: las fechas son de
+          planificación; no publican automáticamente.
+        </p>
+        <div id="social-metrics" class="cards"></div>
+        <div class="form-grid">
+          <form id="post-form" class="inset">
+            <h3>Planificar publicación</h3>
+            <label>Título<input name="name" required maxlength="120" /></label
+            ><label
+              >Red<select name="network" class="network-select"></select></label
+            ><label
+              >Fecha prevista<input
+                name="scheduledAt"
+                type="datetime-local" /></label
+            ><label
+              >Contenido<textarea
+                name="body"
+                required
+                maxlength="8000"
+                rows="5"
+              ></textarea></label
+            ><button>Guardar borrador</button>
+          </form>
+          <form id="interaction-form" class="inset">
+            <h3>Registrar interacción manual</h3>
+            <label
+              >Contacto<select
+                name="clientId"
+                id="social-client"
+                required
+              ></select></label
+            ><label
+              >Red<select name="network" class="network-select"></select></label
+            ><label
+              >Tipo<select name="kind">
+                <option value="comment">Comentario</option>
+                <option value="dm">Mensaje directo</option>
+                <option value="review">Reseña</option>
+              </select></label
+            ><label
+              >Agente responsable<input name="agent" maxlength="120" /></label
+            ><label
+              >Resultado<select name="outcome">
+                <option value="open">Pendiente</option>
+                <option value="answered">Respondida</option>
+                <option value="won">Oportunidad convertida</option>
+              </select></label
+            ><label
+              >Interacción / respuesta registrada<textarea
+                name="body"
+                required
+                maxlength="8000"
+                rows="4"
+              ></textarea></label
+            ><button>Guardar en la ficha</button>
+          </form>
+        </div>
+        <h3>Calendario de borradores</h3>
+        <div id="posts-list" class="cards"></div>
+        <h3>Historial de interacciones</h3>
+        <div id="interactions-list"></div>
+        <h3>Resultados por agente</h3>
+        <div id="agent-metrics"></div>
+        <p class="muted">
+          Reportes actualizados al guardar. Reflejan registros manuales;
+          alcance, clics, tiempos de respuesta y atribución por publicación
+          requieren APIs conectadas.
+        </p>
+      </section>
+      <dialog id="contact-detail">
+        <div class="section-head">
+          <h2 id="contact-detail-name"></h2>
+          <button type="button" class="secondary close">Cerrar</button>
+        </div>
+        <div id="contact-detail-body"></div>
+      </dialog>
       <section id="integrations" class="view panel" hidden>
         <p class="eyebrow">CONECTA CUANDO LO NECESITES</p>
         <h2>Zapier, Make o n8n</h2>
@@ -711,19 +972,45 @@
               maxlength="120"
               autocomplete="name" /></label
           ><label
-            >WhatsApp<input
+            >Número de WhatsApp (opcional)<input
               name="phone"
               type="tel"
-              required
               placeholder="+51 987 654 321"
               autocomplete="tel"
             /><small
               >Para Perú, escribe los 9 dígitos o incluye +51.</small
             ></label
           ><label
+            >Usuario de WhatsApp (opcional)<input
+              name="whatsappUsername"
+              maxlength="100"
+              placeholder="@usuario"
+              autocomplete="off"
+            /><small
+              >Referencia de contacto. wa.me necesita un número; con usuario
+              puedes copiar el mensaje y buscar el contacto en WhatsApp.</small
+            ></label
+          ><label
             >Cuenta madre<select name="accountId" id="client-account">
               <option value="">Sin cuenta madre</option>
             </select></label
+          ><label
+            >Contraseña de la cuenta asignada<input
+              id="client-account-password"
+              type="password"
+              readonly
+              autocomplete="off"
+              placeholder="Selecciona una cuenta con contraseña"
+            /><button
+              id="toggle-client-account-password"
+              type="button"
+              class="secondary"
+            >
+              Mostrar contraseña</button
+            ><small
+              >Se hereda de la cuenta madre. Puedes cambiarla en Cuentas →
+              Editar.</small
+            ></label
           ><label
             >Correo de acceso<input
               name="email"
@@ -761,8 +1048,8 @@
           ><input name="reminderConsent" type="checkbox" /> El cliente autorizó
           recibir recordatorios de renovación por WhatsApp.</label
         ><label class="checkbox"
-          ><input name="paid" type="checkbox" /> Registrar como cobrado en
-          finanzas (solo nueva venta)</label
+          ><input name="paid" type="checkbox" checked /> Registrar como cobrado
+          en finanzas (solo nueva venta)</label
         ><label
           >Notas<textarea name="notes" rows="2" maxlength="1000"></textarea>
         </label>
@@ -881,8 +1168,44 @@
         <button class="icon-button close" aria-label="Cerrar">×</button>
       </div>
       <p id="recipient"></p>
-      <label>Plantilla<select id="message-template"></select></label
-      ><label
+      <label>Plantilla<select id="message-template"></select></label>
+      <div class="actions">
+        <button id="message-new-template" class="secondary" type="button">
+          + Nueva plantilla / categoría</button
+        ><button id="message-free" class="secondary" type="button">
+          Mensaje libre
+        </button>
+      </div>
+      <section id="message-template-editor" hidden class="subpanel">
+        <h3>Crear tu plantilla</h3>
+        <label>Nombre<input id="message-new-name" maxlength="120" /></label
+        ><label
+          >Categoría nueva o existente<input
+            id="message-new-context"
+            list="message-contexts"
+            maxlength="120"
+            placeholder="Amigos, ofertas, seguimiento…" /><datalist
+            id="message-contexts"
+          ></datalist></label
+        ><label
+          >Texto de la plantilla<textarea
+            id="message-new-body"
+            rows="6"
+            maxlength="8000"
+            placeholder="Escribe cualquier mensaje. Puedes usar {nombre}, {servicio}, {vence} o {contrasena}."
+          ></textarea>
+        </label>
+        <div id="message-new-variables" class="variables"></div>
+        <p id="message-new-error" class="error" role="alert"></p>
+        <div class="actions">
+          <button id="message-save-template" type="button">
+            Guardar y usar plantilla</button
+          ><button id="message-cancel-template" type="button" class="secondary">
+            Cancelar
+          </button>
+        </div>
+      </section>
+      <label
         >Mensaje editable<textarea
           id="message-text"
           rows="10"
@@ -894,7 +1217,8 @@
           type="password"
           autocomplete="off"
         /><small
-          >Solo para completar {contrasena}. No se guarda en el CRM.</small
+          >Completa {contrasena}. Se carga de la cuenta madre si está guardada;
+          cambiarla aquí solo afecta este mensaje.</small
         ></label
       >
       <p id="message-error" class="error" role="alert"></p>
@@ -936,7 +1260,25 @@
               name="email"
               type="email"
               required
-              maxlength="254" /></label
+              maxlength="254"
+          /></label>
+          <label
+            >Contraseña de la cuenta (opcional)<input
+              id="account-password"
+              name="password"
+              type="password"
+              autocomplete="new-password"
+              maxlength="512"
+            /><button
+              id="toggle-account-password"
+              type="button"
+              class="secondary"
+            >
+              Mostrar contraseña</button
+            ><small
+              >Se guarda con la cuenta y en los respaldos. No aparece en las
+              listas.</small
+            ></label
           ><label>Proveedor<input name="provider" maxlength="120" /></label
           ><label
             >Vencimiento<input name="expires" type="date" required /></label
@@ -989,6 +1331,77 @@
         <div class="actions end">
           <button type="button" class="secondary close">Cancelar</button
           ><button>Confirmar renovación</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="client-import-dialog">
+      <div class="section-head">
+        <h2>Importar clientes</h2>
+        <button class="icon-button close" aria-label="Cerrar">×</button>
+      </div>
+      <p>
+        Admite CSV o Excel .xlsx. Se añaden clientes nuevos; los duplicados se
+        omiten y no se reemplazan tus datos.
+      </p>
+      <button id="download-client-example" class="secondary">
+        Descargar plantilla CSV</button
+      ><label
+        >Archivo<input id="client-import-file" type="file" accept=".csv,.xlsx"
+      /></label>
+      <p id="client-import-status" role="status"></p>
+      <div id="client-import-preview" class="table-scroll"></div>
+      <p class="muted">
+        La importación no registra cobros ni activa recordatorios por defecto.
+        Marca autorización en tu archivo únicamente si el cliente ya la dio.
+        Revisa las filas antes de confirmar.
+      </p>
+      <div class="actions end">
+        <button class="secondary close">Cancelar</button
+        ><button id="confirm-client-import" disabled>
+          Importar clientes válidos
+        </button>
+      </div>
+    </dialog>
+    <dialog id="income-dialog">
+      <form id="income-form">
+        <div class="section-head">
+          <h2>Registrar ingreso</h2>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <label
+          >Cliente (opcional)<select name="clientId" id="income-client"></select
+        ></label>
+        <div class="form-grid">
+          <label
+            >Tipo<select name="kind">
+              <option value="sale">Venta</option>
+              <option value="renewal">Renovación</option>
+            </select></label
+          ><label
+            >Fecha de cobro<input name="date" type="date" required /></label
+          ><label
+            >Importe cobrado (S/)<input
+              name="amount"
+              type="number"
+              min="0.01"
+              max="999999"
+              step="0.01"
+              required /></label
+          ><label>Plataforma<input name="service" maxlength="80" /></label>
+        </div>
+        <label
+          >Descripción<input name="description" required maxlength="200"
+        /></label>
+        <p class="muted">
+          Registra únicamente importes que ya cobraste. Crear una cuenta madre
+          no genera ingresos; su compra se registra como gasto.
+        </p>
+        <p id="income-error" class="error" role="alert"></p>
+        <div class="actions end">
+          <button type="button" class="secondary close">Cancelar</button
+          ><button type="submit">Guardar ingreso</button>
         </div>
       </form>
     </dialog>

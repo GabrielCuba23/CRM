@@ -949,3 +949,44 @@ details > summary {
   padding: 1rem 0;
   font-weight: 650;
 }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.brand #brand-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.brand #brand-name {
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+#crm-logo-preview {
+  object-fit: contain;
+  margin: 8px 0;
+}
+meter {
+  width: 100%;
+  height: 16px;
+}
+input,
+textarea,
+select {
+  max-width: 100%;
+}
+@media (max-width: 760px) {
+  .brand #brand-name {
+    font-size: 19px;
+  }
+  header h1 {
+    overflow-wrap: anywhere;
+  }
+  .row-actions {
+    gap: 6px;
+  }
+}

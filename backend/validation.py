@@ -1,7 +1,7 @@
 import datetime as dt
 import re
 
-FIELDS = {'nombre', 'telefono', 'correo', 'servicio', 'perfil', 'vence', 'pin', 'negocio', 'pago'}
+FIELDS = {'nombre', 'telefono', 'usuario_whatsapp', 'correo', 'servicio', 'perfil', 'vence', 'pin', 'negocio', 'pago'}
 
 
 def validate_workspace(state):
@@ -33,10 +33,14 @@ def validate_workspace(state):
     for c in state['clients']:
         if not strings(c, ['id', 'name', 'email', 'phone', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin']) or not c['name'].strip() or not date(c['expires']) or not amount(c.get('price')):
             fail()
+        if 'whatsappUsername' in c and (not isinstance(c['whatsappUsername'], str) or len(c['whatsappUsername']) > 100):
+            fail()
         if 'reminderConsent' in c and type(c['reminderConsent']) is not bool:
             fail()
     for a in state['accounts']:
         if not strings(a, ['id', 'service', 'email', 'provider', 'expires']) or not a['service'].strip() or not date(a['expires'], False) or type(a.get('capacity')) is not int or not 1 <= a['capacity'] <= 50:
+            fail()
+        if 'password' in a and (not isinstance(a['password'], str) or len(a['password']) > 512):
             fail()
         assigned = [c for c in state['clients'] if c['accountId'] == a['id']]
         valid = {f'Perfil {n}' for n in range(1, a['capacity'] + 1)}
@@ -55,8 +59,15 @@ def validate_workspace(state):
     for m in state['ledger']:
         if not strings(m, ['id', 'description', 'service', 'kind', 'date']) or m['kind'] not in ['sale', 'renewal', 'expense'] or not date(m['date'], False) or not amount(m.get('amount')):
             fail()
+    for m in state['ledger']:
+        if 'clientId' in m and not isinstance(m['clientId'], str):
+            fail()
     settings = state.get('settings')
     if not strings(settings, ['business', 'payments']) or type(settings.get('dark')) is not bool:
+        fail()
+    if 'crmName' in settings and (not isinstance(settings['crmName'], str) or len(settings['crmName']) > 80):
+        fail()
+    if 'logoDataUrl' in settings and (not isinstance(settings['logoDataUrl'], str) or len(settings['logoDataUrl']) > 150000 or (settings['logoDataUrl'] and not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+', settings['logoDataUrl']))):
         fail()
     automation = state.get('automation', {'enabled': False, 'templateName': '', 'language': 'es', 'parameters': ['nombre', 'servicio', 'vence'], 'hour': 9})
     if not isinstance(automation, dict) or type(automation.get('enabled')) is not bool or type(automation.get('hour')) is not int or not 0 <= automation['hour'] <= 23:
@@ -91,15 +102,47 @@ def validate_workspace(state):
             dt.datetime.fromisoformat(receipt['completedAt'].replace('Z', '+00:00'))
         except ValueError:
             fail()
-    # Preserve only known schema fields. Never copy tokens/passwords from an imported file.
+    growth = state.get('growth', {'segments': [], 'campaigns': [], 'posts': [], 'interactions': [], 'scoring': {'email': 10, 'phone': 10, 'active': 20, 'paid': 30}})
+    if not isinstance(growth, dict) or not isinstance(growth.get('scoring'), dict) or any(type(growth['scoring'].get(k)) is not int or not 0 <= growth['scoring'][k] <= 100 for k in ['email', 'phone', 'active', 'paid']):
+        fail()
+    growth_keys = {'segments': ['id','name','query','service','status','persona','minScore'], 'campaigns': ['id','name','channel','segmentId','subject','body','status'], 'posts': ['id','name','network','body','scheduledAt','status'], 'interactions': ['id','name','clientId','network','kind','body','agent','outcome','occurredAt']}
+    networks = ['Facebook','Instagram','LinkedIn','TikTok','X','Google Business']
+    for key, fields in growth_keys.items():
+        rows = growth.get(key)
+        if not isinstance(rows, list) or len(rows) > 10000 or any(not strings(r, [k for k in fields if k != 'minScore']) or not r['id'] or not r['name'].strip() for r in rows) or len({r['id'] for r in rows}) != len(rows):
+            fail()
+    for r in growth['segments']:
+        if r['status'] not in ['all','active','soon','expired','none'] or type(r['minScore']) is not int or not 0 <= r['minScore'] <= 100:
+            fail()
+    for r in growth['campaigns']:
+        if r['channel'] not in ['email','whatsapp','rss'] or r['status'] != 'draft' or not r['body'].strip() or (r['segmentId'] and not any(x['id'] == r['segmentId'] for x in growth['segments'])):
+            fail()
+    for r in growth['posts'] + growth['interactions']:
+        if r['network'] not in networks or not r['body'].strip():
+            fail()
+        stamp = r.get('scheduledAt', r.get('occurredAt', ''))
+        if stamp:
+            try:
+                dt.datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+            except ValueError:
+                fail()
+    for r in growth['posts']:
+        if r['status'] != 'draft':
+            fail()
+    for r in growth['interactions']:
+        if not r['clientId'] or not r['occurredAt'] or r['kind'] not in ['comment','dm','review'] or r['outcome'] not in ['open','answered','won']:
+            fail()
+    # Preserve explicit account credentials, but never arbitrary tokens or unknown fields.
     keys = {
-        'clients': ['id', 'name', 'email', 'phone', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent'],
-        'accounts': ['id', 'service', 'email', 'provider', 'expires', 'capacity'],
+        'clients': ['id', 'name', 'email', 'phone', 'whatsappUsername', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent'],
+        'accounts': ['id', 'service', 'email', 'provider', 'expires', 'capacity', 'password'],
         'templates': ['id', 'name', 'body', 'context'],
         'combos': ['id', 'name', 'services', 'price'],
-        'ledger': ['id', 'description', 'service', 'kind', 'date', 'amount'],
+        'ledger': ['id', 'description', 'service', 'kind', 'date', 'amount', 'clientId'],
     }
-    clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark']}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
+    clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark', 'crmName', 'logoDataUrl'] if k in settings}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
+    clean['growth'] = {key: [{k: r[k] for k in fields} for r in growth[key]] for key, fields in growth_keys.items()}
+    clean['growth']['scoring'] = {k: growth['scoring'][k] for k in ['email','phone','active','paid']}
     clean['rules'] = [{k: r[k] for k in ['id', 'name', 'templateId', 'delivery', 'enabled', 'daysBefore', 'hour', 'services']} | {'meta': {k: r['meta'][k] for k in ['templateName', 'language', 'parameters']}} for r in rules]
     clean['taskReceipts'] = [{k: r[k] for k in ['id', 'signature', 'completedAt']} for r in receipts]
     for collection, allowed in keys.items():

@@ -58,7 +58,7 @@ Comprueba:
 - La vista Automatización informa de una revisión reciente del trabajador.
 - Sin token/identificador de Meta, el sistema informa que falta configuración y no intenta enviar.
 
-No elimines el volumen `crm-data`: contiene la cuenta y los registros. Haz respaldos de la aplicación y respaldos consistentes de SQLite mediante la API de backup de SQLite o un procedimiento del hosting. Copiar solo el archivo principal mientras SQLite tiene un WAL activo puede perder cambios. El JSON del CRM conserva clientes/configuración, pero no contiene contraseñas, sesiones ni historial de envíos.
+No elimines el volumen `crm-data`: contiene la cuenta y los registros. Haz respaldos de la aplicación y respaldos consistentes de SQLite mediante la API de backup de SQLite o un procedimiento del hosting. Copiar solo el archivo principal mientras SQLite tiene un WAL activo puede perder cambios. El JSON del CRM conserva clientes/configuración, incluye contraseñas de cuentas madre si las guardaste, pero no incluye credenciales de inicio de sesión ni sesiones.
 
 ### Construcción en entornos sin red dentro de Docker
 

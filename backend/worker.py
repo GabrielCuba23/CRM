@@ -34,7 +34,7 @@ def normalize_phone(value):
 
 def build_message(client, automation, settings):
     values = {
-        'nombre': client['name'], 'telefono': client['phone'], 'correo': client['email'] or 'No indicado',
+        'nombre': client['name'], 'telefono': client['phone'], 'usuario_whatsapp': client.get('whatsappUsername') or 'No indicado', 'correo': client['email'] or 'No indicado',
         'servicio': client['service'] or 'Tu servicio', 'perfil': client['profile'] or 'No indicado',
         'vence': dt.date.fromisoformat(client['expires']).strftime('%d/%m/%Y'),
         'pin': client.get('pin') or 'Sin PIN', 'negocio': settings['business'] or 'Nuestro equipo',

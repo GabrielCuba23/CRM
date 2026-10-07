@@ -10,7 +10,7 @@ Puedes crear, duplicar, editar y activar reglas independientes; no hay una lista
 4. En la bandeja, pulsa **Revisar y abrir WhatsApp**. Puedes editar el texto antes de abrir la conversación.
 5. Confirma el envío dentro de WhatsApp. Después pulsa **Ya envié el mensaje: confirmar** en el CRM. Abrir el enlace no completa la tarea.
 
-La confirmación persiste y evita preparar nuevamente la misma regla para el mismo cliente y vencimiento. Una renovación genera otra tarea. La bandeja recupera tareas de hasta siete días de antigüedad; servicios sin fecha, sin autorización, con teléfono inválido o con una regla desactivada no generan pendientes. No se programan plantillas que incluyen `{contrasena}`. Las contraseñas solo se introducen de forma temporal en mensajes manuales desde el cliente.
+La confirmación persiste y evita preparar nuevamente la misma regla para el mismo cliente y vencimiento. Una renovación genera otra tarea. La bandeja recupera tareas de hasta siete días de antigüedad; servicios sin fecha, sin autorización, con teléfono inválido o con una regla desactivada no generan pendientes. No se programan plantillas que incluyen `{contrasena}`. Los mensajes manuales pueden cargar la contraseña guardada de la cuenta madre; las tareas programadas e integraciones no incluyen ese campo.
 
 En GitHub Pages se prepara la bandeja al abrir la web y se guarda en ese navegador. Cloudflare conserva los datos centralizados y prepara la cola mediante un cron horario aunque nadie visite la web. Exporta un respaldo antes de cambiar de modo; en la versión privada puedes importar tu respaldo JSON o usar la migración local disponible en Configuración.
 

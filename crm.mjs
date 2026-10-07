@@ -1,6 +1,8 @@
+import { validateGrowth } from "./growth.mjs";
 export const fields = [
   "nombre",
   "telefono",
+  "usuario_whatsapp",
   "correo",
   "servicio",
   "perfil",
@@ -68,6 +70,7 @@ export function fillTemplate(body, client, password = "", settings = {}) {
   const values = {
     nombre: client.name,
     telefono: client.phone,
+    usuario_whatsapp: client.whatsappUsername || "No indicado",
     correo: client.email || "No indicado",
     servicio: client.service || "Tu servicio",
     perfil: client.profile || "No indicado",
@@ -159,7 +162,10 @@ export function validateWorkspace(state) {
         Number.isInteger(c.price) &&
         c.price >= 0 &&
         (c.reminderConsent === undefined ||
-          typeof c.reminderConsent === "boolean"),
+          typeof c.reminderConsent === "boolean") &&
+        (c.whatsappUsername === undefined ||
+          (typeof c.whatsappUsername === "string" &&
+            c.whatsappUsername.length <= 100)),
     )
   )
     throw Error("Datos de clientes no válidos.");
@@ -171,7 +177,9 @@ export function validateWorkspace(state) {
         validDate(a.expires) &&
         Number.isInteger(a.capacity) &&
         a.capacity >= 1 &&
-        a.capacity <= 50,
+        a.capacity <= 50 &&
+        (a.password === undefined ||
+          (typeof a.password === "string" && a.password.length <= 512)),
     )
   )
     throw Error("Datos de cuentas no válidos.");
@@ -204,7 +212,8 @@ export function validateWorkspace(state) {
         validDate(m.date) &&
         ["sale", "renewal", "expense"].includes(m.kind) &&
         Number.isInteger(m.amount) &&
-        m.amount >= 0,
+        m.amount >= 0 &&
+        (m.clientId === undefined || typeof m.clientId === "string"),
     )
   )
     throw Error("Movimientos no válidos.");
@@ -213,6 +222,22 @@ export function validateWorkspace(state) {
     typeof state.settings.dark !== "boolean"
   )
     throw Error("Configuración no válida.");
+  if (
+    state.settings.crmName !== undefined &&
+    (typeof state.settings.crmName !== "string" ||
+      state.settings.crmName.length > 80)
+  )
+    throw Error("Nombre del CRM no válido.");
+  if (
+    state.settings.logoDataUrl !== undefined &&
+    (typeof state.settings.logoDataUrl !== "string" ||
+      state.settings.logoDataUrl.length > 150000 ||
+      (state.settings.logoDataUrl &&
+        !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
+          state.settings.logoDataUrl,
+        )))
+  )
+    throw Error("Logo no válido.");
   for (const account of state.accounts) {
     const assigned = state.clients.filter((c) => c.accountId === account.id);
     if (
@@ -317,6 +342,7 @@ export function validateWorkspace(state) {
         state.taskReceipts.length)
   )
     throw Error("Confirmaciones de envío no válidas.");
+  if (state.growth !== undefined) validateGrowth(state.growth);
   return state;
 }
 

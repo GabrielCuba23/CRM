@@ -15,7 +15,16 @@ const privateAssets = new Set([
   "/app.js",
   "/crm.mjs",
   "/automation.mjs",
+  "/bulk.mjs",
+  "/growth.mjs",
+  "/growth-ui.mjs",
+  "/vendor/exceljs-4.4.0.min.js",
   "/login.js",
+  "/sw.js",
+  "/manifest.webmanifest",
+  "/app-icon.svg",
+  "/app-icon-192.png",
+  "/app-icon-512.png",
 ]);
 const securityHeaders = {
   "Cache-Control": "no-store",
@@ -217,6 +226,7 @@ export function payload(client, automation, settings) {
   const values = {
     nombre: client.name,
     telefono: client.phone,
+    usuario_whatsapp: client.whatsappUsername || "No indicado",
     correo: client.email || "No indicado",
     servicio: client.service || "Tu servicio",
     perfil: client.profile || "No indicado",
