@@ -45,7 +45,7 @@ class ProvisionTests(unittest.TestCase):
         def publish(config,executable):
             configs.append(config['vars']['ACCESS_AUD'])
             return 'https://nexo-crm.test.workers.dev'
-        with patch.dict('os.environ',{'CLOUDFLARE_API_TOKEN':'test-only','CLOUDFLARE_ACCOUNT_ID':'0'*32,'CRM_OWNER_EMAIL':'owner@example.com'}),patch.object(sys,'argv',['deploy.py']),patch.object(deploy,'Cloudflare',return_value=API()),patch.object(deploy,'ensure_access_team',return_value='test.cloudflareaccess.com'),patch.object(deploy,'ensure_pin',return_value={'id':'pin'}),patch.object(deploy,'ensure_database',return_value='test-db'),patch.object(deploy,'build',return_value=Path('/tmp/test-assets')),patch.object(deploy,'ensure_application',return_value={'aud':'real-aud'}),patch.object(deploy,'publish',side_effect=publish),patch('builtins.print'):
+        with patch.dict('os.environ',{'CLOUDFLARE_API_TOKEN':'test-only','CLOUDFLARE_ACCOUNT_ID':'0'*32,'CRM_OWNER_EMAIL':'owner@example.com'}),patch.object(sys,'argv',['deploy.py']),patch.object(deploy,'Cloudflare',return_value=API()),patch.object(deploy,'ensure_access_team',return_value='test.cloudflareaccess.com'),patch.object(deploy,'ensure_pin',return_value={'id':'pin'}),patch.object(deploy,'ensure_database',return_value='test-db'),patch.object(deploy,'build',return_value=Path('/tmp/test-assets')),patch.object(deploy,'ensure_application',return_value={'aud':'real-aud'}),patch.object(deploy,'publish',side_effect=publish),patch.object(Path,'write_text'),patch.object(Path,'chmod'),patch('builtins.print'):
             deploy.main()
         self.assertEqual(configs,['not-configured-closed','real-aud'])
 

@@ -253,6 +253,70 @@ export function validateWorkspace(state) {
     if (a.enabled && !a.templateName)
       throw Error("Indica el nombre de la plantilla aprobada por Meta.");
   }
+  if (state.rules !== undefined) {
+    if (
+      !Array.isArray(state.rules) ||
+      state.rules.length > 10000 ||
+      new Set(state.rules.map((r) => r?.id)).size !== state.rules.length
+    )
+      throw Error("Reglas no válidas.");
+    for (const r of state.rules) {
+      if (
+        !strings(r, ["id", "name", "templateId", "delivery"]) ||
+        !r.id ||
+        r.id.length > 200 ||
+        !r.name.trim() ||
+        r.name.length > 200 ||
+        typeof r.enabled !== "boolean" ||
+        !Number.isInteger(r.daysBefore) ||
+        Math.abs(r.daysBefore) > 365 ||
+        !Number.isInteger(r.hour) ||
+        r.hour < 0 ||
+        r.hour > 23 ||
+        !["manual", "integration", "meta"].includes(r.delivery) ||
+        !Array.isArray(r.services) ||
+        r.services.length > 1000 ||
+        r.services.some((v) => typeof v !== "string" || v.length > 200)
+      )
+        throw Error("Regla de mensaje no válida.");
+      const template = state.templates.find((t) => t.id === r.templateId);
+      if (r.enabled && (!template || template.body.includes("{contrasena}")))
+        throw Error(
+          "Una regla activa necesita una plantilla existente sin contraseña.",
+        );
+      const m = r.meta;
+      if (
+        !m ||
+        !strings(m, ["templateName", "language"]) ||
+        (m.templateName && !/^[a-z0-9_]{1,512}$/.test(m.templateName)) ||
+        !/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(m.language) ||
+        !Array.isArray(m.parameters) ||
+        m.parameters.length > 20 ||
+        m.parameters.some(
+          (v) => !fields.filter((f) => f !== "contrasena").includes(v),
+        )
+      )
+        throw Error("Configuración Meta de regla no válida.");
+      if (r.enabled && r.delivery === "meta" && !m.templateName)
+        throw Error(
+          "Indica la plantilla aprobada para activar esta regla de Meta.",
+        );
+    }
+  }
+  if (
+    state.taskReceipts !== undefined &&
+    (!Array.isArray(state.taskReceipts) ||
+      state.taskReceipts.length > 10000 ||
+      !state.taskReceipts.every(
+        (r) =>
+          strings(r, ["id", "signature", "completedAt"]) &&
+          /^[a-f0-9]{64}$/.test(r.signature) &&
+          Number.isFinite(Date.parse(r.completedAt)),
+      ) ||
+      new Set(state.taskReceipts.map((r) => r.id)).size !==
+        state.taskReceipts.length)
+  )
+    throw Error("Confirmaciones de envío no válidas.");
   return state;
 }
 

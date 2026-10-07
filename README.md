@@ -12,6 +12,10 @@ Se añadió un servidor con login de administrador, SQLite y un trabajador de re
 
 La biblioteca ahora permite crear, duplicar, buscar y organizar mensajes por cualquier contexto, con vista previa. Los mensajes manuales no están limitados a los tres ejemplos iniciales. La automatización usa una plantilla aprobada por Meta, configurada por nombre, idioma, hora y variables; está desactivada por defecto.
 
+## Reglas y tareas configurables
+
+En Automatización puedes crear y duplicar reglas por plantilla, plataformas, días antes o después del vencimiento, hora y canal. La bandeja permite revisar el texto, abrir wa.me y registrar tu confirmación sin confundir abrir con enviar. Las reglas nuevas y duplicadas están desactivadas. La integración opcional de Zapier, Make o n8n tiene una API protegida que reserva tareas y recibe resultados; queda preparada sin credenciales ni envíos reales. Consulta [INTEGRATIONS.md](INTEGRATIONS.md). No hay tres espacios fijos de mensajes; siguen aplicándose las cuotas de alojamiento y almacenamiento.
+
 ## Ejecutar el modo local
 
 Con Python 3, desde la raíz del repositorio:

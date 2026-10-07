@@ -61,6 +61,10 @@
             <use href="icons.svg#renewals"></use>
           </svg>
           Automatización</a
+        ><a href="#integrations" data-view="integrations"
+          ><svg class="nav-icon" aria-hidden="true">
+            <use href="icons.svg#settings"></use></svg
+          >Integraciones</a
         ><a href="#settings" data-view="settings"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#settings"></use>
@@ -444,6 +448,11 @@
               </p>
               <button type="submit">Guardar plantilla</button>
               <div class="inset">
+                <p class="muted">
+                  En una regla de Meta se envían el nombre aprobado y sus
+                  variables; el texto libre de esta vista previa se usa para
+                  wa.me y herramientas externas.
+                </p>
                 <h3>Vista previa</h3>
                 <label
                   >Completar con<select id="preview-client">
@@ -456,87 +465,189 @@
           </div>
         </form>
       </section>
+      <section id="integrations" class="view panel" hidden>
+        <p class="eyebrow">CONECTA CUANDO LO NECESITES</p>
+        <h2>Zapier, Make o n8n</h2>
+        <p>
+          Una herramienta externa puede recoger tareas programadas y devolver su
+          resultado. WhatsApp por <code>wa.me</code> abre la conversación con el
+          texto preparado; no envía mensajes por sí solo.
+        </p>
+        <p id="integration-status" class="mode-banner">
+          Integración preparada, sin conectar.
+        </p>
+        <button id="refresh-integration" class="secondary">
+          Consultar conexión e historial
+        </button>
+        <h3>Conexión opcional</h3>
+        <p>
+          <a
+            href="https://github.com/GabrielCuba23/CRM/blob/main/INTEGRATIONS.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Ver guía de conexión y ejemplos para Zapier, Make y n8n</a
+          >
+        </p>
+        <ol>
+          <li>
+            Publica la versión privada en Cloudflare y configura un secreto
+            <code>INTEGRATION_API_TOKEN</code> de al menos 32 caracteres.
+          </li>
+          <li>
+            Protege el acceso de la herramienta siguiendo la guía de
+            integración. El token va en la herramienta externa, nunca en una
+            plantilla.
+          </li>
+          <li>
+            Programa una llamada <code>POST /api/integration/claim</code> con
+            <code>{"limit":10}</code> y la cabecera
+            <code>Authorization: Bearer TOKEN</code>.
+          </li>
+          <li>
+            Cada tarea incluye texto, destinatario, enlace WhatsApp y una clave
+            de reserva. Para envío automático conecta un proveedor oficial de
+            WhatsApp; para envío manual prepara una notificación con el enlace.
+          </li>
+          <li>
+            Confirma el resultado con <code>POST /api/integration/ack</code>. No
+            marques como enviado un mensaje cuyo único paso fue abrir el enlace.
+          </li>
+        </ol>
+        <p class="muted">
+          Zapier, otros servicios y los proveedores de WhatsApp pueden tener
+          límites o costes. La conexión permanece desactivada mientras no
+          instales el secreto.
+        </p>
+        <h3>Historial de tareas</h3>
+        <p class="muted">
+          Una tarea reservada no se reasigna automáticamente: revisa resultados
+          inciertos para evitar duplicados.
+        </p>
+        <div id="integration-history" class="table-scroll"></div>
+      </section>
       <section id="automation" class="view panel" hidden>
         <div class="section-head">
           <div>
-            <p class="eyebrow">RENOVACIONES SIN TAREAS MANUALES</p>
-            <h2>Recordatorio automático</h2>
+            <p class="eyebrow">TUS MENSAJES, TUS REGLAS</p>
+            <h2>Reglas y mensajes pendientes</h2>
             <p class="muted">
-              Tres días antes del vencimiento, a la hora que elijas en Lima.
+              Crea tantas reglas como necesites dentro del espacio disponible.
+              Los envíos por WhatsApp requieren tu confirmación.
             </p>
           </div>
-          <span id="automation-badge" class="pill none">Sin conectar</span>
+          <button id="new-rule">+ Nueva regla</button>
         </div>
-        <p id="automation-availability" class="mode-banner"></p>
-        <form id="automation-form">
-          <label class="checkbox"
-            ><input id="automation-enabled" type="checkbox" /> Activar
-            recordatorios de renovación</label
-          >
-          <div class="form-grid">
-            <label
-              >Nombre de plantilla aprobada en Meta<input
-                id="automation-name"
-                placeholder="recordatorio_renovacion"
-                pattern="[a-z0-9_]+"
-                maxlength="512" /></label
-            ><label
-              >Idioma aprobado<input
-                id="automation-language"
-                value="es"
-                placeholder="es o es_PE"
-                required
-                maxlength="10" /></label
-            ><label
-              >Hora de envío (Lima)<input
-                id="automation-hour"
-                type="number"
-                min="0"
-                max="23"
-                required
-                value="9" /></label
-            ><label
-              >Variables de Meta, en orden<input
-                id="automation-parameters"
-                value="nombre, servicio, vence"
-                placeholder="nombre, servicio, vence"
-              /><small
-                >Se corresponden con {{1}}, {{2}}, {{3}} del cuerpo de la
-                plantilla aprobada.</small
-              ></label
-            >
+        <div class="mode-banner">
+          Puedes dejar preparadas las reglas sin activar ni conectar ningún
+          servicio. Para tareas programadas se necesita la autorización de
+          recordatorios del cliente.
+        </div>
+        <div id="rule-list" class="rule-grid"></div>
+        <div class="section-head">
+          <div>
+            <h3>Mensajes pendientes</h3>
+            <p class="muted">
+              Hora de Lima. Se recuperan tareas de los últimos siete días; abrir
+              WhatsApp no confirma el envío.
+            </p>
           </div>
-          <p class="muted">
-            Las plantillas de la biblioteca pueden tener cualquier texto para
-            envío manual. Para un envío automático iniciado por tu negocio, Meta
-            debe aprobar previamente la plantilla. No introduzcas tokens aquí.
-          </p>
-          <button>Guardar automatización</button>
-        </form>
-        <h3>Estado del servicio</h3>
-        <p id="worker-status" class="muted"></p>
-        <button id="refresh-automation" class="secondary">
-          Actualizar estado
-        </button>
-        <h3>Historial de recordatorios</h3>
-        <p class="muted">
-          «Aceptado por Meta» confirma que la API recibió el mensaje; no
-          confirma su entrega. Los resultados inciertos requieren revisión para
-          evitar mensajes duplicados.
-        </p>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Vencimiento</th>
-                <th>Estado</th>
-                <th>Detalle</th>
-              </tr>
-            </thead>
-            <tbody id="reminder-history"></tbody>
-          </table>
+          <button id="refresh-tasks" class="secondary">
+            Actualizar pendientes
+          </button>
         </div>
+        <label
+          >Buscar pendiente<input
+            id="task-search"
+            placeholder="Cliente, regla o plataforma"
+        /></label>
+        <p id="task-summary" class="muted" role="status"></p>
+        <div id="task-list" class="rule-grid"></div>
+        <details id="legacy-meta">
+          <summary>
+            Conexión directa a Meta: recordatorio de tres días (opcional)
+          </summary>
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">RENOVACIONES SIN TAREAS MANUALES</p>
+              <h2>Recordatorio automático</h2>
+              <p class="muted">
+                Tres días antes del vencimiento, a la hora que elijas en Lima.
+              </p>
+            </div>
+            <span id="automation-badge" class="pill none">Sin conectar</span>
+          </div>
+          <p id="automation-availability" class="mode-banner"></p>
+          <form id="automation-form">
+            <label class="checkbox"
+              ><input id="automation-enabled" type="checkbox" /> Activar
+              recordatorios de renovación</label
+            >
+            <div class="form-grid">
+              <label
+                >Nombre de plantilla aprobada en Meta<input
+                  id="automation-name"
+                  placeholder="recordatorio_renovacion"
+                  pattern="[a-z0-9_]+"
+                  maxlength="512" /></label
+              ><label
+                >Idioma aprobado<input
+                  id="automation-language"
+                  value="es"
+                  placeholder="es o es_PE"
+                  required
+                  maxlength="10" /></label
+              ><label
+                >Hora de envío (Lima)<input
+                  id="automation-hour"
+                  type="number"
+                  min="0"
+                  max="23"
+                  required
+                  value="9" /></label
+              ><label
+                >Variables de Meta, en orden<input
+                  id="automation-parameters"
+                  value="nombre, servicio, vence"
+                  placeholder="nombre, servicio, vence"
+                /><small
+                  >Se corresponden con {{1}}, {{2}}, {{3}} del cuerpo de la
+                  plantilla aprobada.</small
+                ></label
+              >
+            </div>
+            <p class="muted">
+              Las plantillas de la biblioteca pueden tener cualquier texto para
+              envío manual. Para un envío automático iniciado por tu negocio,
+              Meta debe aprobar previamente la plantilla. No introduzcas tokens
+              aquí.
+            </p>
+            <button>Guardar automatización</button>
+          </form>
+          <h3>Estado del servicio</h3>
+          <p id="worker-status" class="muted"></p>
+          <button id="refresh-automation" class="secondary">
+            Actualizar estado
+          </button>
+          <h3>Historial de recordatorios</h3>
+          <p class="muted">
+            «Aceptado por Meta» confirma que la API recibió el mensaje; no
+            confirma su entrega. Los resultados inciertos requieren revisión
+            para evitar mensajes duplicados.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Vencimiento</th>
+                  <th>Estado</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody id="reminder-history"></tbody>
+            </table>
+          </div>
+        </details>
       </section>
       <section id="security" class="view panel" hidden>
         <h2>Acceso y seguridad</h2>
@@ -662,6 +773,105 @@
         </div>
       </form>
     </dialog>
+    <dialog id="rule-dialog">
+      <form id="rule-form">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">MENSAJE PROGRAMADO</p>
+            <h2 id="rule-title">Nueva regla</h2>
+          </div>
+          <button type="button" class="icon-button close" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <div class="form-grid">
+          <label
+            >Nombre<input
+              name="name"
+              required
+              maxlength="200"
+              placeholder="Renovación tres días antes"
+          /></label>
+          <label
+            >Plantilla de tu biblioteca<select
+              name="templateId"
+              required
+            ></select
+          ></label>
+          <label
+            >Preparar o enviar mediante<select name="delivery">
+              <option value="manual">WhatsApp con mi confirmación</option>
+              <option value="integration">Zapier / Make / n8n</option>
+              <option value="meta">API oficial de Meta</option>
+            </select></label
+          >
+          <label
+            >Días antes del vencimiento<input
+              name="daysBefore"
+              type="number"
+              min="-365"
+              max="365"
+              required
+              value="3"
+            /><small
+              >0 = el día del vencimiento; −1 = un día después.</small
+            ></label
+          >
+          <label
+            >Hora (Lima)<input
+              name="hour"
+              type="number"
+              min="0"
+              max="23"
+              required
+              value="9"
+          /></label>
+          <label
+            >Plataformas (opcional)<input
+              name="services"
+              placeholder="Netflix, Max, Disney+"
+            /><small>Vacío incluye todas las plataformas.</small></label
+          >
+        </div>
+        <label class="checkbox"
+          ><input name="enabled" type="checkbox" /> Activar esta regla</label
+        >
+        <p class="muted">
+          Una regla manual activa prepara pendientes; tú confirmas el envío. Las
+          otras necesitan una conexión externa. Solo se incluyen clientes con
+          autorización de recordatorios. No se programan contraseñas.
+        </p>
+        <details id="rule-meta">
+          <summary>
+            Plantilla oficial de Meta (solo para conexión directa)
+          </summary>
+          <div class="form-grid">
+            <label
+              >Nombre aprobado<input
+                name="metaName"
+                maxlength="512"
+                placeholder="recordatorio_renovacion"
+            /></label>
+            <label
+              >Idioma<input name="metaLanguage" value="es" required
+            /></label>
+            <label
+              >Variables del cuerpo, en orden<input
+                name="metaParameters"
+                value="nombre, servicio, vence"
+            /></label>
+          </div>
+        </details>
+        <h3>Vista previa</h3>
+        <label>Cliente<select id="rule-preview-client"></select></label>
+        <pre id="rule-preview" class="message-preview"></pre>
+        <p id="rule-error" class="error" role="alert"></p>
+        <div class="actions end">
+          <button type="button" class="secondary close">Cancelar</button
+          ><button type="submit">Guardar regla</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="message-dialog">
       <div class="section-head">
         <div>
@@ -693,7 +903,9 @@
         envío allí.
       </p>
       <div class="actions end">
-        <button id="copy-message" class="secondary">Copiar mensaje</button
+        <button id="confirm-task" hidden class="secondary">
+          Ya envié el mensaje: confirmar</button
+        ><button id="copy-message" class="secondary">Copiar mensaje</button
         ><a
           id="open-whatsapp"
           class="button whatsapp"

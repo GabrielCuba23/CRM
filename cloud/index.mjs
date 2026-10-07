@@ -1,9 +1,22 @@
+import {
+  generateTasks,
+  claimTasks,
+  acknowledgeTask,
+  integrationAuthenticated,
+  processRuleTasks,
+  ownerTaskStatus,
+} from "./tasks.mjs";
 import { authenticate, configured } from "./auth.mjs";
 import { emptyState, cleanState } from "./state.mjs";
 import { normalizePhone, formatDate, todayLima } from "../crm.mjs";
 
 const publicAssets = new Set(["/styles.css", "/icons.svg"]);
-const privateAssets = new Set(["/app.js", "/crm.mjs", "/login.js"]);
+const privateAssets = new Set([
+  "/app.js",
+  "/crm.mjs",
+  "/automation.mjs",
+  "/login.js",
+]);
 const securityHeaders = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
@@ -60,6 +73,38 @@ export async function handleRequest(request, env, options = {}) {
       },
       503,
     );
+  if (path.startsWith("/api/integration/")) {
+    if (!(await integrationAuthenticated(request, env)))
+      return json(
+        { error: "Integración desconectada o credencial no válida." },
+        401,
+      );
+    if (request.method !== "POST") return json({ error: "Usa POST." }, 405);
+    let input;
+    try {
+      input = await body(request);
+    } catch {
+      return json({ error: "Usa una solicitud JSON válida." }, 400);
+    }
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      return json({ error: "Usa un objeto JSON." }, 400);
+    if (path === "/api/integration/claim") {
+      const limit = input.limit === undefined ? 10 : input.limit;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 10)
+        return json({ error: "El lote debe ser de 1 a 10 tareas." }, 400);
+      return json({ tasks: await claimTasks(env, { limit }) });
+    }
+    if (path === "/api/integration/ack") {
+      try {
+        return (await acknowledgeTask(env, input))
+          ? json({ ok: true })
+          : json({ error: "Tarea o confirmación no válidas." }, 409);
+      } catch {
+        return json({ error: "Confirmación no válida." }, 400);
+      }
+    }
+    return json({ error: "Recurso no encontrado." }, 404);
+  }
   let user;
   try {
     user = await authenticate(request, env, options);
@@ -128,6 +173,12 @@ export async function handleRequest(request, env, options = {}) {
       intervalSeconds: 3600,
       reminders: reminders.results,
     });
+  }
+  if (path === "/api/message-tasks" && request.method === "GET")
+    return json(await ownerTaskStatus(env));
+  if (path === "/api/message-tasks/refresh" && request.method === "POST") {
+    await generateTasks(env);
+    return json(await ownerTaskStatus(env));
   }
   if (path === "/api/logout" && request.method === "POST")
     return json({ ok: true, logoutUrl: url.origin + "/cdn-cgi/access/logout" });
@@ -226,7 +277,7 @@ export async function sendMeta(message, env, fetcher = fetch) {
 }
 export async function processDue(
   env,
-  { now = new Date(), sender = sendMeta } = {},
+  { now = new Date(), sender = sendMeta, limit = 10 } = {},
 ) {
   const db = env.DB,
     { state, revision } = await workspace(db),
@@ -268,7 +319,7 @@ export async function processDue(
         !r || (r.state === "rate_limited" && timestamp - r.attempted >= 900)
       );
     })
-    .slice(0, 10);
+    .slice(0, limit);
   let accepted = 0;
   for (const client of candidates) {
     // A single atomic SQL claim prevents concurrent cron invocations from sending twice.
@@ -322,6 +373,16 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(processDue(env, { now: new Date(event.scheduledTime) }));
+    ctx.waitUntil(
+      (async () => {
+        const now = new Date(event.scheduledTime);
+        await processDue(env, { now, limit: 5 });
+        await processRuleTasks(env, {
+          now,
+          sender: sendMeta,
+          makeMeta: payload,
+        });
+      })(),
+    );
   },
 };

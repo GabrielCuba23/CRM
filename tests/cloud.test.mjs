@@ -343,3 +343,272 @@ test("Meta rate limits can retry; ambiguous outcomes never automatically duplica
   );
 });
 test.after(async () => mf.dispose());
+
+test("Integration is disconnected by default and its token cannot read the private workspace", async () => {
+  const { integrationAuthenticated } = await import("../cloud/tasks.mjs");
+  const token = "test-integration-token-32-characters-long";
+  const external = new Request("https://crm.example/api/integration/claim", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json",
+    },
+    body: '{"limit":10}',
+  });
+  assert.equal(await integrationAuthenticated(external, env), false);
+  assert.equal((await handleRequest(external, env, { fetcher })).status, 401);
+  assert.equal(
+    (
+      await handleRequest(
+        new Request("https://crm.example/api/workspace", {
+          headers: { Authorization: "Bearer " + token },
+        }),
+        { ...env, INTEGRATION_API_TOKEN: token },
+        { fetcher },
+      )
+    ).status,
+    401,
+  );
+});
+test("External queue atomically reserves once, confirms idempotently and cancels revoked consent", async () => {
+  const { generateTasks } = await import("../cloud/tasks.mjs");
+  const { todayLima } = await import("../crm.mjs");
+  const now = new Date(),
+    state = emptyState();
+  state.templates = [
+    {
+      id: "renew",
+      name: "Personalizada",
+      body: "Hola {nombre} 👋 tu {servicio} vence {vence}",
+      context: "Libre",
+    },
+  ];
+  state.clients = [
+    {
+      id: "external-client",
+      name: "Cliente externo",
+      email: "",
+      phone: "987654321",
+      service: "Max",
+      profile: "",
+      pin: "",
+      price: 0,
+      notes: "",
+      accountId: "",
+      expires: todayLima(now),
+      reminderConsent: true,
+    },
+  ];
+  state.rules = [
+    {
+      id: "external-rule",
+      name: "Libre",
+      enabled: true,
+      templateId: "renew",
+      daysBefore: 0,
+      hour: 0,
+      delivery: "integration",
+      services: [],
+      meta: { templateName: "", language: "es", parameters: [] },
+    },
+  ];
+  assert.equal((await save(state, 3)).status, 200);
+  const automated = {
+    ...env,
+    INTEGRATION_API_TOKEN: "test-integration-token-32-characters-long",
+  };
+  assert.equal(await generateTasks(automated, { now }), 1);
+  assert.equal(await generateTasks(automated, { now }), 0);
+  const external = (path, data, token = automated.INTEGRATION_API_TOKEN) =>
+    new Request("https://crm.example" + path, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+  const claims = await Promise.all([
+    handleRequest(
+      external("/api/integration/claim", { limit: 10 }),
+      automated,
+      { fetcher },
+    ),
+    handleRequest(
+      external("/api/integration/claim", { limit: 10 }),
+      automated,
+      { fetcher },
+    ),
+  ]);
+  const tasks = (await Promise.all(claims.map((r) => r.json()))).flatMap(
+    (r) => r.tasks,
+  );
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].phone, "51987654321");
+  assert.equal(tasks[0].text.includes("Cliente externo"), true);
+  assert.equal(
+    (
+      await handleRequest(
+        external("/api/integration/ack", {
+          id: tasks[0].id,
+          claimToken: "wrong",
+          status: "completed",
+        }),
+        automated,
+        { fetcher },
+      )
+    ).status,
+    409,
+  );
+  const ack = {
+    id: tasks[0].id,
+    claimToken: tasks[0].claimToken,
+    status: "completed",
+    providerId: "test-only",
+  };
+  assert.equal(
+    (
+      await handleRequest(external("/api/integration/ack", ack), automated, {
+        fetcher,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await handleRequest(external("/api/integration/ack", ack), automated, {
+        fetcher,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await (
+        await handleRequest(
+          external("/api/integration/claim", { limit: 10 }),
+          automated,
+          { fetcher },
+        )
+      ).json()
+    ).tasks.length,
+    0,
+  );
+  state.clients.push({ ...state.clients[0], id: "revoked-client" });
+  assert.equal((await save(state, 4)).status, 200);
+  await generateTasks(automated, { now });
+  state.clients[1].reminderConsent = false;
+  assert.equal((await save(state, 5)).status, 200);
+  assert.equal(
+    (
+      await (
+        await handleRequest(
+          external("/api/integration/claim", { limit: 10 }),
+          automated,
+          { fetcher },
+        )
+      ).json()
+    ).tasks.length,
+    0,
+  );
+  assert.equal(
+    (
+      await DB.prepare("SELECT state FROM message_tasks WHERE id=?")
+        .bind(
+          JSON.stringify(["external-rule", "revoked-client", todayLima(now)]),
+        )
+        .first()
+    ).state,
+    "cancelled",
+  );
+  const status = await (
+    await handleRequest(request("/api/message-tasks"), automated, { fetcher })
+  ).json();
+  assert.equal(status.configured, true);
+  assert.equal(JSON.stringify(status).includes(tasks[0].claimToken), false);
+  assert.equal(
+    JSON.stringify(status).includes(automated.INTEGRATION_API_TOKEN),
+    false,
+  );
+});
+
+test("Multi-rule Meta automation stays disconnected and processes bounded, independent approved templates", async () => {
+  const { processRuleTasks } = await import("../cloud/tasks.mjs");
+  const { todayLima } = await import("../crm.mjs");
+  const now = new Date(),
+    state = emptyState();
+  state.templates = [
+    {
+      id: "notice",
+      name: "Aviso",
+      context: "Cualquier contexto",
+      body: "Hola {nombre}: {servicio} vence {vence}",
+    },
+  ];
+  state.clients = [
+    {
+      id: "meta-client",
+      name: "Cliente Meta",
+      email: "",
+      phone: "987654321",
+      service: "Max",
+      profile: "",
+      pin: "",
+      price: 0,
+      notes: "",
+      accountId: "",
+      expires: todayLima(now),
+      reminderConsent: true,
+    },
+  ];
+  state.rules = Array.from({ length: 5 }, (_, i) => ({
+    id: "meta-rule-" + i,
+    name: "Contexto " + i,
+    enabled: true,
+    templateId: "notice",
+    daysBefore: 0,
+    hour: 0,
+    delivery: "meta",
+    services: [],
+    meta: {
+      templateName: "approved_" + i,
+      language: "es",
+      parameters: ["nombre", "servicio", "vence"],
+    },
+  }));
+  assert.equal((await save(state, 6)).status, 200);
+  let calls = 0;
+  const sender = async (message) => {
+    calls++;
+    assert(message.template.name.startsWith("approved_"));
+    assert.equal(
+      message.template.components[0].parameters[0].text,
+      "Cliente Meta",
+    );
+    return { state: "accepted", provider_id: "mock-meta-" + calls };
+  };
+  const { payload } = await import("../cloud/index.mjs");
+  assert.equal(
+    await processRuleTasks(env, { now, sender, makeMeta: payload }),
+    0,
+  );
+  assert.equal(calls, 0);
+  const connected = {
+    ...env,
+    WHATSAPP_ACCESS_TOKEN: "mock",
+    WHATSAPP_PHONE_NUMBER_ID: "123",
+  };
+  assert.equal(
+    await processRuleTasks(connected, { now, sender, makeMeta: payload }),
+    3,
+  );
+  assert.equal(
+    await processRuleTasks(connected, { now, sender, makeMeta: payload }),
+    2,
+  );
+  assert.equal(
+    await processRuleTasks(connected, { now, sender, makeMeta: payload }),
+    0,
+  );
+  assert.equal(calls, 5);
+});

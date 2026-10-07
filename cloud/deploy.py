@@ -42,7 +42,8 @@ def ensure_database(api):
     matches=[db for db in databases if db['name']=='nexo-crm']
     if len(matches)>1:raise RuntimeError('Hay varias bases de datos llamadas nexo-crm. Selecciona una antes de continuar.')
     database=matches[0] if matches else api.call('POST','/d1/database',{'name':'nexo-crm'})
-    api.call('POST',f"/d1/database/{database['uuid']}/query",{'sql':(ROOT/'cloud/schema.sql').read_text()})
+    results=api.call('POST',f"/d1/database/{database['uuid']}/query",{'sql':(ROOT/'cloud/schema.sql').read_text()})
+    if any(result.get('success') is False for result in (results or [])):raise RuntimeError('D1 no confirmó el esquema. El despliegue permanece bloqueado.')
     return database['uuid']
 
 
@@ -121,6 +122,9 @@ def main():
     if not application.get('aud'):raise RuntimeError('Cloudflare no devolvió el identificador del acceso. El sitio permanece bloqueado.')
     config['vars']['ACCESS_AUD']=application['aud']
     publish(config,args.wrangler)
+    generated=ROOT/'cloud/wrangler.generated.json'
+    generated.write_text(json.dumps(config,indent=2)+'\n')
+    generated.chmod(0o600)
     print('Publicación completada:',url)
     print('Prueba el acceso con tu correo y confirma que otro usuario queda bloqueado. WhatsApp sigue desactivado hasta conectar Meta y una plantilla aprobada.')
 

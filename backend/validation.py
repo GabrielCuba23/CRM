@@ -69,6 +69,28 @@ def validate_workspace(state):
         raise ValueError('Indica el nombre de la plantilla aprobada por Meta.')
     if not isinstance(automation.get('parameters'), list) or len(automation['parameters']) > 20 or any(not isinstance(v, str) or v not in FIELDS for v in automation['parameters']):
         fail()
+    rules = state.get('rules', [])
+    receipts = state.get('taskReceipts', [])
+    if not isinstance(rules, list) or len(rules) > 10000 or not all(strings(r, ['id']) and r['id'] for r in rules) or len({r['id'] for r in rules}) != len(rules):
+        fail()
+    for r in rules:
+        if not strings(r, ['name', 'templateId', 'delivery']) or not r['name'].strip() or len(r['name']) > 200 or len(r['id']) > 200 or type(r.get('enabled')) is not bool or type(r.get('daysBefore')) is not int or abs(r['daysBefore']) > 365 or type(r.get('hour')) is not int or not 0 <= r['hour'] <= 23 or r['delivery'] not in ['manual', 'integration', 'meta'] or not isinstance(r.get('services'), list) or len(r['services']) > 1000 or any(not isinstance(v, str) or len(v) > 200 for v in r['services']):
+            fail()
+        template = next((t for t in state['templates'] if t['id'] == r['templateId']), None)
+        if r['enabled'] and (not template or '{contrasena}' in template['body']):
+            raise ValueError('Una regla activa necesita una plantilla existente sin contraseña.')
+        m = r.get('meta')
+        if not strings(m, ['templateName', 'language']) or not re.fullmatch(r'[a-z]{2,3}(?:_[A-Z]{2})?', m['language']) or (m['templateName'] and not re.fullmatch(r'[a-z0-9_]{1,512}', m['templateName'])) or not isinstance(m.get('parameters'), list) or len(m['parameters']) > 20 or any(not isinstance(v, str) or v not in FIELDS for v in m['parameters']):
+            fail()
+        if r['enabled'] and r['delivery'] == 'meta' and not m['templateName']:
+            raise ValueError('Indica la plantilla aprobada para activar esta regla de Meta.')
+    if not isinstance(receipts, list) or len(receipts) > 10000 or not all(strings(r, ['id', 'signature', 'completedAt']) and re.fullmatch(r'[a-f0-9]{64}', r['signature']) for r in receipts) or len({r['id'] for r in receipts}) != len(receipts):
+        fail()
+    for receipt in receipts:
+        try:
+            dt.datetime.fromisoformat(receipt['completedAt'].replace('Z', '+00:00'))
+        except ValueError:
+            fail()
     # Preserve only known schema fields. Never copy tokens/passwords from an imported file.
     keys = {
         'clients': ['id', 'name', 'email', 'phone', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent'],
@@ -78,6 +100,8 @@ def validate_workspace(state):
         'ledger': ['id', 'description', 'service', 'kind', 'date', 'amount'],
     }
     clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark']}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
+    clean['rules'] = [{k: r[k] for k in ['id', 'name', 'templateId', 'delivery', 'enabled', 'daysBefore', 'hour', 'services']} | {'meta': {k: r['meta'][k] for k in ['templateName', 'language', 'parameters']}} for r in rules]
+    clean['taskReceipts'] = [{k: r[k] for k in ['id', 'signature', 'completedAt']} for r in receipts]
     for collection, allowed in keys.items():
         clean[collection] = [{k: row[k] for k in allowed if k in row} for row in state[collection]]
     return clean

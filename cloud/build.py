@@ -2,7 +2,7 @@
 from pathlib import Path
 import shutil
 
-FILES = ['index.html','app.js','crm.mjs','styles.css','icons.svg','login.html','login.js']
+FILES = ['index.html','app.js','crm.mjs','automation.mjs','styles.css','icons.svg','login.html','login.js']
 
 
 def build(destination=None):

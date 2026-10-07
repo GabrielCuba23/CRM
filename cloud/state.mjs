@@ -2,6 +2,8 @@ import { defaultTemplates, validateWorkspace, validDate } from "../crm.mjs";
 export function emptyState() {
   return {
     version: 2,
+    rules: [],
+    taskReceipts: [],
     clients: [],
     accounts: [],
     combos: [],
@@ -78,6 +80,26 @@ export function cleanState(raw) {
       );
     });
   }
+  state.rules = (raw.rules || []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    enabled: r.enabled,
+    templateId: r.templateId,
+    delivery: r.delivery,
+    daysBefore: r.daysBefore,
+    hour: r.hour,
+    services: [...r.services],
+    meta: {
+      templateName: r.meta.templateName,
+      language: r.meta.language,
+      parameters: [...r.meta.parameters],
+    },
+  }));
+  state.taskReceipts = (raw.taskReceipts || []).map((r) => ({
+    id: r.id,
+    signature: r.signature,
+    completedAt: r.completedAt,
+  }));
   state.automation = Object.fromEntries(
     ["enabled", "templateName", "language", "parameters", "hour"].map((k) => [
       k,

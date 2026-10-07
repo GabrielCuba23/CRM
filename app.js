@@ -1,3 +1,4 @@
+import { buildRuleTasks, deliveryLabels } from "./automation.mjs";
 import {
   fields,
   defaultTemplates,
@@ -18,6 +19,14 @@ const $ = (selector) => document.querySelector(selector);
 const storageKey = "crm.clients.v1";
 const templateKey = "crm.templates.v1";
 const workspaceKey = "crm.workspace.v2";
+let rules = [],
+  taskReceipts = [],
+  currentTask = null,
+  ruleEditId = null,
+  ruleRenderSequence = 0,
+  authProvider = "",
+  externalTaskStates = new Map(),
+  externalCompleted = new Set();
 let clients = [],
   templates = [],
   accounts = [],
@@ -63,6 +72,7 @@ if (backendRequired) {
     const session = await api("/api/session");
     secureMode = session.mode === "server";
     csrf = session.csrf;
+    authProvider = session.authProvider || "python";
     if (!secureMode) throw Error("Backend no disponible.");
   } catch {
     location.replace("/login");
@@ -88,6 +98,8 @@ function snapshot(overrides = {}) {
     ledger,
     settings,
     automation,
+    rules,
+    taskReceipts,
     ...overrides,
   };
 }
@@ -136,6 +148,8 @@ try {
     const state = validateWorkspace(JSON.parse(saved));
     ({ clients, templates, accounts, combos, ledger, settings } = state);
     automation = state.automation || automation;
+    rules = state.rules || [];
+    taskReceipts = state.taskReceipts || [];
   } else {
     const legacy = JSON.parse(localStorage.getItem(storageKey) || "[]");
     if (
@@ -258,6 +272,7 @@ function render() {
     $("#clients").append(row);
   }
   renderModules();
+  renderRules();
 }
 function editClient(c = {}) {
   refreshAccountOptions(c.accountId || "");
@@ -372,6 +387,7 @@ function refreshTemplates(selected) {
   templateOptions($("#message-template"));
   loadTemplate();
   renderTemplateLibrary();
+  renderRules();
 }
 $("#template-select").addEventListener("change", () =>
   switchTemplate($("#template-select").value),
@@ -470,6 +486,8 @@ function compose() {
   updateLink();
 }
 function openMessage(c) {
+  currentTask = null;
+  $("#confirm-task").hidden = true;
   recipient = c;
   $("#message-password").value = "";
   $("#recipient").textContent = `Para ${c.name} · ${c.phone || "Sin teléfono"}`;
@@ -502,6 +520,8 @@ $("#message-dialog").addEventListener("close", async () => {
   $("#message-text").value = "";
   $("#open-whatsapp").removeAttribute("href");
   recipient = null;
+  currentTask = null;
+  $("#confirm-task").hidden = true;
 });
 initializeModules();
 initializeSecurity();
@@ -1186,6 +1206,8 @@ function initializeModules() {
         throw Error("No se pudo guardar el respaldo.");
       ({ clients, templates, accounts, combos, ledger, settings } = state);
       automation = state.automation || automation;
+      rules = state.rules || [];
+      taskReceipts = state.taskReceipts || [];
       available = true;
       refreshAccountOptions();
       refreshTemplates();
@@ -1337,7 +1359,9 @@ async function refreshAutomationStatus() {
   try {
     const result = await api("/api/automation-status");
     const recent =
-      result.worker && Date.now() / 1000 - result.worker.checked < (result.intervalSeconds || 180) + 120;
+      result.worker &&
+      Date.now() / 1000 - result.worker.checked <
+        (result.intervalSeconds || 180) + 120;
     $("#automation-badge").textContent = !automation.enabled
       ? "Desactivado"
       : !result.configured
@@ -1404,10 +1428,12 @@ async function initializeSecurity() {
       "Nexo CRM · Sesión privada · Datos en el servidor.";
     const session = await api("/api/session");
     $("#owner-identity").textContent = `Administrador: ${session.email}`;
-    if(session.authProvider==='cloudflare-access'){
-      $('#password-form').hidden=true;
-      $('#security-description').textContent='Acceso exclusivo de tu correo mediante Cloudflare Access. El inicio de sesión se verifica antes de consultar tus datos.';
-      $('#server-auth-description').textContent='Cloudflare gestiona el inicio de sesión de la única cuenta autorizada. El CRM no almacena contraseñas de acceso al gestor.';
+    if (session.authProvider === "cloudflare-access") {
+      $("#password-form").hidden = true;
+      $("#security-description").textContent =
+        "Acceso exclusivo de tu correo mediante Cloudflare Access. El inicio de sesión se verifica antes de consultar tus datos.";
+      $("#server-auth-description").textContent =
+        "Cloudflare gestiona el inicio de sesión de la única cuenta autorizada. El CRM no almacena contraseñas de acceso al gestor.";
     }
   }
   fillAutomationForm();
@@ -1444,7 +1470,7 @@ $("#automation-form").addEventListener("submit", async (event) => {
 $("#refresh-automation").addEventListener("click", refreshAutomationStatus);
 $("#logout").addEventListener("click", async () => {
   try {
-    const result=await api("/api/logout", { method: "POST", body: "{}" });
+    const result = await api("/api/logout", { method: "POST", body: "{}" });
     location.replace(result.logoutUrl || "/login");
   } catch (error) {
     notify(error.message);
@@ -1463,3 +1489,315 @@ $("#password-form").addEventListener("submit", async (event) => {
     $("#password-status").textContent = error.message;
   }
 });
+
+function ruleFormData() {
+  const form = $("#rule-form"),
+    value = (name) => form.elements.namedItem(name).value;
+  return {
+    id: ruleEditId || createId(),
+    name: value("name").trim(),
+    templateId: value("templateId"),
+    delivery: value("delivery"),
+    enabled: form.elements.enabled.checked,
+    daysBefore: Number(value("daysBefore")),
+    hour: Number(value("hour")),
+    services: value("services")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    meta: {
+      templateName: value("metaName").trim(),
+      language: value("metaLanguage").trim(),
+      parameters: value("metaParameters")
+        .split(",")
+        .map((s) => s.trim().replace(/^\{|\}$/g, ""))
+        .filter(Boolean),
+    },
+  };
+}
+function previewRule() {
+  const form = $("#rule-form"),
+    t = templates.find((t) => t.id === form.elements.templateId.value),
+    c = clients.find((c) => c.id === $("#rule-preview-client").value);
+  $("#rule-preview").textContent =
+    t && c
+      ? fillTemplate(t.body, c, "", settings)
+      : "Añade un cliente y elige una plantilla para ver el mensaje.";
+  $("#rule-meta").open = form.elements.delivery.value === "meta";
+}
+function editRule(rule = null) {
+  ruleEditId = rule?.id || null;
+  const form = $("#rule-form");
+  form.reset();
+  templateOptions(form.elements.templateId, rule?.templateId);
+  for (const name of ["name", "delivery", "daysBefore", "hour"])
+    if (rule) form.elements.namedItem(name).value = rule[name];
+  form.elements.enabled.checked = rule?.enabled || false;
+  form.elements.services.value = rule?.services.join(", ") || "";
+  form.elements.metaName.value = rule?.meta.templateName || "";
+  form.elements.metaLanguage.value = rule?.meta.language || "es";
+  form.elements.metaParameters.value =
+    rule?.meta.parameters.join(", ") || "nombre, servicio, vence";
+  $("#rule-title").textContent = rule ? "Editar regla" : "Nueva regla";
+  $("#rule-error").textContent = "";
+  $("#rule-preview-client").replaceChildren(
+    ...clients.map((c) => {
+      const option = element("option", c.name + " · " + c.service);
+      option.value = c.id;
+      return option;
+    }),
+  );
+  previewRule();
+  $("#rule-dialog").showModal();
+}
+async function renderRules() {
+  const sequence = ++ruleRenderSequence,
+    list = $("#rule-list");
+  if (!list) return;
+  list.replaceChildren(
+    ...rules.map((rule) => {
+      const card = element("article", undefined, "rule-card");
+      card.append(
+        element("strong", rule.name),
+        element(
+          "span",
+          rule.enabled ? "Activa" : "Preparada · desactivada",
+          `pill ${rule.enabled ? "active" : "none"}`,
+        ),
+        element(
+          "p",
+          `${rule.daysBefore} días antes · ${String(rule.hour).padStart(2, "0")}:00 Lima · ${rule.services.join(", ") || "Todas las plataformas"}`,
+        ),
+        element("small", deliveryLabels[rule.delivery]),
+      );
+      const actions = element("div", undefined, "actions");
+      actions.append(
+        button("Editar", () => editRule(rule)),
+        button("Duplicar", async () => {
+          const next = {
+            ...structuredClone(rule),
+            id: createId(),
+            name: rule.name + " (copia)",
+            enabled: false,
+          };
+          if (await persistState({ rules: [...rules, next] })) {
+            rules.push(next);
+            renderRules();
+          }
+        }),
+        button(rule.enabled ? "Desactivar" : "Activar", async () => {
+          const next = rules.map((r) =>
+            r.id === rule.id ? { ...r, enabled: !r.enabled } : r,
+          );
+          if (await persistState({ rules: next })) {
+            rules = next;
+            renderRules();
+          }
+        }),
+        button("Eliminar", async () => {
+          if (
+            !confirm(
+              "¿Eliminar esta regla? Las tareas no reservadas dejarán de estar disponibles.",
+            )
+          )
+            return;
+          const next = rules.filter((r) => r.id !== rule.id);
+          if (await persistState({ rules: next })) {
+            rules = next;
+            renderRules();
+          }
+        }),
+      );
+      card.append(actions);
+      return card;
+    }),
+  );
+  if (!rules.length)
+    list.append(
+      element(
+        "p",
+        "Todavía no hay reglas. Crea una y elige cualquier mensaje de tu biblioteca.",
+        "muted",
+      ),
+    );
+  try {
+    const all = (await buildRuleTasks(snapshot())).filter(
+        (task) => !externalCompleted.has(task.id),
+      ),
+      query = $("#task-search").value.toLocaleLowerCase(),
+      tasks = all.filter((t) =>
+        [t.clientName, t.ruleName, t.text].some((v) =>
+          v.toLocaleLowerCase().includes(query),
+        ),
+      );
+    if (sequence !== ruleRenderSequence) return;
+    $("#task-summary").textContent =
+      `${all.length} pendientes según tus reglas y autorizaciones. ${tasks.length} coinciden con la búsqueda.`;
+    $("#task-list").replaceChildren(
+      ...tasks.map((task) => {
+        const card = element("article", undefined, "rule-card");
+        card.append(
+          element("strong", task.clientName + " · " + task.ruleName),
+          element(
+            "small",
+            `${task.phone} · ${formatDate(task.dueDate)} · ${deliveryLabels[task.delivery]}`,
+          ),
+          element("pre", task.text, "message-preview"),
+        );
+        if (task.delivery === "manual")
+          card.append(
+            button("Revisar y abrir WhatsApp", () => {
+              const client = clients.find((c) => c.id === task.clientId);
+              if (!client) return;
+              openMessage(client);
+              currentTask = task;
+              $("#message-template").value = rules.find(
+                (r) => r.id === task.ruleId,
+              ).templateId;
+              messageTemplateId = $("#message-template").value;
+              $("#message-text").value = task.text;
+              $("#confirm-task").hidden = false;
+              updateLink();
+            }),
+          );
+        else
+          card.append(
+            element(
+              "p",
+              externalTaskStates.get(task.id) ||
+                "Preparada. Requiere conectar el servicio elegido.",
+              "muted",
+            ),
+          );
+        return card;
+      }),
+    );
+    if (!tasks.length)
+      $("#task-list").append(
+        element(
+          "p",
+          "No hay mensajes pendientes. Las reglas desactivadas y los clientes sin autorización no generan tareas.",
+          "muted",
+        ),
+      );
+  } catch (error) {
+    $("#task-summary").textContent = error.message;
+  }
+}
+$("#new-rule").addEventListener("click", () => editRule());
+$("#rule-form").addEventListener("input", previewRule);
+$("#rule-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const rule = ruleFormData(),
+      next = ruleEditId
+        ? rules.map((r) => (r.id === ruleEditId ? rule : r))
+        : [...rules, rule];
+    validateWorkspace(snapshot({ rules: next }));
+    if (!(await persistState({ rules: next })))
+      throw Error("No se pudo guardar; revisa el aviso del gestor.");
+    rules = next;
+    $("#rule-dialog").close();
+    renderRules();
+    notify("Regla guardada. No se conectó ni se envió ningún mensaje.");
+  } catch (error) {
+    $("#rule-error").textContent = error.message;
+  }
+});
+$("#confirm-task").addEventListener("click", async () => {
+  if (
+    !currentTask ||
+    !confirm(
+      "¿Confirmas que tú enviaste este mensaje en WhatsApp? Abrir la conversación no equivale a enviarlo.",
+    )
+  )
+    return;
+  const next = [
+    ...taskReceipts.filter((r) => r.id !== currentTask.id),
+    {
+      id: currentTask.id,
+      signature: currentTask.signature,
+      completedAt: new Date().toISOString(),
+    },
+  ];
+  if (await persistState({ taskReceipts: next })) {
+    taskReceipts = next;
+    $("#message-dialog").close();
+    renderRules();
+    notify(
+      "Envío confirmado por ti. No se vuelve a preparar para este vencimiento.",
+    );
+  }
+});
+$("#task-search").addEventListener("input", renderRules);
+async function refreshIntegrations(generate = false) {
+  if (!secureMode || authProvider !== "cloudflare-access") {
+    $("#integration-status").textContent =
+      "Preparada, sin conectar. La API de tareas se activa en la versión privada de Cloudflare; el modo actual permite enviar por wa.me con tu confirmación.";
+    return;
+  }
+  try {
+    const data = await api(
+      generate ? "/api/message-tasks/refresh" : "/api/message-tasks",
+      generate ? { method: "POST", body: "{}" } : {},
+    );
+    $("#integration-status").textContent = data.configured
+      ? "Credencial instalada. Debes conectar y comprobar tu herramienta externa."
+      : "Integración preparada, sin conectar: no hay una credencial instalada.";
+    externalCompleted = new Set(
+      data.tasks
+        .filter((row) => ["completed", "accepted"].includes(row.state))
+        .map((row) => row.id),
+    );
+    externalTaskStates = new Map(
+      data.tasks.map((row) => [
+        row.id,
+        {
+          pending: "En cola, pendiente de recoger por la herramienta.",
+          claimed: "Reservada por la herramienta; pendiente de resultado.",
+          completed: "Completada según la herramienta.",
+          accepted: "Aceptada por Meta; no confirma entrega.",
+          uncertain: "Resultado incierto: revisión necesaria.",
+          rejected: "Falló; revisión necesaria.",
+          cancelled: "Cancelada por cambios en los datos.",
+          processing: "Procesando.",
+          rate_limited: "Proveedor ocupado; pendiente de reintento.",
+        }[row.state] || row.state,
+      ]),
+    );
+    const table = element("table"),
+      head = element("tr");
+    for (const text of ["Cliente / regla", "Estado", "Último cambio"])
+      head.append(element("th", text));
+    const thead = element("thead");
+    thead.append(head);
+    table.append(thead);
+    const tbody = element("tbody");
+    for (const row of data.tasks) {
+      const tr = element("tr");
+      for (const text of [
+        row.task.clientName + " · " + row.task.ruleName,
+        externalTaskStates.get(row.id),
+        new Date(row.updated * 1000).toLocaleString("es-PE", {
+          timeZone: "America/Lima",
+        }),
+      ])
+        tr.append(element("td", text));
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    $("#integration-history").replaceChildren(table);
+    renderRules();
+  } catch (error) {
+    $("#integration-status").textContent = error.message;
+  }
+}
+$("#refresh-tasks").addEventListener("click", async () => {
+  await refreshIntegrations(true);
+  await renderRules();
+});
+$("#refresh-integration").addEventListener("click", () =>
+  refreshIntegrations(),
+);
+renderRules();
+refreshIntegrations();

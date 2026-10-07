@@ -898,3 +898,54 @@ aside > p {
 #password-form {
   max-width: 460px;
 }
+
+.rule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+.rule-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.2rem;
+  border: 1px solid var(--line, #dce2f0);
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  min-width: 0;
+}
+.rule-card p {
+  margin: 0;
+}
+.rule-card .actions {
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.rule-card .pill {
+  align-self: flex-start;
+}
+.message-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  padding: 1rem;
+  background: #edf7f1;
+  color: #193b32;
+  border-radius: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+.dark .rule-card {
+  background: #1d2538;
+  border-color: #39425a;
+}
+.dark .message-preview {
+  background: #213e36;
+  color: #e4f5eb;
+}
+details > summary {
+  cursor: pointer;
+  padding: 1rem 0;
+  font-weight: 650;
+}

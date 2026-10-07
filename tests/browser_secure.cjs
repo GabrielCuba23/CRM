@@ -89,6 +89,7 @@ const assert = require("node:assert/strict");
     () => document.querySelector("#template-select").options.length === 8,
   );
   await page.locator("nav [data-view=automation]").click();
+  await page.locator("#legacy-meta summary").click();
   await page.locator("#automation-name").fill("recordatorio_renovacion");
   await page.locator("#automation-language").fill("es_PE");
   await page.locator("#automation-enabled").check();
@@ -104,7 +105,11 @@ const assert = require("node:assert/strict");
     ),
   );
   await page.reload();
-  await page.waitForFunction(() => document.querySelector("#automation-name").value === "recordatorio_renovacion");
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#automation-name").value ===
+      "recordatorio_renovacion",
+  );
   assert(await page.locator("#automation-enabled").isChecked());
   assert.equal(
     await page.locator("#automation-name").inputValue(),

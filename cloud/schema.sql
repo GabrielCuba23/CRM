@@ -11,3 +11,9 @@ CREATE TABLE IF NOT EXISTS worker_health (
 );
 
 CREATE INDEX IF NOT EXISTS reminders_expiry ON reminders(expires);
+CREATE TABLE IF NOT EXISTS message_tasks (
+  id TEXT PRIMARY KEY, signature TEXT NOT NULL, body TEXT NOT NULL,
+  state TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL,
+  claim_hash TEXT, provider_id TEXT, error TEXT
+);
+CREATE INDEX IF NOT EXISTS message_tasks_state ON message_tasks(state, updated);
