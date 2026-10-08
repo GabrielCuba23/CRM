@@ -53,6 +53,7 @@ let rules = [],
   authProvider = "",
   externalTaskStates = new Map(),
   externalCompleted = new Set();
+let supplierOverviewPage = 1;
 let promotions = emptyPromotions();
 let inboxClientId = "";
 let reports = { ...defaultReports };
@@ -2974,86 +2975,169 @@ $("#promotion-apply-form").addEventListener("submit", async (e) => {
 });
 promotionKindFields();
 
+function supplierWhatsappLink(r, label = "WhatsApp") {
+  if (!r.supplier?.phone) return null;
+  try {
+    const a = element("a", label, "button whatsapp");
+    a.href = whatsappUrl(
+      r.supplier.phone,
+      `Hola ${r.supplierName}, quisiera consultar la renovación de ${r.service}${r.expires ? " con vencimiento " + formatDate(r.expires) : ""}${r.cost === null ? "" : ". Importe registrado: " + money(r.cost)}.`,
+    );
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+  } catch {
+    return null;
+  }
+}
+function showSupplierDetail(r) {
+  const card = element("article", undefined, "account-card");
+  const status = element(
+    "span",
+    r.label,
+    "pill " +
+      (r.days !== null && r.days <= 0
+        ? "expired"
+        : r.days !== null && r.days <= 7
+          ? "soon"
+          : "none"),
+  );
+  card.append(
+    element("h3", r.service),
+    element("p", r.category + (r.detail ? " · " + r.detail : ""), "muted"),
+    element("strong", "Proveedor: " + r.supplierName),
+    element(
+      "p",
+      r.supplier
+        ? `${r.supplier.phone || "Sin teléfono"}${r.supplier.email ? " · " + r.supplier.email : ""}`
+        : "Contacto pendiente en Finanzas",
+    ),
+    status,
+    element(
+      "p",
+      `Importe del periodo: ${r.cost === null ? "Sin coste registrado" : money(r.cost)}${r.months > 0 ? " / " + r.months + " mes(es)" : r.months === 0 ? " · Pago único" : " · Periodo no configurado"}`,
+    ),
+    element(
+      "small",
+      r.monthly === null
+        ? "Sin estimación mensual"
+        : `${money(r.monthly)} estimados al mes`,
+    ),
+  );
+  if (r.expires)
+    card.append(element("small", "Renovación: " + formatDate(r.expires)));
+  const actions = element("div", undefined, "actions");
+  if (r.supplier?.phone) {
+    try {
+      const link = element("a", "WhatsApp del proveedor", "button whatsapp");
+      link.href = whatsappUrl(
+        r.supplier.phone,
+        `Hola ${r.supplierName}, quisiera consultar la renovación de ${r.service}${r.expires ? " con vencimiento " + formatDate(r.expires) : ""}${r.cost === null ? "" : ". Importe registrado: " + money(r.cost)}.`,
+      );
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      actions.append(link);
+    } catch {
+      actions.append(
+        element("small", "Revisa el número del proveedor en Finanzas."),
+      );
+    }
+  } else
+    actions.append(
+      element("small", "Añade el teléfono del proveedor para usar WhatsApp."),
+    );
+  const edit = element("a", "Ver en Finanzas", "button secondary");
+  edit.href = "#finance-suppliers";
+  actions.append(edit);
+  card.append(actions);
+  const body = $("#supplier-overview-detail-body");
+  body.replaceChildren(card);
+  for (const a of body.querySelectorAll('a[href="#finance-suppliers"]'))
+    a.addEventListener("click", () => $("#supplier-overview-detail").close());
+  $("#supplier-overview-detail").showModal();
+}
 function renderSupplierOverview() {
   const data = supplierOverview(snapshot(), todayLima());
   $("#supplier-monthly").textContent = money(data.monthly);
   $("#supplier-upcoming").textContent = money(data.dueCost);
   $("#supplier-paid").textContent = money(data.paid);
   $("#supplier-overview-summary").textContent =
-    `${data.rows.length} cuentas y servicios · ${data.upcoming.length} requieren atención · ${data.unknownMonthly} sin coste o periodo para estimar el mes${data.unknownDue ? " · " + data.unknownDue + " vencimientos con coste desconocido" : ""}. La estimación divide el coste entre los meses contratados; los importes pagados corresponden solo a gastos registrados. Revisa manualmente importes y fechas al renovar.`;
+    `${data.rows.length} servicios · ${data.upcoming.length} requieren atención${data.unknownMonthly ? " · " + data.unknownMonthly + " sin estimación mensual" : ""}${data.unknownDue ? " · " + data.unknownDue + " importes pendientes de definir" : ""}`;
+  const q = $("#supplier-overview-search").value.trim().toLocaleLowerCase(),
+    rows = data.rows.filter((r) =>
+      [
+        r.service,
+        r.supplierName,
+        r.detail,
+        r.supplier?.phone,
+        r.supplier?.email,
+      ].some((v) => (v || "").toLocaleLowerCase().includes(q)),
+    ),
+    pages = Math.max(1, Math.ceil(rows.length / 10));
+  supplierOverviewPage = Math.min(supplierOverviewPage, pages);
   const list = $("#supplier-overview-rows");
   list.replaceChildren();
-  for (const r of data.rows) {
-    const card = element("article", undefined, "account-card");
-    const status = element(
-      "span",
-      r.label,
-      "pill " +
-        (r.days !== null && r.days <= 0
-          ? "expired"
-          : r.days !== null && r.days <= 7
-            ? "soon"
-            : "none"),
-    );
-    card.append(
-      element("h3", r.service),
-      element("p", r.category + (r.detail ? " · " + r.detail : ""), "muted"),
-      element("strong", "Proveedor: " + r.supplierName),
+  const first = (supplierOverviewPage - 1) * 10;
+  for (const r of rows.slice(first, first + 10)) {
+    const row = element("tr");
+    row.append(element("td", r.service), element("td", r.supplierName));
+    const date = element("td");
+    date.append(
       element(
-        "p",
-        r.supplier
-          ? `${r.supplier.phone || "Sin teléfono"}${r.supplier.email ? " · " + r.supplier.email : ""}`
-          : "Contacto pendiente en Finanzas",
-      ),
-      status,
-      element(
-        "p",
-        `Importe del periodo: ${r.cost === null ? "Sin coste registrado" : money(r.cost)}${r.months > 0 ? " / " + r.months + " mes(es)" : r.months === 0 ? " · Pago único" : " · Periodo no configurado"}`,
-      ),
-      element(
-        "small",
-        r.monthly === null
-          ? "Sin estimación mensual"
-          : `${money(r.monthly)} estimados al mes`,
+        "span",
+        r.label,
+        "pill " +
+          (r.days !== null && r.days <= 0
+            ? "expired"
+            : r.days !== null && r.days <= 7
+              ? "soon"
+              : "none"),
       ),
     );
-    if (r.expires)
-      card.append(element("small", "Renovación: " + formatDate(r.expires)));
-    const actions = element("div", undefined, "actions");
-    if (r.supplier?.phone) {
-      try {
-        const link = element("a", "WhatsApp del proveedor", "button whatsapp");
-        link.href = whatsappUrl(
-          r.supplier.phone,
-          `Hola ${r.supplierName}, quisiera consultar la renovación de ${r.service}${r.expires ? " con vencimiento " + formatDate(r.expires) : ""}${r.cost === null ? "" : ". Importe registrado: " + money(r.cost)}.`,
-        );
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        actions.append(link);
-      } catch {
-        actions.append(
-          element("small", "Revisa el número del proveedor en Finanzas."),
-        );
-      }
-    } else
-      actions.append(
-        element("small", "Añade el teléfono del proveedor para usar WhatsApp."),
-      );
-    const edit = element("a", "Ver en Finanzas", "button secondary");
-    edit.href = "#finance-suppliers";
-    actions.append(edit);
-    card.append(actions);
-    list.append(card);
+    row.append(
+      date,
+      element("td", r.cost === null ? "Sin definir" : money(r.cost)),
+    );
+    const actions = element("td"),
+      buttons = element("div", undefined, "actions"),
+      wa = supplierWhatsappLink(r);
+    if (wa) buttons.append(wa);
+    buttons.append(button("Detalle", () => showSupplierDetail(r)));
+    actions.append(buttons);
+    row.append(actions);
+    list.append(row);
   }
-  if (!data.rows.length)
-    list.append(
-      element(
-        "p",
-        "Añade cuentas madre o herramientas del negocio desde Finanzas para ver sus renovaciones aquí.",
+  if (!rows.length) {
+    const tr = element("tr"),
+      td = element(
+        "td",
+        data.rows.length
+          ? "No hay coincidencias."
+          : "Añade cuentas o herramientas desde Finanzas.",
         "empty",
-      ),
-    );
+      );
+    td.colSpan = 5;
+    tr.append(td);
+    list.append(tr);
+  }
+  $("#supplier-page-status").textContent = rows.length
+    ? `${first + 1}–${Math.min(first + 10, rows.length)} de ${rows.length}`
+    : "0 registros";
+  $("#supplier-page-prev").disabled = supplierOverviewPage <= 1;
+  $("#supplier-page-next").disabled = supplierOverviewPage >= pages;
 }
+$("#supplier-overview-search").addEventListener("input", () => {
+  supplierOverviewPage = 1;
+  renderSupplierOverview();
+});
+$("#supplier-page-prev").addEventListener("click", () => {
+  if (supplierOverviewPage > 1) supplierOverviewPage--;
+  renderSupplierOverview();
+});
+$("#supplier-page-next").addEventListener("click", () => {
+  supplierOverviewPage++;
+  renderSupplierOverview();
+});
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) renderSupplierOverview();

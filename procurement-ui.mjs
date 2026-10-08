@@ -53,6 +53,8 @@ export function initializeProcurement({
     }
   }
   function accountOptions(a = {}) {
+    $("#account-supplier-search").value = "";
+    $("#account-offer-search").value = "";
     const catalog = p(),
       supplier = $("#account-supplier");
     supplier.replaceChildren(
@@ -338,6 +340,9 @@ export function initializeProcurement({
       delete $(form).dataset.id;
     };
   $("#account-supplier").onchange = () => {
+    $("#account-offer-search").value = "";
+    const s = p().suppliers.find((s) => s.id === $("#account-supplier").value);
+    if (s) $("#account-form").elements.provider.value = s.name;
     offerOptions();
   };
   $("#account-offer").onchange = () => {
@@ -350,6 +355,147 @@ export function initializeProcurement({
       f.elements.costIntervalMonths.value = o.intervalMonths;
     }
     costPreview();
+  };
+  $("#account-supplier-search").addEventListener("input", () => {
+    const selected = $("#account-supplier").value,
+      q = $("#account-supplier-search").value.trim().toLocaleLowerCase();
+    $("#account-supplier").replaceChildren(
+      opt("Sin proveedor registrado", ""),
+      ...p()
+        .suppliers.filter(
+          (s) =>
+            s.id === selected ||
+            [s.name, s.phone, s.email].some((v) =>
+              v.toLocaleLowerCase().includes(q),
+            ),
+        )
+        .map((s) => opt(s.name, s.id)),
+    );
+    $("#account-supplier").value = selected;
+  });
+  $("#account-offer-search").addEventListener("input", () => {
+    const selected = $("#account-offer").value,
+      q = $("#account-offer-search").value.trim().toLocaleLowerCase();
+    offerOptions(selected);
+    for (const option of [...$("#account-offer").options])
+      if (
+        option.value &&
+        option.value !== selected &&
+        !option.textContent.toLocaleLowerCase().includes(q)
+      )
+        option.remove();
+  });
+  $("#account-create-supplier").onclick = () => {
+    const f = $("#account-supplier-form");
+    f.reset();
+    f.elements.name.value =
+      $("#account-supplier-search").value.trim() ||
+      $("#account-form").elements.provider.value;
+    $("#account-supplier-error").textContent = "";
+    $("#account-supplier-dialog").showModal();
+  };
+  $("#account-supplier-form").onsubmit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const btn = $("#account-supplier-save");
+    btn.disabled = true;
+    try {
+      const data = Object.fromEntries(new FormData(e.target));
+      const supplier = {
+        id: createId(),
+        name: data.name.trim(),
+        phone: data.phone.trim(),
+        email: data.email.trim(),
+        notes: data.notes.trim(),
+      };
+      if (!supplier.name) throw Error("Escribe el nombre del proveedor.");
+      if (
+        p().suppliers.some(
+          (s) =>
+            s.name.trim().toLocaleLowerCase() ===
+            supplier.name.toLocaleLowerCase(),
+        )
+      )
+        throw Error(
+          "Ya existe un proveedor con ese nombre. Selecciónalo en la cuenta o usa un nombre que lo distinga.",
+        );
+      if (await change((n) => n.suppliers.push(supplier))) {
+        accountOptions({ supplierId: supplier.id });
+        $("#account-form").elements.provider.value = supplier.name;
+        $("#account-supplier-dialog").close();
+        costPreview();
+      } else
+        $("#account-supplier-error").textContent = $("#status").textContent;
+    } catch (err) {
+      $("#account-supplier-error").textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  $("#account-create-offer").onclick = () => {
+    const supplier = p().suppliers.find(
+      (s) => s.id === $("#account-supplier").value,
+    );
+    if (!supplier) {
+      $("#account-error").textContent =
+        "Selecciona un proveedor registrado o crea uno con Nuevo proveedor aquí antes de añadir su producto.";
+      return;
+    }
+    const f = $("#account-product-form"),
+      account = $("#account-form");
+    f.reset();
+    f.dataset.supplierId = supplier.id;
+    f.elements.name.value =
+      $("#account-offer-search").value.trim() || account.elements.service.value;
+    f.elements.cost.value = account.elements.cost.value;
+    f.elements.capacity.value = account.elements.capacity.value;
+    f.elements.intervalMonths.value = account.elements.costIntervalMonths.value;
+    $("#account-product-supplier").textContent = "Proveedor: " + supplier.name;
+    $("#account-product-error").textContent = "";
+    $("#account-product-dialog").showModal();
+  };
+  $("#account-product-form").onsubmit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const btn = $("#account-product-save");
+    btn.disabled = true;
+    try {
+      const f = e.target,
+        data = Object.fromEntries(new FormData(f)),
+        offer = {
+          id: createId(),
+          supplierId: f.dataset.supplierId,
+          type: "product",
+          name: data.name.trim(),
+          costCents: cents(data.cost),
+          intervalMonths: Number(data.intervalMonths),
+          capacity: Number(data.capacity),
+          notes: data.notes.trim(),
+        };
+      if (!offer.name) throw Error("Escribe un nombre de producto.");
+      if (
+        p().offers.some(
+          (o) =>
+            o.supplierId === offer.supplierId &&
+            o.type === "product" &&
+            o.name.trim().toLocaleLowerCase() ===
+              offer.name.toLocaleLowerCase(),
+        )
+      )
+        throw Error(
+          "Ya existe ese producto para este proveedor. Selecciónalo o escribe un nombre diferente.",
+        );
+      if (await change((n) => n.offers.push(offer))) {
+        accountOptions({ supplierId: offer.supplierId, offerId: offer.id });
+        $("#account-offer").dispatchEvent(new Event("change"));
+        $("#account-product-dialog").close();
+        $("#account-error").textContent = "";
+      } else $("#account-product-error").textContent = $("#status").textContent;
+    } catch (err) {
+      $("#account-product-error").textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
   };
   for (const k of ["cost", "capacity", "costIntervalMonths"])
     $("#account-form").elements[k].addEventListener("input", costPreview);

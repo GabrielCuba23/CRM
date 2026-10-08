@@ -66,8 +66,8 @@ const { chromium } = require("playwright"),
       localStorage.setItem("crm.workspace.v2", JSON.stringify(s));
     });
     await p.reload();
-    await p.waitForSelector("#supplier-overview-rows article");
-    assert.equal(await p.locator("#supplier-overview-rows article").count(), 2);
+    await p.waitForSelector("#supplier-overview-rows tr");
+    assert.equal(await p.locator("#supplier-overview-rows tr").count(), 2);
     assert.match(await p.locator("#supplier-monthly").textContent(), /60.00/);
     assert.match(
       await p.locator("#supplier-overview-rows").textContent(),
@@ -98,6 +98,50 @@ const { chromium } = require("playwright"),
     assert.match(await p.locator("#supplier-monthly").textContent(), /70.00/);
     await p.reload();
     assert.match(await p.locator("#supplier-monthly").textContent(), /70.00/);
+    await p
+      .locator("#supplier-overview-rows button")
+      .filter({ hasText: "Detalle" })
+      .first()
+      .click();
+    assert.equal(
+      await p.locator("#supplier-overview-detail").isVisible(),
+      true,
+    );
+    assert.match(
+      await p.locator("#supplier-overview-detail-body").textContent(),
+      /Mi proveedor/,
+    );
+    await p.locator("#supplier-overview-detail .close").click();
+    await p.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem("crm.workspace.v2")),
+        a = s.accounts[0];
+      for (let i = 1; i < 34; i++)
+        s.accounts.push({
+          ...a,
+          id: "extra-" + i,
+          email: "extra" + i + "@example.com",
+          service: "Servicio " + i,
+        });
+      localStorage.setItem("crm.workspace.v2", JSON.stringify(s));
+    });
+    await p.reload();
+    await p.waitForSelector("#supplier-overview-rows tr");
+    assert.equal(await p.locator("#supplier-overview-rows tr").count(), 10);
+    assert.match(
+      await p.locator("#supplier-page-status").textContent(),
+      /1–10 de 35/,
+    );
+    await p.locator("#supplier-page-next").click();
+    assert.match(
+      await p.locator("#supplier-page-status").textContent(),
+      /11–20 de 35/,
+    );
+    await p.locator("#supplier-overview-search").fill("Hosting");
+    assert.equal(await p.locator("#supplier-overview-rows tr").count(), 1);
+    assert.match(
+      await p.locator("#supplier-page-status").textContent(),
+      /1–1 de 1/,
+    );
     await p.setViewportSize({ width: 390, height: 844 });
     assert.ok(await p.locator("#supplier-overview").isVisible());
     assert.deepEqual(errors, []);

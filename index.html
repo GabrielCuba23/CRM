@@ -168,7 +168,43 @@
             </article>
           </div>
           <p id="supplier-overview-summary" class="muted"></p>
-          <div id="supplier-overview-rows" class="cards"></div>
+          <label
+            >Buscar servicio o proveedor<input
+              id="supplier-overview-search"
+              type="search"
+              placeholder="Nombre, proveedor o contacto"
+          /></label>
+          <div class="table-scroll supplier-overview-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Servicio</th>
+                  <th>Proveedor</th>
+                  <th>Vencimiento</th>
+                  <th>Importe</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="supplier-overview-rows"></tbody>
+            </table>
+          </div>
+          <div class="actions supplier-pagination">
+            <button id="supplier-page-prev" type="button" class="secondary">
+              Anterior</button
+            ><span id="supplier-page-status" aria-live="polite"></span
+            ><button id="supplier-page-next" type="button" class="secondary">
+              Siguiente
+            </button>
+          </div>
+          <details>
+            <summary>Cómo se calculan los importes</summary>
+            <p>
+              La inversión mensual es una estimación del coste dividido entre
+              los meses contratados. Los pagos corresponden a gastos
+              registrados. Actualiza importes y fechas desde Finanzas al
+              renovar.
+            </p>
+          </details>
         </div>
         <div class="section-head">
           <h2>Venta rápida</h2>
@@ -1610,6 +1646,113 @@
         >
       </div>
     </dialog>
+    <dialog id="supplier-overview-detail">
+      <div class="section-head">
+        <h2>Detalle del servicio y proveedor</h2>
+        <button type="button" class="close icon-button" aria-label="Cerrar">
+          ×
+        </button>
+      </div>
+      <div id="supplier-overview-detail-body"></div>
+    </dialog>
+    <dialog id="account-supplier-dialog">
+      <form id="account-supplier-form">
+        <div class="section-head">
+          <h2>Nuevo proveedor</h2>
+          <button type="button" class="close icon-button" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <p>
+          Se guardará en el mismo directorio de Finanzas y quedará seleccionado
+          en la cuenta madre.
+        </p>
+        <div class="form-grid">
+          <label
+            >Nombre libre<input
+              name="name"
+              maxlength="120"
+              required
+              placeholder="Cualquier proveedor o empresa" /></label
+          ><label
+            >WhatsApp (opcional)<input
+              name="phone"
+              type="tel"
+              maxlength="80"
+              placeholder="+51 987 654 321" /></label
+          ><label
+            >Correo (opcional)<input
+              name="email"
+              type="email"
+              maxlength="254" /></label
+          ><label
+            >Notas<textarea name="notes" maxlength="2000"></textarea>
+          </label>
+        </div>
+        <p id="account-supplier-error" class="error" role="alert"></p>
+        <div class="actions">
+          <button id="account-supplier-save">
+            Guardar y seleccionar proveedor</button
+          ><button type="button" class="secondary close">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="account-product-dialog">
+      <form id="account-product-form">
+        <div class="section-head">
+          <h2>Nuevo producto del proveedor</h2>
+          <button type="button" class="close icon-button" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <p id="account-product-supplier"></p>
+        <p>
+          El producto se guardará en Finanzas. Puedes personalizarlo y ajustar
+          después los datos de esta cuenta.
+        </p>
+        <div class="form-grid">
+          <label
+            >Nombre libre del producto<input
+              name="name"
+              maxlength="120"
+              required
+              placeholder="Netflix, Adobe o cualquier producto" /></label
+          ><label
+            >Coste total S/<input
+              name="cost"
+              type="number"
+              min="0"
+              max="999999"
+              step="0.01"
+              required /></label
+          ><label
+            >Periodo<select name="intervalMonths">
+              <option value="1">Mensual</option>
+              <option value="3">Trimestral</option>
+              <option value="6">Semestral</option>
+              <option value="12">Anual</option>
+              <option value="0">Pago único</option>
+            </select></label
+          ><label
+            >Perfiles<input
+              name="capacity"
+              type="number"
+              min="1"
+              max="50"
+              value="5"
+              required /></label
+          ><label
+            >Notas<textarea name="notes" maxlength="2000"></textarea>
+          </label>
+        </div>
+        <p id="account-product-error" class="error" role="alert"></p>
+        <div class="actions">
+          <button id="account-product-save">
+            Guardar y seleccionar producto</button
+          ><button type="button" class="secondary close">Cancelar</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="account-dialog">
       <form id="account-form">
         <div class="section-head">
@@ -1651,8 +1794,9 @@
               listas.</small
             ></label
           ><label
-            >Proveedor (nombre libre)<input name="provider" maxlength="120"
-          /></label>
+            >Proveedor (nombre libre)<input
+              name="provider"
+              maxlength="120" /></label
           ><label
             >Vencimiento<input name="expires" type="date" required /></label
           ><label
@@ -1667,16 +1811,34 @@
         </div>
         <div class="form-grid">
           <label
-            >Proveedor registrado<select
-              id="account-supplier"
-              name="supplierId"
+            >Buscar proveedor<input
+              id="account-supplier-search"
+              type="search"
+              placeholder="Escribe un nombre o contacto"
+            /><span>Proveedor registrado</span
+            ><select id="account-supplier" name="supplierId">
+              <option value="">Sin proveedor registrado</option></select
+            ><button
+              id="account-create-supplier"
+              type="button"
+              class="secondary"
             >
-              <option value="">Sin proveedor registrado</option>
-            </select></label
+              ＋ Nuevo proveedor aquí
+            </button></label
           ><label
-            >Producto del proveedor<select id="account-offer" name="offerId">
-              <option value="">Coste manual</option>
-            </select></label
+            >Buscar producto<input
+              id="account-offer-search"
+              type="search"
+              placeholder="Escribe cualquier producto"
+            /><span>Producto del proveedor</span
+            ><select id="account-offer" name="offerId">
+              <option value="">Coste manual</option></select
+            ><button id="account-create-offer" type="button" class="secondary">
+              ＋ Nuevo producto aquí</button
+            ><small
+              >Puedes escribir libremente la plataforma y el coste de la cuenta,
+              incluso después de elegir un producto.</small
+            ></label
           ><label
             >Coste total de la cuenta (S/)<input
               id="account-cost"
