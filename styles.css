@@ -12,7 +12,7 @@
 body {
   margin: 0;
 }
-aside {
+.crm-sidebar {
   position: fixed;
   inset: 0 auto 0 0;
   width: 225px;
@@ -49,12 +49,12 @@ nav a {
 nav a:hover {
   background: #27474d;
 }
-aside > p {
+.crm-sidebar > p {
   margin-top: auto;
   font-size: 14px;
   line-height: 1.8;
 }
-aside small {
+.crm-sidebar small {
   color: #94b4bb;
 }
 main {
@@ -342,7 +342,7 @@ button:disabled {
   cursor: not-allowed;
 }
 @media (max-width: 1150px) {
-  aside {
+  .crm-sidebar {
     width: 180px;
     padding: 28px 18px;
   }
@@ -361,7 +361,7 @@ button:disabled {
   }
 }
 @media (max-width: 760px) {
-  aside {
+  .crm-sidebar {
     position: static;
     width: auto;
     padding: 16px 20px;
@@ -369,7 +369,7 @@ button:disabled {
     align-items: center;
     justify-content: space-between;
   }
-  aside > p {
+  .crm-sidebar > p {
     display: none;
   }
   nav {
@@ -432,7 +432,7 @@ button:disabled {
   background: #f1f3f9;
   color: #202c40;
 }
-aside {
+.crm-sidebar {
   background: #e9edf6;
   color: #24314a;
   border-right: 1px solid #dce1ec;
@@ -474,7 +474,7 @@ nav a.selected {
 nav a.selected {
   box-shadow: inset 0 0 0 1px #c8bff5;
 }
-aside small {
+.crm-sidebar small {
   color: #7c88a1;
 }
 main {
@@ -666,7 +666,7 @@ button,
   color: #e4e9f5;
   --muted: #a0acc3;
 }
-.dark aside {
+.dark .crm-sidebar {
   background: #1c2538;
   border-color: #313a4e;
 }
@@ -720,7 +720,7 @@ button,
   color: #d7eeeb;
 }
 @media (max-width: 1150px) {
-  aside {
+  .crm-sidebar {
     width: 190px;
   }
   main {
@@ -734,7 +734,7 @@ button,
   }
 }
 @media (max-width: 760px) {
-  aside {
+  .crm-sidebar {
     width: auto;
     position: static;
     display: block;
@@ -885,14 +885,14 @@ button,
   background: #273e35;
   color: #d8e9df;
 }
-aside nav {
+.crm-sidebar nav {
   margin-top: 20px;
   gap: 2px;
 }
-aside {
+.crm-sidebar {
   overflow: auto;
 }
-aside > p {
+.crm-sidebar > p {
   padding-top: 20px;
 }
 #password-form {
@@ -1085,4 +1085,8 @@ select {
   .inbox-bubble {
     max-width: 100%;
   }
+}
+
+.inbox-back {
+  margin-bottom: 18px;
 }

@@ -21,6 +21,21 @@ const { chromium } = require("playwright"),
       () => !document.querySelector("#client-dialog").open,
     );
     await p.locator("nav [data-view=messages]").click();
+    const menu = p.locator(".crm-sidebar");
+    assert.equal(await menu.isVisible(), true);
+    const sidebarBox = await menu.boundingBox(),
+      contactBox = await p.locator(".inbox-grid > aside").boundingBox();
+    assert.ok(
+      contactBox.x >= sidebarBox.x + sidebarBox.width,
+      "Contacts must stay inside the message panel, clear of the main menu",
+    );
+    await p.locator("nav [data-view=finance]").click();
+    await p.waitForFunction(() => !document.querySelector("#finance").hidden);
+    assert.equal(await p.locator("#finance").isVisible(), true);
+    await p.locator("nav [data-view=messages]").click();
+    await p.locator("#messages .inbox-back").click();
+    await p.waitForFunction(() => !document.querySelector("#home").hidden);
+    await p.locator("nav [data-view=messages]").click();
     await p.locator(".inbox-contact").click();
     await p
       .locator("#inbox-received")
@@ -72,6 +87,15 @@ const { chromium } = require("playwright"),
     await p.locator("#message-dialog .close").click();
     await p.setViewportSize({ width: 390, height: 844 });
     assert.equal(await p.locator("#inbox-compose").isVisible(), true);
+    assert.equal(await menu.isVisible(), true);
+    const mobileMenu = await menu.boundingBox(),
+      mobileContacts = await p.locator(".inbox-grid > aside").boundingBox();
+    assert.ok(
+      mobileContacts.y >= mobileMenu.y + mobileMenu.height,
+      "Mobile contacts must not cover navigation",
+    );
+    await p.locator("#messages .inbox-back").click();
+    await p.waitForFunction(() => !document.querySelector("#home").hidden);
     assert.deepEqual(errors, []);
     console.log(
       "PASS: manual incoming/outgoing history, explicit confirmation, persistence, templates moved and still available, safe rendering, mobile; no WhatsApp sends.",
