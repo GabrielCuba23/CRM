@@ -1,3 +1,4 @@
+import { isFormer } from "./lifecycle.mjs";
 export const networks = [
   "Facebook",
   "Instagram",
@@ -44,7 +45,16 @@ export function validateGrowth(g) {
   for (const r of g.segments)
     if (
       !text(r, ["query", "service", "status", "persona"]) ||
-      !["all", "active", "soon", "expired", "none"].includes(r.status) ||
+      ![
+        "all",
+        "active",
+        "soon",
+        "expired",
+        "none",
+        "former",
+        "archived",
+        "current",
+      ].includes(r.status) ||
       !Number.isInteger(r.minScore) ||
       r.minScore < 0 ||
       r.minScore > 100
@@ -133,6 +143,7 @@ export function validateGrowth(g) {
   ]);
 }
 export function clientStatus(c, today) {
+  if (c.archived) return "none";
   if (!c.expires) return "none";
   const days = Math.round(
     (Date.parse(c.expires + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) /
@@ -170,7 +181,13 @@ export function segmentContacts(segment, state, today) {
         c.service.toLocaleLowerCase() ===
           segment.service.toLocaleLowerCase()) &&
         (segment.status === "all" ||
-          clientStatus(c, today) === segment.status) &&
+          (segment.status === "former"
+            ? isFormer(c, today)
+            : segment.status === "archived"
+              ? !!c.archived
+              : segment.status === "current"
+                ? !isFormer(c, today)
+                : !c.archived && clientStatus(c, today) === segment.status)) &&
         leadScore(c, state, today) >= segment.minScore &&
         [
           c.name,

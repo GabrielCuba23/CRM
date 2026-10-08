@@ -16,6 +16,7 @@ const privateAssets = new Set([
   "/crm.mjs",
   "/automation.mjs",
   "/bulk.mjs",
+  "/lifecycle.mjs",
   "/procurement.mjs",
   "/procurement-ui.mjs",
   "/growth.mjs",
@@ -324,7 +325,9 @@ export async function processDue(
       .all(),
     sent = new Map(previous.results.map((r) => [r.client_id, r]));
   const candidates = state.clients
-    .filter((c) => c.expires === target && c.reminderConsent === true)
+    .filter(
+      (c) => !c.archived && c.expires === target && c.reminderConsent === true,
+    )
     .filter((c) => {
       const r = sent.get(c.id);
       return (

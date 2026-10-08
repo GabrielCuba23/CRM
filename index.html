@@ -335,6 +335,11 @@
           </div>
         </div>
         <h3>Movimientos</h3>
+        <p class="muted">
+          Los clientes vencidos se conservan en «Antiguos / sin servicio
+          vigente». Archivar libera su perfil y conserva compras e historial.
+          Puedes reactivarlos para una nueva venta.
+        </p>
         <div class="table-scroll">
           <table>
             <thead>
@@ -499,6 +504,9 @@
           ><label
             >Estado<select id="filter">
               <option value="all">Todos los estados</option>
+              <option value="former">Antiguos / sin servicio vigente</option>
+              <option value="archived">Archivados</option>
+              <option value="current">Con servicio vigente</option>
               <option value="active">Vigentes</option>
               <option value="soon">Próximos a vencer</option>
               <option value="expired">Vencidos</option>
@@ -639,6 +647,9 @@
             ><label
               >Estado<select name="status">
                 <option value="all">Todos</option>
+                <option value="former">Antiguos / sin servicio vigente</option>
+                <option value="archived">Archivados</option>
+                <option value="current">Con servicio vigente</option>
                 <option value="active">Vigente</option>
                 <option value="soon">Por vencer</option>
                 <option value="expired">Vencido</option>
@@ -1150,6 +1161,10 @@
         ><label
           >Notas<textarea name="notes" rows="2" maxlength="1000"></textarea>
         </label>
+        <label class="checkbox"
+          ><input type="checkbox" name="marketingConsent" /> El cliente autorizó
+          recibir ofertas y campañas de marketing.</label
+        >
         <p id="client-cost-info" class="muted"></p>
         <p id="client-error" class="error" role="alert"></p>
         <div class="actions end">
@@ -1188,6 +1203,17 @@
               <option value="manual">WhatsApp con mi confirmación</option>
               <option value="integration">Zapier / Make / n8n</option>
               <option value="meta">API oficial de Meta</option>
+            </select></label
+          >
+          <label
+            >Destinatarios<select name="audience">
+              <option value="all">
+                Clientes sin archivar (comportamiento habitual)
+              </option>
+              <option value="current">Con servicio vigente</option>
+              <option value="former">
+                Antiguos / sin servicio vigente (con autorización de marketing)
+              </option>
             </select></label
           >
           <label

@@ -1,3 +1,4 @@
+import { validateLifecycle } from "./lifecycle.mjs";
 import { validatePurchaseLinks } from "./procurement.mjs";
 import { validateGrowth } from "./growth.mjs";
 export const fields = [
@@ -288,6 +289,11 @@ export function validateWorkspace(state) {
       throw Error("Reglas no válidas.");
     for (const r of state.rules) {
       if (
+        r.audience !== undefined &&
+        !["all", "current", "former"].includes(r.audience)
+      )
+        throw Error("Destinatarios de regla no válidos.");
+      if (
         !strings(r, ["id", "name", "templateId", "delivery"]) ||
         !r.id ||
         r.id.length > 200 ||
@@ -344,6 +350,7 @@ export function validateWorkspace(state) {
   )
     throw Error("Confirmaciones de envío no válidas.");
   if (state.growth !== undefined) validateGrowth(state.growth);
+  state.clients.forEach(validateLifecycle);
   validatePurchaseLinks(state);
   return state;
 }

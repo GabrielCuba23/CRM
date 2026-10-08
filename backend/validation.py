@@ -33,6 +33,20 @@ def validate_workspace(state):
     for c in state['clients']:
         if not strings(c, ['id', 'name', 'email', 'phone', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin']) or not c['name'].strip() or not date(c['expires']) or not amount(c.get('price')):
             fail()
+        for flag in ['archived','marketingConsent']:
+            if flag in c and type(c[flag]) is not bool:
+                fail()
+        if c.get('archived') and c['accountId']:
+            fail()
+        if 'serviceHistory' in c:
+            history=c['serviceHistory']
+            if not isinstance(history,list) or len(history)>1000 or any(not strings(r,['id','service','accountId','profile','expires','endedAt']) or not amount(r.get('price')) for r in history):
+                fail()
+            for r in history:
+                try:
+                    dt.datetime.fromisoformat(r['endedAt'].replace('Z','+00:00'))
+                except ValueError:
+                    fail()
         if 'whatsappUsername' in c and (not isinstance(c['whatsappUsername'], str) or len(c['whatsappUsername']) > 100):
             fail()
         if 'reminderConsent' in c and type(c['reminderConsent']) is not bool:
@@ -85,6 +99,8 @@ def validate_workspace(state):
     if not isinstance(rules, list) or len(rules) > 10000 or not all(strings(r, ['id']) and r['id'] for r in rules) or len({r['id'] for r in rules}) != len(rules):
         fail()
     for r in rules:
+        if 'audience' in r and r['audience'] not in ['all','current','former']:
+            fail()
         if not strings(r, ['name', 'templateId', 'delivery']) or not r['name'].strip() or len(r['name']) > 200 or len(r['id']) > 200 or type(r.get('enabled')) is not bool or type(r.get('daysBefore')) is not int or abs(r['daysBefore']) > 365 or type(r.get('hour')) is not int or not 0 <= r['hour'] <= 23 or r['delivery'] not in ['manual', 'integration', 'meta'] or not isinstance(r.get('services'), list) or len(r['services']) > 1000 or any(not isinstance(v, str) or len(v) > 200 for v in r['services']):
             fail()
         template = next((t for t in state['templates'] if t['id'] == r['templateId']), None)
@@ -112,7 +128,7 @@ def validate_workspace(state):
         if not isinstance(rows, list) or len(rows) > 10000 or any(not strings(r, [k for k in fields if k != 'minScore']) or not r['id'] or not r['name'].strip() for r in rows) or len({r['id'] for r in rows}) != len(rows):
             fail()
     for r in growth['segments']:
-        if r['status'] not in ['all','active','soon','expired','none'] or type(r['minScore']) is not int or not 0 <= r['minScore'] <= 100:
+        if r['status'] not in ['all','active','soon','expired','none','former','archived','current'] or type(r['minScore']) is not int or not 0 <= r['minScore'] <= 100:
             fail()
     for r in growth['campaigns']:
         if r['channel'] not in ['email','whatsapp','rss'] or r['status'] != 'draft' or not r['body'].strip() or (r['segmentId'] and not any(x['id'] == r['segmentId'] for x in growth['segments'])):
@@ -155,7 +171,7 @@ def validate_workspace(state):
             fail()
     # Preserve explicit account credentials, but never arbitrary tokens or unknown fields.
     keys = {
-        'clients': ['id', 'name', 'email', 'phone', 'whatsappUsername', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent'],
+        'clients': ['id', 'name', 'email', 'phone', 'whatsappUsername', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent', 'archived', 'marketingConsent', 'serviceHistory'],
         'accounts': ['id', 'service', 'email', 'provider', 'expires', 'capacity', 'password', 'supplierId','offerId','costCents','costIntervalMonths'],
         'templates': ['id', 'name', 'body', 'context'],
         'combos': ['id', 'name', 'services', 'price'],
@@ -165,8 +181,11 @@ def validate_workspace(state):
     clean['procurement'] = {key: [{k:r[k] for k in fields} for r in procurement[key]] for key,fields in procurement_keys.items()}
     clean['growth'] = {key: [{k: r[k] for k in fields} for r in growth[key]] for key, fields in growth_keys.items()}
     clean['growth']['scoring'] = {k: growth['scoring'][k] for k in ['email','phone','active','paid']}
-    clean['rules'] = [{k: r[k] for k in ['id', 'name', 'templateId', 'delivery', 'enabled', 'daysBefore', 'hour', 'services']} | {'meta': {k: r['meta'][k] for k in ['templateName', 'language', 'parameters']}} for r in rules]
+    clean['rules'] = [{k: r[k] for k in ['id', 'name', 'templateId', 'delivery', 'enabled', 'daysBefore', 'hour', 'services']} | ({'audience':r['audience']} if 'audience' in r else {}) | {'meta': {k: r['meta'][k] for k in ['templateName', 'language', 'parameters']}} for r in rules]
     clean['taskReceipts'] = [{k: r[k] for k in ['id', 'signature', 'completedAt']} for r in receipts]
     for collection, allowed in keys.items():
         clean[collection] = [{k: row[k] for k in allowed if k in row} for row in state[collection]]
+    for c in clean['clients']:
+        if 'serviceHistory' in c:
+            c['serviceHistory'] = [{k:r[k] for k in ['id','service','accountId','profile','expires','price','endedAt']} for r in c['serviceHistory']]
     return clean

@@ -1,3 +1,4 @@
+import { isFormer, archiveContact } from "./lifecycle.mjs";
 import { emptyProcurement, accountMargin } from "./procurement.mjs";
 import { initializeProcurement } from "./procurement-ui.mjs";
 import { emptyGrowth } from "./growth.mjs";
@@ -224,7 +225,9 @@ function button(text, action, className = "secondary") {
 }
 function render() {
   $("#total").textContent = clients.length;
-  const states = clients.map((c) => subscriptionStatus(c.expires));
+  const states = clients.map((c) =>
+    c.archived ? "none" : subscriptionStatus(c.expires),
+  );
   $("#active").textContent = states.filter(
     (s) => s === "active" || s === "soon",
   ).length;
@@ -244,7 +247,14 @@ function render() {
       ($("#account-filter").value === "all" ||
         c.accountId === $("#account-filter").value) &&
       ($("#filter").value === "all" ||
-        subscriptionStatus(c.expires) === $("#filter").value),
+        ($("#filter").value === "former"
+          ? isFormer(c, todayLima())
+          : $("#filter").value === "archived"
+            ? !!c.archived
+            : $("#filter").value === "current"
+              ? !isFormer(c, todayLima())
+              : !c.archived &&
+                subscriptionStatus(c.expires) === $("#filter").value)),
   );
   $("#clients").replaceChildren();
   $("#empty").hidden = matches.length > 0;
@@ -268,19 +278,64 @@ function render() {
     const expiry = element("td");
     const state = subscriptionStatus(c.expires);
     expiry.append(
-      element("span", labels[state], `pill ${state}`),
+      element(
+        "span",
+        c.archived ? "Archivado" : labels[state],
+        `pill ${state}`,
+      ),
       element("small", formatDate(c.expires)),
     );
     const actions = element("td", undefined, "row-actions");
     actions.append(
       button("Ficha 360", () => growthUI.showContact(c)),
-      button("Renovar", async () => openRenew(c)),
+      button(c.archived ? "Reactivar / nueva venta" : "Renovar", async () => {
+        if (c.archived) {
+          editClient({ ...c, accountId: "", profile: "", expires: "" });
+          $("#client-form").dataset.reactivate = "1";
+          $("#client-form").elements.paid.disabled = false;
+          $("#client-form").elements.paid.checked = true;
+        } else openRenew(c);
+      }),
+      button("Archivar", async () => {
+        if (c.archived) return;
+        if (
+          !confirm(
+            `¿Archivar a ${c.name}? Se libera su perfil y se conserva su historial.`,
+          )
+        )
+          return;
+        const next = clients.map((x) =>
+          x.id === c.id ? archiveContact(x, new Date().toISOString()) : x,
+        );
+        const nextLedger = ledger.map((m) =>
+          !m.clientId &&
+          m.service === c.service &&
+          [`Venta · ${c.name}`, `Renovación · ${c.name}`].includes(
+            m.description,
+          )
+            ? { ...m, clientId: c.id }
+            : m,
+        );
+        if (await persistState({ clients: next, ledger: nextLedger })) {
+          clients = next;
+          ledger = nextLedger;
+          refreshAccountOptions();
+          render();
+          notify(
+            "Cliente archivado. Su historial sigue disponible en Ficha 360.",
+          );
+        }
+      }),
       button("WhatsApp →", async () => openMessage(c), "whatsapp"),
       button("Editar", async () => editClient(c)),
       button(
         "Eliminar",
         async () => {
-          if (confirm(`¿Eliminar a ${c.name}?`)) {
+          if (
+            confirm(
+              `¿Eliminar definitivamente la ficha de ${c.name}? Para conservar su historial y liberar el perfil, usa Archivar. Los movimientos financieros se conservan.`,
+            )
+          ) {
             const next = clients.filter((x) => x.id !== c.id);
             if (await persist(storageKey, next)) {
               clients = next;
@@ -299,6 +354,7 @@ function render() {
   renderRules();
 }
 function editClient(c = {}) {
+  delete $("#client-form").dataset.reactivate;
   refreshAccountOptions(c.accountId || "");
   $("#client-form").reset();
   $("#client-error").textContent = "";
@@ -319,6 +375,7 @@ function editClient(c = {}) {
     $("#client-form").elements.namedItem(key).value =
       key === "price" ? ((c.price || 0) / 100).toFixed(2) : c[key] || "";
   $("#client-title").textContent = c.id ? "Editar cliente" : "Nuevo cliente";
+  $("#client-form").elements.marketingConsent.checked = !!c.marketingConsent;
   $("#client-form").elements.reminderConsent.checked = !!c.reminderConsent;
   $("#client-form").elements.paid.disabled = !!c.id;
   $("#client-form").elements.paid.checked = !c.id;
@@ -354,7 +411,19 @@ $("#client-form").addEventListener("submit", async (event) => {
       data.email = a.email;
       data.service = a.service;
     }
-    const isNew = !data.id;
+    const previous = clients.find((c) => c.id === data.id);
+    const reactivating =
+      !!previous?.archived && $("#client-form").dataset.reactivate === "1";
+    if (reactivating && !data.expires)
+      throw Error("Indica el vencimiento del nuevo servicio.");
+    data.archived = !!previous?.archived && !reactivating;
+    data.marketingConsent = data.marketingConsent === "on";
+    data.serviceHistory = previous?.serviceHistory || [];
+    if (data.archived && data.accountId)
+      throw Error(
+        "Usa Reactivar / nueva venta para asignar una cuenta a este cliente.",
+      );
+    const isNew = !data.id || reactivating;
     const paid = data.paid === "on";
     delete data.paid;
     data.id ||= createId();
@@ -369,7 +438,7 @@ $("#client-form").addEventListener("submit", async (event) => {
               id: createId(),
               kind: "sale",
               date: todayLima(),
-              description: `Venta · ${data.name}`,
+              description: `${reactivating ? "Reventa" : "Venta"} · ${data.name}`,
               clientId: data.id,
               service: data.service,
               amount: data.price,
@@ -781,7 +850,11 @@ function renderModules() {
     .filter((a) => subscriptionStatus(a.expires) !== "expired")
     .reduce((sum, a) => sum + availableProfiles(a, clients).length, 0);
   const due = clients
-    .filter((c) => ["expired", "soon"].includes(subscriptionStatus(c.expires)))
+    .filter(
+      (c) =>
+        !c.archived &&
+        ["expired", "soon"].includes(subscriptionStatus(c.expires)),
+    )
     .sort((a, b) => a.expires.localeCompare(b.expires));
   $("#nav-renewals").textContent = due.length;
   const query = $("#account-search").value.trim().toLocaleLowerCase();
@@ -1127,6 +1200,7 @@ function initializeModules() {
                 date: todayLima(),
                 kind: "renewal",
                 description: `Renovación · ${c.name}`,
+                clientId: c.id,
                 service: c.service,
                 amount,
               },
@@ -1588,6 +1662,7 @@ function ruleFormData() {
     templateId: value("templateId"),
     delivery: value("delivery"),
     enabled: form.elements.enabled.checked,
+    audience: value("audience"),
     daysBefore: Number(value("daysBefore")),
     hour: Number(value("hour")),
     services: value("services")
@@ -1619,6 +1694,7 @@ function editRule(rule = null) {
   const form = $("#rule-form");
   form.reset();
   templateOptions(form.elements.templateId, rule?.templateId);
+  form.elements.audience.value = rule?.audience || "all";
   for (const name of ["name", "delivery", "daysBefore", "hour"])
     if (rule) form.elements.namedItem(name).value = rule[name];
   form.elements.enabled.checked = rule?.enabled || false;

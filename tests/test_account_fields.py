@@ -21,3 +21,12 @@ class AccountFieldsTest(unittest.TestCase):
         self.assertEqual(clean['growth'],state['growth'])
         state['growth']['posts'][0]['status']='published'
         with self.assertRaises(ValueError):validate_workspace(state)
+
+    def test_archived_history_survives_private_validation(self):
+        state=default_workspace()
+        state['clients']=[{'id':'old','name':'Ana','email':'','phone':'','service':'Netflix','profile':'','expires':'2020-01-01','notes':'','accountId':'','pin':'','price':1200,'archived':True,'marketingConsent':True,'serviceHistory':[{'id':'h','service':'Netflix','accountId':'old-account','profile':'Perfil 1','expires':'2020-01-01','price':1200,'endedAt':'2026-10-07T14:00:00Z'}]}]
+        clean=validate_workspace(state)
+        self.assertTrue(clean['clients'][0]['archived'])
+        self.assertEqual(clean['clients'][0]['serviceHistory'][0]['price'],1200)
+        state['clients'][0]['archived']='yes'
+        with self.assertRaises(ValueError):validate_workspace(state)

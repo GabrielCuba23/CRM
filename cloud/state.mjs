@@ -38,6 +38,9 @@ export function cleanState(raw) {
       "pin",
       "price",
       "reminderConsent",
+      "archived",
+      "marketingConsent",
+      "serviceHistory",
     ],
     accounts: [
       "id",
@@ -112,7 +115,23 @@ export function cleanState(raw) {
       );
     });
   }
+  for (const c of state.clients)
+    if (c.serviceHistory)
+      c.serviceHistory = c.serviceHistory.map((r) =>
+        Object.fromEntries(
+          [
+            "id",
+            "service",
+            "accountId",
+            "profile",
+            "expires",
+            "price",
+            "endedAt",
+          ].map((k) => [k, r[k]]),
+        ),
+      );
   state.rules = (raw.rules || []).map((r) => ({
+    ...(r.audience !== undefined ? { audience: r.audience } : {}),
     id: r.id,
     name: r.name,
     enabled: r.enabled,

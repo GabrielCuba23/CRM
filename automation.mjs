@@ -1,3 +1,4 @@
+import { isFormer } from "./lifecycle.mjs";
 import {
   fillTemplate,
   normalizePhone,
@@ -36,7 +37,18 @@ export async function ruleTask(
   client,
   { now = new Date(), includeFuture = false } = {},
 ) {
-  if (!rule.enabled || !client.reminderConsent || !client.expires) return null;
+  const former = isFormer(client, todayLima(now));
+  if (!rule.enabled || !client.expires) return null;
+  if (rule.audience === "former") {
+    if (!former || !client.marketingConsent) return null;
+  } else {
+    if (
+      client.archived ||
+      !client.reminderConsent ||
+      (rule.audience === "current" && former)
+    )
+      return null;
+  }
   if (
     rule.services.length &&
     !rule.services.some(

@@ -76,6 +76,21 @@ export function initializeGrowth({
         ),
       );
     if (!payments.length) body.append(node("p", "Sin pagos vinculados."));
+    body.append(node("h3", "Historial de servicios"));
+    for (const record of c.serviceHistory || [])
+      body.append(
+        node(
+          "p",
+          `${new Date(record.endedAt).toLocaleDateString("es-PE", { timeZone: "America/Lima" })} · ${record.service} · ${record.profile || "Sin perfil"} · Vencimiento ${record.expires || "Sin fecha"} · Precio S/ ${(record.price / 100).toFixed(2)}`,
+        ),
+      );
+    if (c.archived)
+      body.append(
+        node(
+          "p",
+          "Cliente archivado. Conserva sus compras y puede reactivarse desde Clientes.",
+        ),
+      );
     body.append(node("h3", "Redes sociales"));
     const entries = (state.growth || emptyGrowth()).interactions
       .filter((i) => i.clientId === c.id)

@@ -87,7 +87,7 @@ def process_due(db_path, now=None, sender=None):
     target = (now.date() + dt.timedelta(days=3)).isoformat()
     accepted = 0
     for client in state['clients']:
-        if client['expires'] != target or not client.get('reminderConsent', False):
+        if client.get('archived') or client['expires'] != target or not client.get('reminderConsent', False):
             continue
         with connect(db_path) as db:
             db.execute('BEGIN IMMEDIATE')
@@ -95,7 +95,7 @@ def process_due(db_path, now=None, sender=None):
             current = db.execute('SELECT body FROM workspace WHERE id=1').fetchone()
             latest = json.loads(current['body']) if current else state
             latest_client = next((c for c in latest['clients'] if c['id'] == client['id']), None)
-            if not latest.get('automation', {}).get('enabled') or not latest_client or latest_client['expires'] != target or not latest_client.get('reminderConsent', False):
+            if not latest.get('automation', {}).get('enabled') or not latest_client or latest_client.get('archived') or latest_client['expires'] != target or not latest_client.get('reminderConsent', False):
                 continue
             client = latest_client
             automation = latest['automation']
