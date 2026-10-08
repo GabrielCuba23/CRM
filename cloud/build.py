@@ -2,7 +2,7 @@
 from pathlib import Path
 import shutil
 
-FILES = ['messaging.mjs','reports.mjs','report-config.mjs','index.html','app.js','crm.mjs','automation.mjs','bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs','vendor/exceljs-4.4.0.min.js','styles.css','icons.svg','login.html','login.js','sw.js','manifest.webmanifest','app-icon.svg','app-icon-192.png','app-icon-512.png']
+FILES = ['supplier-overview.mjs','promotions.mjs','messaging.mjs','reports.mjs','report-config.mjs','index.html','app.js','crm.mjs','automation.mjs','bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs','vendor/exceljs-4.4.0.min.js','styles.css','icons.svg','login.html','login.js','sw.js','manifest.webmanifest','app-icon.svg','app-icon-192.png','app-icon-512.png']
 
 
 def build(destination=None):

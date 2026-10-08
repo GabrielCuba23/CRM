@@ -1,3 +1,4 @@
+import { validatePromotions } from "./promotions.mjs";
 import { validateReports } from "./report-config.mjs";
 import { validateLifecycle } from "./lifecycle.mjs";
 import { validatePurchaseLinks } from "./procurement.mjs";
@@ -146,6 +147,7 @@ export function validateWorkspace(state) {
   )
     throw Error("Formato de respaldo no válido.");
   validateReports(state.reports);
+  validatePromotions(state.promotions);
   if (
     !state.clients.every(
       (c) =>

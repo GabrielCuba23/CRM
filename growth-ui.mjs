@@ -76,6 +76,19 @@ export function initializeGrowth({
         ),
       );
     if (!payments.length) body.append(node("p", "Sin pagos vinculados."));
+    body.append(node("h3", "Descuentos y regalos"));
+    const promotions = (state.promotions?.applications || []).filter(
+      (a) => a.clientId === c.id,
+    );
+    for (const a of promotions)
+      body.append(
+        node(
+          "p",
+          `${a.name} · Descuento S/ ${(a.discount / 100).toFixed(2)} · Final S/ ${(a.final / 100).toFixed(2)}${a.giftService ? " · Regalo: " + a.giftService + " (asignación manual)" : ""} · ${a.notes}`,
+        ),
+      );
+    if (!promotions.length)
+      body.append(node("p", "Sin descuentos ni regalos registrados."));
     body.append(node("h3", "Historial de servicios"));
     for (const record of c.serviceHistory || [])
       body.append(

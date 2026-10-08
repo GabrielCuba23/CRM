@@ -22,6 +22,14 @@ export function validateProcurement(raw = emptyProcurement()) {
   for (const o of raw.offers)
     if (
       !text(o, ["supplierId", "type", "notes"]) ||
+      (o.nextRenewal !== undefined &&
+        (typeof o.nextRenewal !== "string" ||
+          (o.nextRenewal !== "" &&
+            (!/^\d{4}-\d{2}-\d{2}$/.test(o.nextRenewal) ||
+              !Number.isFinite(Date.parse(o.nextRenewal + "T00:00:00Z")) ||
+              new Date(o.nextRenewal + "T00:00:00Z")
+                .toISOString()
+                .slice(0, 10) !== o.nextRenewal)))) ||
       !raw.suppliers.some((s) => s.id === o.supplierId) ||
       !["product", "business"].includes(o.type) ||
       !money(o.costCents) ||
@@ -44,12 +52,17 @@ export function validateProcurement(raw = emptyProcurement()) {
       "intervalMonths",
       "capacity",
       "notes",
+      "nextRenewal",
     ],
   };
   return Object.fromEntries(
     Object.entries(fields).map(([k, ks]) => [
       k,
-      raw[k].map((r) => Object.fromEntries(ks.map((f) => [f, r[f]]))),
+      raw[k].map((r) =>
+        Object.fromEntries(
+          ks.filter((f) => r[f] !== undefined).map((f) => [f, r[f]]),
+        ),
+      ),
     ]),
   );
 }

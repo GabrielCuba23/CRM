@@ -13,6 +13,8 @@ import { normalizePhone, formatDate, todayLima } from "../crm.mjs";
 
 const publicAssets = new Set(["/styles.css", "/icons.svg"]);
 const privateAssets = new Set([
+  "/supplier-overview.mjs",
+  "/promotions.mjs",
   "/messaging.mjs",
   "/reports.mjs",
   "/report-config.mjs",

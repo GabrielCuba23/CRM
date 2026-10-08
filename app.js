@@ -1,3 +1,9 @@
+import { supplierOverview } from "./supplier-overview.mjs";
+import {
+  emptyPromotions,
+  validatePromotions,
+  promotionPrice,
+} from "./promotions.mjs";
 import { conversationEntries, manualMessage } from "./messaging.mjs";
 import {
   defaultReports,
@@ -47,6 +53,7 @@ let rules = [],
   authProvider = "",
   externalTaskStates = new Map(),
   externalCompleted = new Set();
+let promotions = emptyPromotions();
 let inboxClientId = "";
 let reports = { ...defaultReports };
 let procurement = emptyProcurement();
@@ -119,6 +126,7 @@ function snapshot(overrides = {}) {
     templates,
     accounts,
     combos,
+    promotions,
     ledger,
     settings,
     automation,
@@ -174,6 +182,7 @@ try {
   if (saved) {
     const state = validateWorkspace(JSON.parse(saved));
     ({ clients, templates, accounts, combos, ledger, settings } = state);
+    promotions = state.promotions || emptyPromotions();
     reports = state.reports || { ...defaultReports };
     automation = state.automation || automation;
     rules = state.rules || [];
@@ -236,6 +245,8 @@ function button(text, action, className = "secondary") {
 }
 function render() {
   renderInbox();
+  renderPromotions();
+  renderSupplierOverview();
   $("#total").textContent = clients.length;
   const states = clients.map((c) =>
     c.archived ? "none" : subscriptionStatus(c.expires),
@@ -858,6 +869,7 @@ function openRenew(c) {
   $("#renew-dialog").showModal();
 }
 function renderModules() {
+  renderSupplierOverview();
   $("#nav-clients").textContent = clients.length;
   $("#nav-accounts").textContent = accounts.length;
   $("#nav-free").textContent = accounts
@@ -1123,7 +1135,13 @@ function renderFinance() {
 }
 function setView() {
   const requested = location.hash.slice(1) || "home";
-  const id = requested === "templates" ? "automation" : requested;
+  const id =
+    requested === "templates"
+      ? "automation"
+      : requested === "finance-suppliers"
+        ? "finance"
+        : requested;
+  if (requested === "finance-suppliers") $("#supplier-section").open = true;
   if (requested === "templates") $("#predefined-messages").open = true;
   const view = document.getElementById(id);
   const selected = view?.classList.contains("view") ? id : "home";
@@ -1381,6 +1399,7 @@ function initializeModules() {
       if (!(await persistState(state)))
         throw Error("No se pudo guardar el respaldo.");
       ({ clients, templates, accounts, combos, ledger, settings } = state);
+      promotions = state.promotions || emptyPromotions();
       reports = state.reports || { ...defaultReports };
       automation = state.automation || automation;
       rules = state.rules || [];
@@ -2431,10 +2450,14 @@ const procurementUI = initializeProcurement({
     if (overrides.procurement) procurement = overrides.procurement;
     if (overrides.ledger) ledger = overrides.ledger;
     renderFinance();
+    renderSupplierOverview();
     return true;
   },
 });
-window.addEventListener("hashchange", () => procurementUI.render());
+window.addEventListener("hashchange", () => {
+  procurementUI.render();
+  renderSupplierOverview();
+});
 
 const reportWeekly = document.querySelector("#reports-weekly"),
   reportFinance = document.querySelector("#reports-finance"),
@@ -2647,3 +2670,391 @@ $("#confirm-manual-message").addEventListener("click", async () => {
   }
 });
 window.addEventListener("hashchange", renderInbox);
+
+function promotionKindFields() {
+  const kind = $("#promotion-kind").value;
+  $("#promotion-value-label").hidden = kind === "gift";
+  $("#promotion-value").required = kind !== "gift";
+  $("#promotion-value").max = kind === "percent" ? "100" : "999999";
+  $("#promotion-gift-label").hidden = kind !== "gift";
+  $("#promotion-form").elements.giftService.required = kind === "gift";
+}
+function renderPromotions() {
+  const cards = $("#promotion-cards");
+  cards.replaceChildren();
+  for (const o of promotions.offers) {
+    const card = element("article", undefined, "account-card");
+    card.append(
+      element("h4", o.name),
+      element(
+        "p",
+        o.kind === "percent"
+          ? `${o.value / 100}% de descuento`
+          : o.kind === "amount"
+            ? `${money(o.value)} de descuento`
+            : `Gratis: ${o.giftService}`,
+      ),
+      element("p", o.notes, "muted"),
+    );
+    const actions = element("div", undefined, "actions");
+    actions.append(
+      button("Personalizar para un cliente", () => openPromotion(o)),
+      button("Editar", () => {
+        const f = $("#promotion-form");
+        for (const k of ["id", "name", "kind", "giftService", "notes"])
+          f.elements[k].value = o[k];
+        f.elements.value.value = (o.value / 100).toFixed(2);
+        promotionKindFields();
+        f.scrollIntoView({ block: "center" });
+      }),
+      button("Eliminar", async () => {
+        if (
+          !confirm(
+            "¿Eliminar esta promoción? Se conservarán las ofertas ya aplicadas.",
+          )
+        )
+          return;
+        const next = {
+          ...promotions,
+          offers: promotions.offers.filter((x) => x.id !== o.id),
+        };
+        if (await persistState({ promotions: next })) {
+          promotions = next;
+          renderPromotions();
+        }
+      }),
+    );
+    card.append(actions);
+    cards.append(card);
+  }
+  if (!promotions.offers.length)
+    cards.append(
+      element("p", "Crea tu primer descuento o producto gratis.", "muted"),
+    );
+  const history = $("#promotion-history");
+  history.replaceChildren();
+  for (const a of [...promotions.applications].reverse()) {
+    const c = clients.find((c) => c.id === a.clientId);
+    const card = element("article", undefined, "inset");
+    card.append(
+      element("strong", `${c?.name || "Cliente histórico"} · ${a.name}`),
+      element(
+        "p",
+        `${a.service} · Base ${money(a.base)} − ${money(a.discount)} = ${money(a.final)}${a.giftService ? " · Regalo: " + a.giftService + " (asignación manual)" : ""}`,
+      ),
+      element(
+        "small",
+        `${new Date(a.occurredAt).toLocaleString("es-PE", { timeZone: "America/Lima" })} · ${a.ledgerId ? "Cobro registrado" : "Sin cobro registrado"}${a.updateClientPrice ? " · Precio del cliente actualizado" : ""}`,
+      ),
+      element("p", a.notes, "muted"),
+    );
+    history.append(card);
+  }
+  if (!promotions.applications.length)
+    history.append(element("p", "Aún no hay promociones aplicadas.", "muted"));
+}
+function openPromotion(o) {
+  if (!clients.length) {
+    notify("Añade un cliente para personalizar esta oferta.");
+    return;
+  }
+  const f = $("#promotion-apply-form");
+  f.reset();
+  f.elements.offerId.value = o.id;
+  $("#promotion-error").textContent = "";
+  $("#promotion-client").replaceChildren(
+    ...clients.map((c) => {
+      const n = element("option", `${c.name} · ${c.service || "Sin servicio"}`);
+      n.value = c.id;
+      return n;
+    }),
+  );
+  $("#promotion-source").replaceChildren(
+    element("option", "Servicio actual del cliente"),
+  );
+  $("#promotion-source").firstChild.value = "client";
+  for (const combo of combos) {
+    const opt = element("option", combo.name);
+    opt.value = combo.id;
+    $("#promotion-source").append(opt);
+  }
+  $("#promotion-custom-value").value = (o.value / 100).toFixed(2);
+  $("#promotion-custom-value").max = o.kind === "percent" ? "100" : "999999";
+  $("#promotion-custom-value-label").hidden = o.kind === "gift";
+  $("#promotion-custom-value").required = o.kind !== "gift";
+  $("#promotion-custom-gift-label").hidden = o.kind !== "gift";
+  $("#promotion-custom-gift").required = o.kind === "gift";
+  $("#promotion-custom-gift").value = o.giftService;
+  $("#promotion-custom-notes").value = o.notes;
+  loadPromotionBase();
+  $("#promotion-dialog").showModal();
+}
+function loadPromotionBase() {
+  const c = clients.find((c) => c.id === $("#promotion-client").value),
+    combo = combos.find((c) => c.id === $("#promotion-source").value);
+  $("#promotion-base").value = ((combo?.price ?? c?.price ?? 0) / 100).toFixed(
+    2,
+  );
+  $("#promotion-update-price").disabled = !!combo;
+  $("#promotion-update-price").checked = !combo;
+  previewPromotion();
+}
+function selectedPromotion() {
+  const offer = promotions.offers.find(
+      (o) => o.id === $("#promotion-apply-form").elements.offerId.value,
+    ),
+    client = clients.find((c) => c.id === $("#promotion-client").value);
+  if (!offer || !client)
+    throw Error("Selecciona una promoción y un cliente válidos.");
+  const custom = {
+    ...offer,
+    value:
+      offer.kind === "gift"
+        ? 0
+        : cents($("#promotion-custom-value").value || "0"),
+    giftService:
+      offer.kind === "gift" ? $("#promotion-custom-gift").value.trim() : "",
+    notes: $("#promotion-custom-notes").value.trim(),
+  };
+  validatePromotions({ offers: [custom], applications: [] });
+  const result = promotionPrice(cents($("#promotion-base").value), custom),
+    combo = combos.find((c) => c.id === $("#promotion-source").value);
+  return {
+    offer: custom,
+    client,
+    result,
+    service: combo?.services || client.service,
+    updateClientPrice: !combo && $("#promotion-update-price").checked,
+  };
+}
+function previewPromotion() {
+  try {
+    const { offer, result } = selectedPromotion();
+    $("#promotion-total").textContent =
+      `Base ${money(result.base)} · Descuento ${money(result.discount)} · Precio final ${money(result.final)}${result.gift ? " · Gratis: " + result.gift : ""}`;
+    $("#promotion-error").textContent = "";
+  } catch (e) {
+    $("#promotion-total").textContent =
+      "Completa los datos para calcular la oferta.";
+    $("#promotion-error").textContent = e.message;
+  }
+}
+$("#promotion-kind").addEventListener("change", promotionKindFields);
+$("#promotion-reset").addEventListener("click", () => {
+  $("#promotion-form").reset();
+  $("#promotion-form").elements.id.value = "";
+  promotionKindFields();
+});
+$("#promotion-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const f = e.target,
+      data = Object.fromEntries(new FormData(f));
+    const o = {
+      id: data.id || createId(),
+      name: data.name.trim(),
+      kind: data.kind,
+      value: data.kind === "gift" ? 0 : cents(data.value || "0"),
+      giftService: data.kind === "gift" ? data.giftService.trim() : "",
+      notes: data.notes.trim(),
+    };
+    const next = {
+      ...promotions,
+      offers: promotions.offers.some((x) => x.id === o.id)
+        ? promotions.offers.map((x) => (x.id === o.id ? o : x))
+        : [...promotions.offers, o],
+    };
+    validatePromotions(next);
+    if (await persistState({ promotions: next })) {
+      promotions = next;
+      f.reset();
+      f.elements.id.value = "";
+      promotionKindFields();
+      renderPromotions();
+      notify("Promoción guardada.");
+    }
+  } catch (e) {
+    notify(e.message);
+  }
+});
+$("#promotion-client").addEventListener("change", loadPromotionBase);
+$("#promotion-source").addEventListener("change", loadPromotionBase);
+$("#promotion-apply-form").addEventListener("input", previewPromotion);
+$("#promotion-message").addEventListener("click", () => {
+  try {
+    const { offer, client, result, service } = selectedPromotion();
+    $("#promotion-dialog").close();
+    openMessage(client);
+    $("#message-text").value =
+      `Hola ${client.name} 👋\n\n*${offer.name}*\n${service}\nPrecio habitual: ${money(result.base)}\nDescuento: ${money(result.discount)}\n*Precio final: ${money(result.final)}*${result.gift ? "\n🎁 Producto gratis: " + result.gift : ""}\n${offer.notes}\n\n${settings.payments}`;
+    updateLink();
+  } catch (e) {
+    $("#promotion-error").textContent = e.message;
+  }
+});
+$("#promotion-apply-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("#promotion-apply-button");
+  btn.disabled = true;
+  try {
+    const { offer, client, result, service, updateClientPrice } =
+      selectedPromotion();
+    if (
+      !confirm(
+        `¿Aplicar ${offer.name} a ${client.name}? Precio final ${money(result.final)}${result.gift ? " y regalo " + result.gift : ""}. No cambia cobros anteriores.`,
+      )
+    )
+      return;
+    const paid = $("#promotion-paid").checked && result.final > 0,
+      ledgerId = paid ? createId() : "",
+      a = {
+        id: createId(),
+        clientId: client.id,
+        offerId: offer.id,
+        name: offer.name,
+        kind: offer.kind,
+        value: offer.value,
+        giftService: offer.giftService,
+        notes: offer.notes,
+        service,
+        occurredAt: new Date().toISOString(),
+        ledgerId,
+        updateClientPrice,
+        ...result,
+      };
+    delete a.gift;
+    const next = {
+        ...promotions,
+        applications: [...promotions.applications, a],
+      },
+      nextClients = updateClientPrice
+        ? clients.map((c) =>
+            c.id === client.id ? { ...c, price: result.final } : c,
+          )
+        : clients,
+      nextLedger = paid
+        ? [
+            ...ledger,
+            {
+              id: ledgerId,
+              kind: "sale",
+              date: todayLima(),
+              description: `Promoción · ${offer.name} · ${client.name}`,
+              clientId: client.id,
+              service,
+              amount: result.final,
+            },
+          ]
+        : ledger;
+    validatePromotions(next);
+    if (
+      await persistState({
+        promotions: next,
+        clients: nextClients,
+        ledger: nextLedger,
+      })
+    ) {
+      promotions = next;
+      clients = nextClients;
+      ledger = nextLedger;
+      $("#promotion-dialog").close();
+      render();
+      renderModules();
+      notify(
+        paid
+          ? "Promoción aplicada y nuevo cobro registrado."
+          : "Promoción aplicada sin registrar ingresos.",
+      );
+    } else $("#promotion-error").textContent = $("#status").textContent;
+  } catch (e) {
+    $("#promotion-error").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+promotionKindFields();
+
+function renderSupplierOverview() {
+  const data = supplierOverview(snapshot(), todayLima());
+  $("#supplier-monthly").textContent = money(data.monthly);
+  $("#supplier-upcoming").textContent = money(data.dueCost);
+  $("#supplier-paid").textContent = money(data.paid);
+  $("#supplier-overview-summary").textContent =
+    `${data.rows.length} cuentas y servicios · ${data.upcoming.length} requieren atención · ${data.unknownMonthly} sin coste o periodo para estimar el mes${data.unknownDue ? " · " + data.unknownDue + " vencimientos con coste desconocido" : ""}. La estimación divide el coste entre los meses contratados; los importes pagados corresponden solo a gastos registrados. Revisa manualmente importes y fechas al renovar.`;
+  const list = $("#supplier-overview-rows");
+  list.replaceChildren();
+  for (const r of data.rows) {
+    const card = element("article", undefined, "account-card");
+    const status = element(
+      "span",
+      r.label,
+      "pill " +
+        (r.days !== null && r.days <= 0
+          ? "expired"
+          : r.days !== null && r.days <= 7
+            ? "soon"
+            : "none"),
+    );
+    card.append(
+      element("h3", r.service),
+      element("p", r.category + (r.detail ? " · " + r.detail : ""), "muted"),
+      element("strong", "Proveedor: " + r.supplierName),
+      element(
+        "p",
+        r.supplier
+          ? `${r.supplier.phone || "Sin teléfono"}${r.supplier.email ? " · " + r.supplier.email : ""}`
+          : "Contacto pendiente en Finanzas",
+      ),
+      status,
+      element(
+        "p",
+        `Importe del periodo: ${r.cost === null ? "Sin coste registrado" : money(r.cost)}${r.months > 0 ? " / " + r.months + " mes(es)" : r.months === 0 ? " · Pago único" : " · Periodo no configurado"}`,
+      ),
+      element(
+        "small",
+        r.monthly === null
+          ? "Sin estimación mensual"
+          : `${money(r.monthly)} estimados al mes`,
+      ),
+    );
+    if (r.expires)
+      card.append(element("small", "Renovación: " + formatDate(r.expires)));
+    const actions = element("div", undefined, "actions");
+    if (r.supplier?.phone) {
+      try {
+        const link = element("a", "WhatsApp del proveedor", "button whatsapp");
+        link.href = whatsappUrl(
+          r.supplier.phone,
+          `Hola ${r.supplierName}, quisiera consultar la renovación de ${r.service}${r.expires ? " con vencimiento " + formatDate(r.expires) : ""}${r.cost === null ? "" : ". Importe registrado: " + money(r.cost)}.`,
+        );
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        actions.append(link);
+      } catch {
+        actions.append(
+          element("small", "Revisa el número del proveedor en Finanzas."),
+        );
+      }
+    } else
+      actions.append(
+        element("small", "Añade el teléfono del proveedor para usar WhatsApp."),
+      );
+    const edit = element("a", "Ver en Finanzas", "button secondary");
+    edit.href = "#finance-suppliers";
+    actions.append(edit);
+    card.append(actions);
+    list.append(card);
+  }
+  if (!data.rows.length)
+    list.append(
+      element(
+        "p",
+        "Añade cuentas madre o herramientas del negocio desde Finanzas para ver sus renovaciones aquí.",
+        "empty",
+      ),
+    );
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) renderSupplierOverview();
+});

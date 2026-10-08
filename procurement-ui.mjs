@@ -212,6 +212,7 @@ export function initializeProcurement({
               "notes",
             ])
               f.elements[k].value = o[k];
+            f.elements.nextRenewal.value = o.nextRenewal || "";
             f.elements.cost.value = (o.costCents / 100).toFixed(2);
             f.dataset.id = o.id;
             f.scrollIntoView({ block: "center" });

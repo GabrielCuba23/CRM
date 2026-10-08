@@ -1,3 +1,4 @@
+import { validatePromotions } from "../promotions.mjs";
 import { validatePurchaseLinks } from "../procurement.mjs";
 import { emptyGrowth, validateGrowth } from "../growth.mjs";
 import { defaultTemplates, validateWorkspace, validDate } from "../crm.mjs";
@@ -157,6 +158,7 @@ export function cleanState(raw) {
       state.automation[k],
     ]),
   );
+  state.promotions = validatePromotions(raw.promotions);
   if (new TextEncoder().encode(JSON.stringify(state)).length > 1000000)
     throw Error(
       "El conjunto de datos supera 1 MB. Exporta un respaldo antes de dividirlo o ampliar el servicio.",

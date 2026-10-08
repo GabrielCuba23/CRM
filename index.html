@@ -59,7 +59,7 @@
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#combos"></use>
           </svg>
-          Combos</a
+          Combos y descuentos</a
         ><a href="#security" data-view="security"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#security"></use>
@@ -140,6 +140,35 @@
           <div class="hero-art" aria-hidden="true">
             ◈<span>STREAMING / CRM</span>
           </div>
+        </div>
+        <div class="inset" id="supplier-overview">
+          <div class="section-head">
+            <h2>Inversión y renovaciones de proveedores</h2>
+            <a href="#finance-suppliers" class="button secondary"
+              >Gestionar en Finanzas</a
+            >
+          </div>
+          <p>
+            Se actualiza con tus cuentas y herramientas del negocio registradas
+            en Finanzas. Los productos del catálogo sin cuenta adquirida no se
+            suman como inversión.
+          </p>
+          <div class="metrics">
+            <article>
+              <span>Inversión mensual estimada</span
+              ><strong id="supplier-monthly">S/ 0.00</strong>
+            </article>
+            <article>
+              <span>Vencidos o vencen en 7 días</span
+              ><strong id="supplier-upcoming">S/ 0.00</strong>
+            </article>
+            <article>
+              <span>Gastos de proveedores pagados este mes</span
+              ><strong id="supplier-paid">S/ 0.00</strong>
+            </article>
+          </div>
+          <p id="supplier-overview-summary" class="muted"></p>
+          <div id="supplier-overview-rows" class="cards"></div>
         </div>
         <div class="section-head">
           <h2>Venta rápida</h2>
@@ -272,6 +301,14 @@
                   <option value="0">Pago único</option>
                 </select></label
               ><label
+                >Próxima renovación (servicios del negocio)<input
+                  name="nextRenewal"
+                  type="date"
+                /><small
+                  >Para cuentas de reventa se usa el vencimiento de la cuenta
+                  madre.</small
+                ></label
+              ><label
                 >Perfiles por cuenta (productos)<input
                   name="capacity"
                   type="number"
@@ -359,7 +396,7 @@
         </p>
       </section>
       <section id="combos" class="view panel" hidden>
-        <h2>Combos personalizados</h2>
+        <h2>Combos y descuentos personalizados</h2>
         <p class="muted">
           Agrupa plataformas en una oferta y prepara un mensaje para tu cliente.
         </p>
@@ -390,6 +427,68 @@
           <button type="submit">＋ Guardar combo</button>
         </form>
         <div id="combo-cards" class="cards"></div>
+        <div class="inset">
+          <h3>Descuentos y productos gratis</h3>
+          <p>
+            Crea porcentajes libres, descuentos en soles o un producto adicional
+            gratis. Cada oferta se puede personalizar para un cliente antes de
+            aplicarla. Un regalo queda registrado como compromiso; asigna su
+            cuenta o perfil desde Clientes.
+          </p>
+          <form id="promotion-form">
+            <input name="id" type="hidden" />
+            <div class="form-grid">
+              <label
+                >Nombre de la promoción<input
+                  name="name"
+                  required
+                  maxlength="80"
+                  placeholder="Descuento cliente frecuente"
+              /></label>
+              <label
+                >Tipo<select name="kind" id="promotion-kind">
+                  <option value="percent">Porcentaje (%)</option>
+                  <option value="amount">Monto en soles (S/)</option>
+                  <option value="gift">Producto adicional gratis</option>
+                </select></label
+              >
+              <label id="promotion-value-label"
+                >Valor<input
+                  name="value"
+                  id="promotion-value"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  required
+                  placeholder="5, 10, 15, 20…"
+              /></label>
+              <label id="promotion-gift-label" hidden
+                >Producto gratis<input
+                  name="giftService"
+                  maxlength="80"
+                  placeholder="Spotify por 30 días"
+              /></label>
+              <label
+                >Condiciones o notas<textarea
+                  name="notes"
+                  maxlength="1000"
+                  rows="2"
+                  placeholder="Solo esta compra, regalo por 30 días…"
+                ></textarea>
+              </label>
+            </div>
+            <div class="actions">
+              <button>Guardar promoción</button
+              ><button id="promotion-reset" type="button" class="secondary">
+                Nueva promoción
+              </button>
+            </div>
+          </form>
+          <div id="promotion-cards" class="cards"></div>
+          <h3>Ofertas aplicadas a clientes</h3>
+          <div id="promotion-history"></div>
+        </div>
       </section>
       <section id="settings" class="view panel" hidden>
         <h2>Configuración y respaldo</h2>
@@ -1776,6 +1875,78 @@
         <div class="actions end">
           <button type="button" class="secondary close">Cancelar</button
           ><button>Guardar gasto</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="promotion-dialog">
+      <form id="promotion-apply-form">
+        <div class="section-head">
+          <h2>Personalizar oferta</h2>
+          <button type="button" class="close icon-button" aria-label="Cerrar">
+            ×
+          </button>
+        </div>
+        <input name="offerId" type="hidden" />
+        <div class="form-grid">
+          <label
+            >Cliente<select
+              id="promotion-client"
+              name="clientId"
+              required
+            ></select></label
+          ><label
+            >Precio base de<select id="promotion-source">
+              <option value="client">Servicio actual del cliente</option>
+            </select></label
+          >
+          <label
+            >Precio base S/<input
+              id="promotion-base"
+              type="number"
+              min="0"
+              max="999999"
+              step="0.01"
+              required /></label
+          ><label id="promotion-custom-value-label"
+            >Descuento personalizado<input
+              id="promotion-custom-value"
+              type="number"
+              min="0"
+              step="0.01"
+              required /></label
+          ><label id="promotion-custom-gift-label" hidden
+            >Producto gratis<input
+              id="promotion-custom-gift"
+              maxlength="80" /></label
+          ><label
+            >Condiciones para este cliente<textarea
+              id="promotion-custom-notes"
+              maxlength="1000"
+              rows="2"
+            ></textarea>
+          </label>
+        </div>
+        <p id="promotion-total" class="mode-banner" aria-live="polite"></p>
+        <label
+          ><input id="promotion-update-price" type="checkbox" checked />
+          Actualizar el precio del servicio actual del cliente (también usado en
+          próximas renovaciones)</label
+        ><label
+          ><input id="promotion-paid" type="checkbox" /> Registrar un nuevo
+          cobro de esta oferta en Finanzas</label
+        >
+        <p>
+          No modifica compras anteriores. Un producto adicional gratis no genera
+          ingresos ni asigna perfiles automáticamente. El coste real sigue
+          dependiendo de las cuentas y gastos registrados.
+        </p>
+        <p id="promotion-error" class="error" role="alert"></p>
+        <div class="actions">
+          <button id="promotion-apply-button" type="submit">
+            Aplicar oferta al cliente</button
+          ><button id="promotion-message" type="button" class="secondary">
+            Solo preparar mensaje WhatsApp
+          </button>
         </div>
       </form>
     </dialog>
