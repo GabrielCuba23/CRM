@@ -161,5 +161,10 @@ export function cleanState(raw) {
     throw Error(
       "El conjunto de datos supera 1 MB. Exporta un respaldo antes de dividirlo o ampliar el servicio.",
     );
+  state.reports = raw.reports || {
+    clientsWeekly: false,
+    financeTwiceMonthly: false,
+    hour: 9,
+  };
   return state;
 }

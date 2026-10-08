@@ -15,7 +15,7 @@ from .validation import validate_workspace
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_FILES = {'styles.css', 'login.js', 'icons.svg'}
-APP_FILES = {'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
+APP_FILES = {'reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
 SESSION_SECONDS = 8 * 3600
 
 
@@ -157,6 +157,11 @@ def create_app(config=None):
         response = jsonify(ok=True)
         response.delete_cookie(cookie_name, path='/', secure=secure, httponly=True, samesite='Strict')
         return response
+
+    @app.get('/api/report-status')
+    def report_status():
+        from .email_reports import report_status as status
+        return jsonify(status(db_path))
 
     @app.get('/api/workspace')
     def workspace():

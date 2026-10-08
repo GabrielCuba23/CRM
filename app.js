@@ -1,3 +1,9 @@
+import {
+  defaultReports,
+  validateReports,
+  reportSheets,
+  workbook,
+} from "./reports.mjs";
 import { isFormer, archiveContact } from "./lifecycle.mjs";
 import { emptyProcurement, accountMargin } from "./procurement.mjs";
 import { initializeProcurement } from "./procurement-ui.mjs";
@@ -40,6 +46,7 @@ let rules = [],
   authProvider = "",
   externalTaskStates = new Map(),
   externalCompleted = new Set();
+let reports = { ...defaultReports };
 let procurement = emptyProcurement();
 let growth = emptyGrowth();
 let clients = [],
@@ -117,6 +124,7 @@ function snapshot(overrides = {}) {
     taskReceipts,
     growth,
     procurement,
+    reports,
     ...overrides,
   };
 }
@@ -164,6 +172,7 @@ try {
   if (saved) {
     const state = validateWorkspace(JSON.parse(saved));
     ({ clients, templates, accounts, combos, ledger, settings } = state);
+    reports = state.reports || { ...defaultReports };
     automation = state.automation || automation;
     rules = state.rules || [];
     taskReceipts = state.taskReceipts || [];
@@ -1359,14 +1368,19 @@ function initializeModules() {
         )
       )
         return;
+      state.reports ||= { ...defaultReports };
       state.procurement ||= emptyProcurement();
       state.growth ||= emptyGrowth();
       if (!(await persistState(state)))
         throw Error("No se pudo guardar el respaldo.");
       ({ clients, templates, accounts, combos, ledger, settings } = state);
+      reports = state.reports || { ...defaultReports };
       automation = state.automation || automation;
       rules = state.rules || [];
       taskReceipts = state.taskReceipts || [];
+      reportWeekly.checked = reports.clientsWeekly;
+      reportFinance.checked = reports.financeTwiceMonthly;
+      reportHour.value = reports.hour;
       procurement = state.procurement || emptyProcurement();
       growth = state.growth || emptyGrowth();
       available = true;
@@ -2397,3 +2411,76 @@ const procurementUI = initializeProcurement({
   },
 });
 window.addEventListener("hashchange", () => procurementUI.render());
+
+const reportWeekly = document.querySelector("#reports-weekly"),
+  reportFinance = document.querySelector("#reports-finance"),
+  reportHour = document.querySelector("#reports-hour");
+reportWeekly.checked = reports.clientsWeekly;
+reportFinance.checked = reports.financeTwiceMonthly;
+reportHour.value = reports.hour;
+document
+  .querySelector("#reports-form")
+  .addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const next = validateReports({
+        clientsWeekly: reportWeekly.checked,
+        financeTwiceMonthly: reportFinance.checked,
+        hour: Number(reportHour.value),
+      });
+      if (await persistState({ reports: next })) {
+        reports = next;
+        notify(
+          "Programación guardada. El envío requiere servidor y correo conectado.",
+        );
+      }
+    } catch (e) {
+      notify(e.message);
+    }
+  });
+for (const kind of ["clients", "finance"])
+  document
+    .querySelector("#download-report-" + kind)
+    .addEventListener("click", () => {
+      try {
+        const day = todayLima(),
+          blob = new Blob([workbook(reportSheets(snapshot(), kind, day))], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          }),
+          url = URL.createObjectURL(blob),
+          a = document.createElement("a");
+        a.href = url;
+        a.download = kind + "-" + day + ".xlsx";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (e) {
+        notify(e.message);
+      }
+    });
+if (secureMode)
+  api("/api/report-status")
+    .then((s) => {
+      document.querySelector("#reports-status").textContent = s.configured
+        ? "Correo conectado. Destinatario: " +
+          s.recipient +
+          ". El servidor revisa la programación automáticamente."
+        : "Correo pendiente de conexión. Destinatario: " + s.recipient;
+      const states = {
+        accepted: "Aceptado por correo",
+        rejected: "Rechazado: revisar conexión",
+        failed: "No se pudo preparar",
+        processing: "En proceso: revisar si persiste",
+        uncertain: "Resultado incierto: revisar antes de reenviar",
+      };
+      document.querySelector("#reports-history").textContent =
+        (s.recent || [])
+          .map(
+            (r) =>
+              `${r.day} · ${r.kind === "clients" ? "Clientes" : "Finanzas"} · ${states[r.state] || r.state}`,
+          )
+          .join("\n") || "Aún no hay intentos de envío.";
+    })
+    .catch(() => {
+      document.querySelector("#reports-status").textContent =
+        "No se pudo comprobar el servicio de correo.";
+    });

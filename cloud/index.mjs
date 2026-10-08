@@ -1,3 +1,4 @@
+import { processReports, reportStatus } from "./reports.mjs";
 import {
   generateTasks,
   claimTasks,
@@ -12,6 +13,8 @@ import { normalizePhone, formatDate, todayLima } from "../crm.mjs";
 
 const publicAssets = new Set(["/styles.css", "/icons.svg"]);
 const privateAssets = new Set([
+  "/reports.mjs",
+  "/report-config.mjs",
   "/app.js",
   "/crm.mjs",
   "/automation.mjs",
@@ -220,6 +223,12 @@ export async function handleRequest(request, env, options = {}) {
       },
     });
   }
+  if (path === "/api/report-status" && request.method === "GET") {
+    const recent = await env.DB.prepare(
+      "SELECT kind,day,state FROM email_reports ORDER BY attempted DESC LIMIT 20",
+    ).all();
+    return json({ ...reportStatus(env), recent: recent.results });
+  }
   if (privateAssets.has(path) && ["GET", "HEAD"].includes(request.method))
     return headers(await env.ASSETS.fetch(request));
   return json({ error: "Recurso no encontrado." }, 404);
@@ -391,6 +400,9 @@ export default {
     ctx.waitUntil(
       (async () => {
         const now = new Date(event.scheduledTime);
+        await processReports(env, { now }).catch(() =>
+          console.error("No se pudo revisar los reportes de correo."),
+        );
         await processDue(env, { now, limit: 5 });
         await processRuleTasks(env, {
           now,

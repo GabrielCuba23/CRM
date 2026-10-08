@@ -17,3 +17,5 @@ CREATE TABLE IF NOT EXISTS message_tasks (
   claim_hash TEXT, provider_id TEXT, error TEXT
 );
 CREATE INDEX IF NOT EXISTS message_tasks_state ON message_tasks(state, updated);
+
+CREATE TABLE IF NOT EXISTS email_reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, day TEXT NOT NULL, state TEXT NOT NULL, attempted INTEGER NOT NULL, provider_id TEXT);

@@ -438,6 +438,52 @@
           <button>Guardar configuración</button>
         </form>
         <div class="inset">
+          <h3>Reportes Excel por correo</h3>
+          <p id="reports-status">
+            En GitHub Pages puedes descargar los Excel. El envío automático
+            requiere el servidor privado y un proveedor de correo conectado.
+          </p>
+          <pre
+            id="reports-history"
+            class="muted"
+            style="white-space: pre-wrap"
+          ></pre>
+          <form id="reports-form">
+            <label
+              ><input id="reports-weekly" type="checkbox" /> Enviar todos los
+              clientes cada viernes</label
+            >
+            <label
+              ><input id="reports-finance" type="checkbox" /> Enviar finanzas el
+              día 15 y el último día de cada mes</label
+            >
+            <label
+              >Hora de envío (Lima, de 0 a 23)<input
+                id="reports-hour"
+                type="number"
+                min="0"
+                max="23"
+                required
+                value="9"
+            /></label>
+            <button>Guardar programación</button>
+          </form>
+          <p>
+            Los reportes se envían al correo del propietario del CRM. Incluyen
+            clientes antiguos y movimientos financieros registrados. No incluyen
+            contraseñas ni PIN. Un envío aceptado por el proveedor no garantiza
+            su entrega; los intentos inciertos no se repiten automáticamente
+            para evitar duplicados.
+          </p>
+          <div class="actions">
+            <button id="download-report-clients" class="secondary">
+              Descargar Excel de clientes</button
+            ><button id="download-report-finance" class="secondary">
+              Descargar Excel financiero del mes
+            </button>
+          </div>
+        </div>
+        <div class="inset">
           <h3>Tu CRM en el móvil</h3>
           <p>
             En Android, abre esta web con Chrome y pulsa Instalar app o Añadir a

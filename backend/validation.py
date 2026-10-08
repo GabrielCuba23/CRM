@@ -177,7 +177,11 @@ def validate_workspace(state):
         'combos': ['id', 'name', 'services', 'price'],
         'ledger': ['id', 'description', 'service', 'kind', 'date', 'amount', 'clientId','supplierId','offerId','accountId','category','reference'],
     }
+    reports = state.get('reports', {'clientsWeekly':False,'financeTwiceMonthly':False,'hour':9})
+    if not isinstance(reports,dict) or any(type(reports.get(k)) is not bool for k in ['clientsWeekly','financeTwiceMonthly']) or type(reports.get('hour')) is not int or not 0 <= reports['hour'] <= 23:
+        raise ValueError('Configuración de reportes no válida.')
     clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark', 'crmName', 'logoDataUrl'] if k in settings}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
+    clean['reports'] = {k:reports[k] for k in ['clientsWeekly','financeTwiceMonthly','hour']}
     clean['procurement'] = {key: [{k:r[k] for k in fields} for r in procurement[key]] for key,fields in procurement_keys.items()}
     clean['growth'] = {key: [{k: r[k] for k in fields} for r in growth[key]] for key, fields in growth_keys.items()}
     clean['growth']['scoring'] = {k: growth['scoring'][k] for k in ['email','phone','active','paid']}

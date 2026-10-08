@@ -128,6 +128,11 @@ def main():
     print('Trabajador de recordatorios iniciado. Sin datos personales en los registros.', flush=True)
     while True:
         try:
+            from .email_reports import process_reports
+            process_reports(db_path)
+        except Exception:
+            print('No se pudo revisar los reportes de correo.', flush=True)
+        try:
             process_due(db_path)
         except Exception:
             print('No se pudo completar la revisión; se volverá a revisar en un minuto.', flush=True)

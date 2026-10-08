@@ -17,6 +17,7 @@ def initialize(path):
     with connect(path) as db:
         db.execute('PRAGMA journal_mode=WAL')
         db.executescript('''
+            CREATE TABLE IF NOT EXISTS email_reports (id TEXT PRIMARY KEY, kind TEXT NOT NULL, day TEXT NOT NULL, state TEXT NOT NULL, attempted INTEGER NOT NULL, provider_id TEXT);
             CREATE TABLE IF NOT EXISTS owner (
                 id INTEGER PRIMARY KEY CHECK (id=1), email TEXT NOT NULL, password_hash TEXT NOT NULL
             );
