@@ -15,7 +15,7 @@ from .validation import validate_workspace
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_FILES = {'styles.css', 'login.js', 'icons.svg'}
-APP_FILES = {'reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
+APP_FILES = {'messaging.mjs','reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
 SESSION_SECONDS = 8 * 3600
 
 

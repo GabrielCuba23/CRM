@@ -1,3 +1,4 @@
+import { conversationEntries, manualMessage } from "./messaging.mjs";
 import {
   defaultReports,
   validateReports,
@@ -46,6 +47,7 @@ let rules = [],
   authProvider = "",
   externalTaskStates = new Map(),
   externalCompleted = new Set();
+let inboxClientId = "";
 let reports = { ...defaultReports };
 let procurement = emptyProcurement();
 let growth = emptyGrowth();
@@ -233,6 +235,7 @@ function button(text, action, className = "secondary") {
   return node;
 }
 function render() {
+  renderInbox();
   $("#total").textContent = clients.length;
   const states = clients.map((c) =>
     c.archived ? "none" : subscriptionStatus(c.expires),
@@ -610,6 +613,8 @@ function compose() {
 function openMessage(c) {
   currentTask = null;
   $("#confirm-task").hidden = true;
+  $("#confirm-manual-message").hidden = false;
+  $("#confirm-manual-message").disabled = false;
   recipient = c;
   $("#message-template-editor").hidden = true;
   $("#message-password").value =
@@ -1117,7 +1122,9 @@ function renderFinance() {
   }
 }
 function setView() {
-  const id = location.hash.slice(1) || "home";
+  const requested = location.hash.slice(1) || "home";
+  const id = requested === "templates" ? "automation" : requested;
+  if (requested === "templates") $("#predefined-messages").open = true;
   const view = document.getElementById(id);
   const selected = view?.classList.contains("view") ? id : "home";
   for (const node of document.querySelectorAll(".view"))
@@ -1836,6 +1843,7 @@ async function renderRules() {
               messageTemplateId = $("#message-template").value;
               $("#message-text").value = task.text;
               $("#confirm-task").hidden = false;
+              $("#confirm-manual-message").hidden = true;
               updateLink();
             }),
           );
@@ -1899,7 +1907,23 @@ $("#confirm-task").addEventListener("click", async () => {
       completedAt: new Date().toISOString(),
     },
   ];
-  if (await persistState({ taskReceipts: next })) {
+  const nextGrowth = structuredClone(growth);
+  try {
+    nextGrowth.interactions.push(
+      manualMessage(
+        recipient,
+        $("#message-text").value,
+        "sent_manual",
+        createId(),
+      ),
+    );
+  } catch (error) {
+    notify(error.message);
+    return;
+  }
+  if (await persistState({ taskReceipts: next, growth: nextGrowth })) {
+    growth = nextGrowth;
+    renderInbox();
     taskReceipts = next;
     $("#message-dialog").close();
     renderRules();
@@ -2484,3 +2508,142 @@ if (secureMode)
       document.querySelector("#reports-status").textContent =
         "No se pudo comprobar el servicio de correo.";
     });
+
+function renderInbox() {
+  const query = $("#inbox-search").value.trim().toLocaleLowerCase();
+  const matches = clients.filter((c) =>
+    [c.name, c.phone, c.whatsappUsername, c.email, c.service].some((v) =>
+      (v || "").toLocaleLowerCase().includes(query),
+    ),
+  );
+  if (!clients.some((c) => c.id === inboxClientId)) inboxClientId = "";
+  const list = $("#inbox-contacts");
+  list.replaceChildren();
+  for (const c of matches) {
+    const row = element(
+      "button",
+      undefined,
+      "inbox-contact" + (c.id === inboxClientId ? " selected" : ""),
+    );
+    row.type = "button";
+    row.setAttribute("aria-pressed", String(c.id === inboxClientId));
+    row.append(
+      element("strong", c.name),
+      element(
+        "small",
+        `${c.phone || c.whatsappUsername || "Sin número"} · ${c.service || "Sin servicio"}`,
+      ),
+    );
+    row.addEventListener("click", () => {
+      inboxClientId = c.id;
+      $("#inbox-received").value = "";
+      renderInbox();
+    });
+    list.append(row);
+  }
+  if (!matches.length)
+    list.append(
+      element(
+        "p",
+        "No hay contactos que coincidan. Añádelos desde Clientes.",
+        "muted",
+      ),
+    );
+  const c = clients.find((c) => c.id === inboxClientId);
+  $("#inbox-title").textContent = c?.name || "Selecciona un contacto";
+  $("#inbox-contact").textContent = c
+    ? `${c.phone || c.whatsappUsername || "Sin contacto WhatsApp"} · ${c.service || "Sin servicio"}${c.archived ? " · Archivado" : ""}`
+    : "";
+  for (const id of [
+    "inbox-compose",
+    "inbox-profile",
+    "inbox-received",
+    "inbox-save-received",
+  ])
+    $("#" + id).disabled = !c;
+  const history = $("#inbox-history");
+  history.replaceChildren();
+  if (!c) return;
+  const entries = conversationEntries(snapshot(), c.id);
+  for (const i of entries) {
+    const row = element(
+      "article",
+      undefined,
+      "inbox-bubble " + (i.kind === "sent_manual" ? "outgoing" : "incoming"),
+    );
+    row.append(
+      element(
+        "small",
+        `${i.name} · ${new Date(i.occurredAt).toLocaleString("es-PE", { timeZone: "America/Lima" })}`,
+      ),
+      element("p", i.body),
+    );
+    history.append(row);
+  }
+  if (!entries.length)
+    history.append(
+      element(
+        "p",
+        "No hay mensajes registrados. Esta bandeja no importa conversaciones de WhatsApp Web.",
+        "muted",
+      ),
+    );
+}
+async function saveConversation(c, body, kind) {
+  const next = structuredClone(growth);
+  next.interactions.push(manualMessage(c, body, kind, createId()));
+  if (!(await persistState({ growth: next }))) return false;
+  growth = next;
+  renderInbox();
+  growthUI.render();
+  return true;
+}
+$("#inbox-search").addEventListener("input", renderInbox);
+$("#inbox-compose").addEventListener("click", () => {
+  const c = clients.find((c) => c.id === inboxClientId);
+  if (c) openMessage(c);
+});
+$("#inbox-profile").addEventListener("click", () => {
+  const c = clients.find((c) => c.id === inboxClientId);
+  if (c) growthUI.showContact(c);
+});
+$("#inbox-received-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const c = clients.find((c) => c.id === inboxClientId);
+    if (
+      await saveConversation(c, $("#inbox-received").value, "received_manual")
+    ) {
+      $("#inbox-received").value = "";
+      notify("Mensaje recibido registrado manualmente.");
+    }
+  } catch (e) {
+    notify(e.message);
+  }
+});
+$("#confirm-manual-message").addEventListener("click", async () => {
+  if (!recipient || currentTask) return;
+  const btn = $("#confirm-manual-message");
+  btn.disabled = true;
+  try {
+    if (
+      !confirm(
+        "¿Confirmas que ya enviaste este texto en WhatsApp? Se guardará en el historial del cliente.",
+      )
+    )
+      return;
+    if (
+      await saveConversation(recipient, $("#message-text").value, "sent_manual")
+    ) {
+      $("#message-dialog").close();
+      notify(
+        "Envío registrado por tu confirmación; WhatsApp no verificó la entrega.",
+      );
+    }
+  } catch (e) {
+    $("#message-error").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+window.addEventListener("hashchange", renderInbox);

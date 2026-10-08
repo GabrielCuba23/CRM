@@ -91,7 +91,7 @@ export function initializeGrowth({
           "Cliente archivado. Conserva sus compras y puede reactivarse desde Clientes.",
         ),
       );
-    body.append(node("h3", "Redes sociales"));
+    body.append(node("h3", "Conversaciones y redes sociales"));
     const entries = (state.growth || emptyGrowth()).interactions
       .filter((i) => i.clientId === c.id)
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
@@ -103,7 +103,9 @@ export function initializeGrowth({
         ),
       );
     if (!entries.length)
-      body.append(node("p", "Sin interacciones sociales registradas."));
+      body.append(
+        node("p", "Sin conversaciones ni interacciones registradas."),
+      );
     body.append(
       node(
         "p",

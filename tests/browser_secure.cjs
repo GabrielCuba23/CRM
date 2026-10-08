@@ -46,7 +46,8 @@ const assert = require("node:assert/strict");
     await page.evaluate(() => localStorage.getItem("crm.workspace.v2")),
     null,
   );
-  await page.locator("nav [data-view=templates]").click();
+  await page.locator("nav [data-view=automation]").click();
+  await page.locator("#predefined-messages summary").click();
   for (let i = 0; i < 5; i++) {
     await page.locator("#add-template").click();
     await page.waitForFunction(
@@ -98,6 +99,11 @@ const assert = require("node:assert/strict");
     document
       .querySelector("#status")
       .textContent.includes("Regla de recordatorio guardada"),
+  );
+  await page.waitForFunction(() =>
+    document
+      .querySelector("#automation-badge")
+      .textContent.includes("Falta conectar API"),
   );
   assert(
     (await page.locator("#automation-badge").innerText()).includes(

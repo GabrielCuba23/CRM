@@ -134,7 +134,7 @@ def validate_workspace(state):
         if r['channel'] not in ['email','whatsapp','rss'] or r['status'] != 'draft' or not r['body'].strip() or (r['segmentId'] and not any(x['id'] == r['segmentId'] for x in growth['segments'])):
             fail()
     for r in growth['posts'] + growth['interactions']:
-        if r['network'] not in networks or not r['body'].strip():
+        if r['network'] not in (networks + ['WhatsApp'] if r in growth['interactions'] else networks) or not r['body'].strip():
             fail()
         stamp = r.get('scheduledAt', r.get('occurredAt', ''))
         if stamp:
@@ -146,7 +146,7 @@ def validate_workspace(state):
         if r['status'] != 'draft':
             fail()
     for r in growth['interactions']:
-        if not r['clientId'] or not r['occurredAt'] or r['kind'] not in ['comment','dm','review'] or r['outcome'] not in ['open','answered','won']:
+        if not r['clientId'] or not r['occurredAt'] or r['kind'] not in ['comment','dm','review','received_manual','sent_manual'] or (r['kind'] in ['received_manual','sent_manual'] and r['network'] != 'WhatsApp') or r['outcome'] not in ['open','answered','won']:
             fail()
     procurement = state.get('procurement', {'suppliers': [], 'offers': []})
     procurement_keys = {'suppliers': ['id','name','email','phone','notes'], 'offers': ['id','name','supplierId','type','costCents','intervalMonths','capacity','notes']}

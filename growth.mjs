@@ -90,8 +90,12 @@ export function validateGrowth(g) {
         "occurredAt",
       ]) ||
       !r.clientId ||
-      !networks.includes(r.network) ||
-      !["comment", "dm", "review"].includes(r.kind) ||
+      (["received_manual", "sent_manual"].includes(r.kind) &&
+        r.network !== "WhatsApp") ||
+      ![...networks, "WhatsApp"].includes(r.network) ||
+      !["comment", "dm", "review", "received_manual", "sent_manual"].includes(
+        r.kind,
+      ) ||
       !["open", "answered", "won"].includes(r.outcome) ||
       !r.body.trim() ||
       !Number.isFinite(Date.parse(r.occurredAt))

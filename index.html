@@ -50,7 +50,7 @@
             <use href="icons.svg#finance"></use>
           </svg>
           Finanzas</a
-        ><a href="#templates" data-view="templates"
+        ><a href="#messages" data-view="messages"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#templates"></use>
           </svg>
@@ -578,99 +578,77 @@
           cliente para preparar un mensaje.
         </p>
       </section>
-      <section id="templates" class="view panel" hidden>
+      <section id="messages" class="view panel" hidden>
         <div class="section-head">
           <div>
-            <p class="eyebrow">MENSAJES QUE TRABAJAN POR TI</p>
-            <h2>Tu biblioteca de mensajes</h2>
-            <p class="muted">
-              Crea tus propios mensajes para entrega, renovación, cobro,
-              promociones o cualquier otro contexto.
-            </p>
+            <p class="eyebrow">CONVERSACIONES Y CONTACTOS</p>
+            <h2>Bandeja de WhatsApp</h2>
           </div>
-        </div>
-        <div class="toolbar">
-          <label class="search"
-            >Buscar mensaje<input
-              id="template-search"
-              type="search"
-              placeholder="Nombre, contexto o contenido" /></label
-          ><label
-            >Contexto<select id="context-filter">
-              <option value="all">Todos los contextos</option>
-            </select></label
+          <a href="#integrations" class="button secondary"
+            >Conexión de WhatsApp</a
           >
         </div>
-        <div id="template-library" class="template-library"></div>
-        <form id="template-form">
-          <div class="template-grid">
-            <div>
-              <label>Plantilla<select id="template-select"></select></label
-              ><label
-                >Nombre de la plantilla<input
-                  id="template-name"
-                  required
-                  maxlength="80"
-              /></label>
-              <label
-                >Contexto del mensaje<input
-                  id="template-context"
-                  maxlength="80"
-                  list="template-contexts"
-                  placeholder="Por ejemplo: Soporte" /><datalist
-                  id="template-contexts"
-                >
-                  <option value="Entrega"></option>
-                  <option value="Renovación"></option>
-                  <option value="Cobro"></option>
-                  <option value="Promoción"></option>
-                  <option value="Soporte"></option>
-                  <option value="General"></option></datalist
-              ></label>
-              <div class="actions">
-                <button type="button" id="duplicate-template" class="secondary">
-                  Duplicar</button
-                ><button type="button" id="add-template" class="secondary">
-                  ＋ Nueva plantilla</button
-                ><button type="button" id="delete-template" class="text-button">
-                  Eliminar
-                </button>
-              </div>
-              <p class="muted">
-                Variables disponibles: pulsa para insertarlas.
-              </p>
-              <div id="variables" class="variables"></div>
+        <p class="mode-banner">
+          Modo manual · WhatsApp no está conectado a esta bandeja. Prepara el
+          mensaje aquí, envíalo en WhatsApp y confirma para guardarlo. Los
+          mensajes entrantes pueden registrarse manualmente.
+        </p>
+        <div class="actions">
+          <a
+            href="https://web.whatsapp.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="button secondary"
+            >Abrir WhatsApp Web</a
+          ><a href="#templates" class="button secondary"
+            >Mensajes predefinidos</a
+          >
+        </div>
+        <div class="inbox-grid">
+          <aside>
+            <label
+              >Buscar contacto<input
+                id="inbox-search"
+                type="search"
+                placeholder="Nombre, teléfono, usuario o servicio"
+            /></label>
+            <div id="inbox-contacts" class="inbox-contacts"></div>
+          </aside>
+          <div class="inbox-thread">
+            <h3 id="inbox-title">Selecciona un contacto</h3>
+            <p id="inbox-contact" class="muted"></p>
+            <div class="actions">
+              <button id="inbox-compose" type="button" disabled>
+                Preparar mensaje</button
+              ><button
+                id="inbox-profile"
+                type="button"
+                class="secondary"
+                disabled
+              >
+                Ficha del contacto
+              </button>
             </div>
-            <div>
+            <div
+              id="inbox-history"
+              class="inbox-history"
+              aria-live="polite"
+            ></div>
+            <form id="inbox-received-form">
               <label
-                >Contenido<textarea
-                  id="template-body"
-                  rows="9"
+                >Registrar mensaje recibido (manual)<textarea
+                  id="inbox-received"
+                  maxlength="8000"
+                  rows="3"
                   required
-                  maxlength="4000"
-                ></textarea>
-              </label>
-              <p class="muted">
-                Usa *texto* para negrita y _texto_ para cursiva en WhatsApp.
-              </p>
-              <button type="submit">Guardar plantilla</button>
-              <div class="inset">
-                <p class="muted">
-                  En una regla de Meta se envían el nombre aprobado y sus
-                  variables; el texto libre de esta vista previa se usa para
-                  wa.me y herramientas externas.
-                </p>
-                <h3>Vista previa</h3>
-                <label
-                  >Completar con<select id="preview-client">
-                    <option value="">Datos de ejemplo</option>
-                  </select></label
-                >
-                <pre id="template-preview" class="message-preview"></pre>
-              </div>
-            </div>
+                  disabled
+                ></textarea></label
+              ><button id="inbox-save-received" disabled>
+                Guardar en el historial
+              </button>
+            </form>
           </div>
-        </form>
+        </div>
       </section>
       <section id="marketing" class="view panel" hidden>
         <p class="eyebrow">CONOCE A TUS CONTACTOS</p>
@@ -881,6 +859,19 @@
         <div id="contact-detail-body"></div>
       </dialog>
       <section id="integrations" class="view panel" hidden>
+        <div class="inset">
+          <h3>WhatsApp: conexión de la bandeja</h3>
+          <span class="pill none">API de conversaciones pendiente</span>
+          <p>
+            La bandeja actual funciona con wa.me y registros manuales. WhatsApp
+            Web se abre en otra pestaña; no se incrusta ni se sincroniza con el
+            CRM. Para recibir y responder directamente aquí falta configurar
+            WhatsApp Business Platform, sus webhooks y las credenciales del
+            servidor privado. Tener un token de recordatorios no activa una
+            bandeja bidireccional.
+          </p>
+          <a href="#messages" class="button secondary">Ir a conversaciones</a>
+        </div>
         <p class="eyebrow">CONECTA CUANDO LO NECESITES</p>
         <h2>Zapier, Make o n8n</h2>
         <p>
@@ -941,6 +932,111 @@
         <div id="integration-history" class="table-scroll"></div>
       </section>
       <section id="automation" class="view panel" hidden>
+        <details id="predefined-messages">
+          <summary>Mensajes predefinidos</summary>
+          <div id="templates" class="inset">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">MENSAJES QUE TRABAJAN POR TI</p>
+                <h2>Tu biblioteca de mensajes</h2>
+                <p class="muted">
+                  Crea tus propios mensajes para entrega, renovación, cobro,
+                  promociones o cualquier otro contexto.
+                </p>
+              </div>
+            </div>
+            <div class="toolbar">
+              <label class="search"
+                >Buscar mensaje<input
+                  id="template-search"
+                  type="search"
+                  placeholder="Nombre, contexto o contenido" /></label
+              ><label
+                >Contexto<select id="context-filter">
+                  <option value="all">Todos los contextos</option>
+                </select></label
+              >
+            </div>
+            <div id="template-library" class="template-library"></div>
+            <form id="template-form">
+              <div class="template-grid">
+                <div>
+                  <label>Plantilla<select id="template-select"></select></label
+                  ><label
+                    >Nombre de la plantilla<input
+                      id="template-name"
+                      required
+                      maxlength="80"
+                  /></label>
+                  <label
+                    >Contexto del mensaje<input
+                      id="template-context"
+                      maxlength="80"
+                      list="template-contexts"
+                      placeholder="Por ejemplo: Soporte" /><datalist
+                      id="template-contexts"
+                    >
+                      <option value="Entrega"></option>
+                      <option value="Renovación"></option>
+                      <option value="Cobro"></option>
+                      <option value="Promoción"></option>
+                      <option value="Soporte"></option>
+                      <option value="General"></option></datalist
+                  ></label>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      id="duplicate-template"
+                      class="secondary"
+                    >
+                      Duplicar</button
+                    ><button type="button" id="add-template" class="secondary">
+                      ＋ Nueva plantilla</button
+                    ><button
+                      type="button"
+                      id="delete-template"
+                      class="text-button"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                  <p class="muted">
+                    Variables disponibles: pulsa para insertarlas.
+                  </p>
+                  <div id="variables" class="variables"></div>
+                </div>
+                <div>
+                  <label
+                    >Contenido<textarea
+                      id="template-body"
+                      rows="9"
+                      required
+                      maxlength="4000"
+                    ></textarea>
+                  </label>
+                  <p class="muted">
+                    Usa *texto* para negrita y _texto_ para cursiva en WhatsApp.
+                  </p>
+                  <button type="submit">Guardar plantilla</button>
+                  <div class="inset">
+                    <p class="muted">
+                      En una regla de Meta se envían el nombre aprobado y sus
+                      variables; el texto libre de esta vista previa se usa para
+                      wa.me y herramientas externas.
+                    </p>
+                    <h3>Vista previa</h3>
+                    <label
+                      >Completar con<select id="preview-client">
+                        <option value="">Datos de ejemplo</option>
+                      </select></label
+                    >
+                    <pre id="template-preview" class="message-preview"></pre>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </details>
         <div class="section-head">
           <div>
             <p class="eyebrow">TUS MENSAJES, TUS REGLAS</p>
@@ -1397,6 +1493,9 @@
         envío allí.
       </p>
       <div class="actions end">
+        <button id="confirm-manual-message" class="secondary">
+          Ya lo envié: guardar en el historial
+        </button>
         <button id="confirm-task" hidden class="secondary">
           Ya envié el mensaje: confirmar</button
         ><button id="copy-message" class="secondary">Copiar mensaje</button
