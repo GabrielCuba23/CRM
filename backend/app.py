@@ -79,7 +79,7 @@ def create_app(config=None):
                 return redirect('/login')
             if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
                 csrf = request.headers.get('X-CSRF-Token', '')
-                if not hmac.compare_digest(session()['csrf'], csrf):
+                if not hmac.compare_digest(session()['csrf'].encode('utf-8'), csrf.encode('utf-8')):
                     return jsonify(error='Sesión no válida. Recarga e inicia sesión nuevamente.'), 403
 
     @app.after_request

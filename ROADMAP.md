@@ -30,3 +30,16 @@ La infraestructura personal puede empezar dentro de cuotas gratuitas. No se prom
 ## Aplicación móvil y marca
 
 Disponible: nombre del CRM y logo raster personalizables, diseño adaptable y PWA instalable desde un navegador compatible. La PWA necesita Internet y no almacena HTML privado, credenciales ni respuestas de la API en caché. No se ha generado un APK ni publicado en Google Play. Un APK puede evaluarse más adelante usando la PWA como base.
+
+## Plataforma de marca blanca
+
+Disponible en `retail/`: panel del operador, creación de instancias vacías con
+marca propia, bases y sesiones separadas, propietario asignado, activación
+privada y suspensión. Incluye una alternativa de aprovisionamiento Cloudflare
+con Worker/D1/Access por cliente. Consulta [WHITE_LABEL.md](WHITE_LABEL.md).
+
+Pendiente: despliegue público, dominios/HTTPS y respaldo verificado; conectar el
+aprovisionamiento Cloudflare al panel, verificación de correo y recuperación de
+acceso del modo servidor, cuotas, facturación e integraciones independientes.
+El operador de la infraestructura conserva acceso técnico al almacenamiento.
+Los equipos y permisos internos de cada CRM siguen pospuestos.

@@ -7,6 +7,7 @@ ARG INSTALL_FROM_WHEELS=0
 RUN if [ "$INSTALL_FROM_WHEELS" = "1" ]; then pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt; else pip install --no-cache-dir -r requirements.txt; fi
 RUN rm -rf /wheels && useradd --create-home --uid 10001 crm && mkdir /data && chown crm:crm /data
 COPY --chown=crm:crm backend ./backend
+COPY --chown=crm:crm retail ./retail
 COPY --chown=crm:crm *.html *.css *.js *.mjs *.svg *.png manifest.webmanifest ./
 COPY --chown=crm:crm vendor ./vendor
 USER crm

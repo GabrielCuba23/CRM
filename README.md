@@ -2,6 +2,17 @@
 
 Gestor de clientes y suscripciones con interfaz adaptable a móvil, inspirado en las referencias proporcionadas. La interfaz usa HTML, CSS y JavaScript; el modo privado añade un backend Python con Flask, Gunicorn y SQLite.
 
+## Marca blanca y panel de instancias
+
+La carpeta `retail/` agrega un panel privado para crear CRMs con nombre, logo,
+subdominio, propietario y base de datos independientes. Cada instancia comienza
+vacía; el propietario activa su acceso con un enlace privado de un solo uso.
+Incluye suspensión y revocación de sesiones, sin acceso del panel a los registros
+del cliente. Consulta [WHITE_LABEL.md](WHITE_LABEL.md) para desplegarlo y entender
+la separación de datos. La alternativa [Cloudflare retail](cloud/RETAIL.md)
+prepara un Worker, D1 y Access por cliente. Ambos caminos están probados
+localmente; el panel no está desplegado y GitHub Pages continúa siendo modo local.
+
 ## Opción privada en plan gratuito
 
 La nueva alternativa Cloudflare Workers + D1 + Access evita contratar un VPS. Incluye acceso exclusivo por correo, almacenamiento centralizado y cron horario. El despliegue completo está automatizado en `cloud/deploy.py`; consulta [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md) para conectar tu propia cuenta Free. Está preparado y probado localmente, pero pendiente de autorización para publicarlo. Los envíos automáticos de Meta pueden tener coste.

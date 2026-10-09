@@ -3,11 +3,13 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.retail.example
 .venv/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
 crm-data/
+retail-data/
 build-wheels/*.whl
 cloud/assets/
 cloud/.wrangler/

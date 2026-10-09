@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Activa tu acceso · {{ instance.crmName or instance.name }}</title>
+    <link rel="stylesheet" href="/retail-static/panel.css" />
+    <script src="/retail-static/activate.js" defer></script>
+  </head>
+  <body>
+    <main class="shell activation-shell">
+      <section class="card login-card">
+        <span class="eyebrow">TU CRM, TU NEGOCIO</span>
+        <h1>{{ instance.crmName or instance.name }}</h1>
+        <h2>Activa tu acceso privado</h2>
+        <p>
+          Confirma el correo al que se asignó este CRM y elige tu contraseña.
+        </p>
+        <p id="notice" role="status" aria-live="polite" hidden></p>
+        <form id="activate-form">
+          <label
+            >Correo del propietario<input
+              name="email"
+              type="email"
+              required
+              autocomplete="username"
+              maxlength="254"
+          /></label>
+          <label
+            >Nueva contraseña<input
+              name="password"
+              type="password"
+              minlength="12"
+              maxlength="1024"
+              required
+              autocomplete="new-password"
+          /></label>
+          <label
+            >Repite la contraseña<input
+              name="confirmation"
+              type="password"
+              minlength="12"
+              maxlength="1024"
+              required
+              autocomplete="new-password"
+          /></label>
+          <small
+            >Usa al menos 12 caracteres. Este enlace se utiliza una sola
+            vez.</small
+          >
+          <button type="submit">Activar mi CRM</button>
+        </form>
+        <p id="login-link" hidden>
+          <a href="/login">Iniciar sesión en mi CRM →</a>
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

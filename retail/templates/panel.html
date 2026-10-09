@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Panel de marca blanca · CRM</title>
+    <link rel="stylesheet" href="/retail-static/panel.css" />
+    <script src="/retail-static/panel.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">TU PLATAFORMA DE CRMS</span>
+          <h1>Panel de marca blanca</h1>
+        </div>
+        <div id="session-controls" hidden>
+          <span id="operator-email"></span
+          ><button id="logout" class="secondary" type="button">
+            Cerrar sesión
+          </button>
+        </div>
+      </header>
+      <p id="notice" role="status" aria-live="polite" hidden></p>
+      <section id="login-section" class="card login-card" hidden>
+        <h2>Acceso del administrador</h2>
+        <p>Administra las marcas y el acceso a cada instancia del CRM.</p>
+        <form id="login-form">
+          <label
+            >Correo<input
+              name="email"
+              type="email"
+              autocomplete="username"
+              required
+          /></label>
+          <label
+            >Contraseña<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+          /></label>
+          <button type="submit">Iniciar sesión</button>
+        </form>
+      </section>
+      <div id="dashboard" hidden>
+        <section class="stats" aria-label="Resumen de instancias">
+          <div class="card">
+            <span>Total de CRMs</span><strong id="count-total">0</strong>
+          </div>
+          <div class="card">
+            <span>Activos</span><strong id="count-active">0</strong>
+          </div>
+          <div class="card">
+            <span>Pendientes de activar</span
+            ><strong id="count-pending">0</strong>
+          </div>
+          <div class="card">
+            <span>Suspendidos</span><strong id="count-suspended">0</strong>
+          </div>
+        </section>
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <h2>Tus instancias</h2>
+              <p>
+                Cada CRM comienza vacío y tiene su propio propietario y
+                almacenamiento.
+              </p>
+            </div>
+            <button id="show-create" type="button">+ Crear CRM</button>
+          </div>
+          <label class="search"
+            >Buscar instancia<input
+              id="search"
+              type="search"
+              placeholder="Nombre, correo, dirección o estado"
+          /></label>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>CRM</th>
+                  <th>Propietario</th>
+                  <th>Dirección</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="instances"></tbody>
+            </table>
+          </div>
+          <p id="empty-list" class="empty" hidden>
+            Aún no tienes instancias. Crea tu primer CRM.
+          </p>
+        </section>
+        <section id="create-section" class="card" hidden>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">NUEVA INSTANCIA</span>
+              <h2>Una marca, un propietario, un CRM</h2>
+            </div>
+            <button id="cancel-create" type="button" class="secondary">
+              Cerrar
+            </button>
+          </div>
+          <form id="create-form" class="form-grid">
+            <label
+              >Nombre interno<input
+                name="name"
+                required
+                maxlength="100"
+                placeholder="Cliente · Empresa"
+            /></label>
+            <label
+              >Correo del propietario<input
+                name="ownerEmail"
+                type="email"
+                required
+                maxlength="254"
+                autocomplete="off"
+            /></label>
+            <label
+              >Subdominio<input
+                name="slug"
+                required
+                maxlength="40"
+                pattern="[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+                placeholder="empresa"
+              /><small id="domain-hint"
+                >Usa letras minúsculas, números y guiones.</small
+              ></label
+            >
+            <label
+              >Nombre visible del CRM<input
+                name="crmName"
+                required
+                maxlength="80"
+                placeholder="CRM de mi empresa"
+            /></label>
+            <label
+              >Nombre del negocio<input
+                name="business"
+                required
+                maxlength="100"
+            /></label>
+            <label
+              >Logo opcional<input
+                id="logo-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+              /><small>PNG, JPG o WebP, hasta 100 KB.</small></label
+            >
+            <div class="full">
+              <p>
+                El propietario elegirá su contraseña mediante un enlace de
+                activación que caduca en 48 horas. Comparte ese enlace de forma
+                privada.
+              </p>
+              <button type="submit">Crear instancia independiente</button>
+            </div>
+          </form>
+        </section>
+        <section id="invitation-section" class="card invitation" hidden>
+          <div class="section-heading">
+            <h2>Activación del propietario</h2>
+            <button id="close-invitation" class="secondary" type="button">
+              Cerrar
+            </button>
+          </div>
+          <p id="invitation-description"></p>
+          <label
+            >Enlace privado de activación<input
+              id="invitation-link"
+              type="text"
+              readonly
+              autocomplete="off"
+          /></label>
+          <div class="actions">
+            <button id="copy-invitation" type="button">Copiar enlace</button>
+          </div>
+          <small
+            >Se muestra al crear o renovar una invitación. Renovarla invalida el
+            enlace anterior.</small
+          >
+        </section>
+        <details class="card security-settings">
+          <summary>Seguridad del panel</summary>
+          <form id="password-form" class="form-grid">
+            <label
+              >Contraseña actual<input
+                name="current"
+                type="password"
+                required
+                autocomplete="current-password"
+            /></label>
+            <label
+              >Nueva contraseña<input
+                name="next"
+                type="password"
+                required
+                minlength="12"
+                maxlength="1024"
+                autocomplete="new-password"
+            /></label>
+            <div class="full">
+              <button type="submit">
+                Cambiar contraseña y cerrar sesiones
+              </button>
+            </div>
+          </form>
+        </details>
+        <footer>
+          Panel de instancias · Los registros de clientes se consultan desde
+          cada CRM con su propio acceso.
+        </footer>
+      </div>
+    </main>
+  </body>
+</html>

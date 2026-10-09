@@ -1,0 +1,31 @@
+services:
+  panel:
+    build:
+      context: .
+      args:
+        INSTALL_FROM_WHEELS: ${INSTALL_FROM_WHEELS:-0}
+    command:
+      [
+        "gunicorn",
+        "--bind",
+        "0.0.0.0:8000",
+        "--workers",
+        "2",
+        "--access-logfile",
+        "/dev/null",
+        "retail.wsgi:app",
+      ]
+    env_file: .env.retail
+    environment:
+      RETAIL_DATA_ROOT: /data/retail
+    ports:
+      - "127.0.0.1:8002:8000"
+    volumes:
+      - retail-data:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  retail-data:
