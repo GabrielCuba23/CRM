@@ -14,4 +14,6 @@ build-wheels/*.whl
 cloud/assets/
 cloud/.wrangler/
 cloud/wrangler.generated.json
+cloud/panel/generated-*.mjs
+cloud/panel/build/
 node_modules/

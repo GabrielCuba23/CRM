@@ -12,10 +12,13 @@ del cliente. Consulta [WHITE_LABEL.md](WHITE_LABEL.md) para desplegarlo y entend
 la separación de datos. La alternativa [Cloudflare retail](cloud/RETAIL.md)
 prepara un Worker, D1 y Access por cliente. Ambos caminos están probados
 localmente; el panel no está desplegado y GitHub Pages continúa siendo modo local.
+El [panel nativo Cloudflare](cloud/panel/README.md) está adaptado a Workers, D1
+y Access, con creación por cola y suspensión desde la interfaz. Está preparado
+para desplegarse con las credenciales de tu cuenta; no es una página de GitHub Pages.
 
 ## Opción privada en plan gratuito
 
-La nueva alternativa Cloudflare Workers + D1 + Access evita contratar un VPS. Incluye acceso exclusivo por correo, almacenamiento centralizado y cron horario. El despliegue completo está automatizado en `cloud/deploy.py`; consulta [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md) para conectar tu propia cuenta Free. Está preparado y probado localmente, pero pendiente de autorización para publicarlo. Los envíos automáticos de Meta pueden tener coste.
+La nueva alternativa Cloudflare Workers + D1 + Access evita contratar un VPS. Incluye acceso exclusivo por correo, almacenamiento centralizado y cron horario. El despliegue completo está automatizado en `cloud/deploy.py`; consulta [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md) para conectar tu propia cuenta Free. Está preparado y probado localmente, pero pendiente de conectar las credenciales para publicarlo. Los envíos automáticos de Meta pueden tener coste.
 
 ## Acceso privado y automatización
 

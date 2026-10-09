@@ -45,6 +45,7 @@ leer sus datos antes de entregar la URL. Si una operación falla, el manifiesto
 conserva los identificadores de recursos creados y la etapa alcanzada. El
 script no elimina bases para intentar recuperar un fallo; revisa esos recursos
 antes de reintentar con otro identificador. Un Worker publicado en la etapa
-`worker_locked` permanece cerrado. Esta alternativa todavía no incluye un
-botón de aprovisionamiento Cloudflare en el panel retail, gestión de dominios
-personalizados, facturación ni borrado de instancias.
+`worker_locked` permanece cerrado. El [panel nativo de Cloudflare](panel/README.md) agrega creación desde la interfaz
+y suspensión con bases independientes. Este script sigue siendo una alternativa
+manual. Dominios personalizados, facturación y borrado de instancias siguen
+pendientes.

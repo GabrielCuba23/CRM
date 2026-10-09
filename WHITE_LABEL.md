@@ -165,3 +165,13 @@ clientes siguen como tareas pendientes solicitadas previamente. El propietario
 único de una instancia y el operador del panel son accesos separados, no un
 sistema de equipos internos. No hay importación automática de la base del CRM
 actual a una nueva instancia.
+
+## Panel nativo Cloudflare
+
+La adaptación está preparada en `cloud/panel/`, con su propio registro D1,
+acceso exclusivo del administrador por Access y creación desde la interfaz
+de Workers y bases individuales. Sustituye el paso pendiente de conectar
+aprovisionamiento Cloudflare al panel descrito arriba. Conserva como alternativa
+el panel Python y su invitación de 48 horas; en Cloudflare los propietarios
+entran mediante código al correo. Consulta [preparación y despliegue](cloud/panel/README.md).
+La publicación real y su comprobación siguen pendientes de conectar credenciales.

@@ -3,7 +3,8 @@
   const $ = (selector) => document.querySelector(selector);
   let csrf = "",
     instances = [],
-    logoDataUrl = "";
+    logoDataUrl = "",
+    authProvider = "python";
   const statuses = {
     pending: "Pendiente",
     active: "Activo",
@@ -27,6 +28,8 @@
     $("#dashboard").hidden = true;
     $("#session-controls").hidden = true;
     $("#login-section").hidden = false;
+    $("#login-form").hidden = authProvider === "cloudflare-access";
+    $("#cloud-login").hidden = authProvider !== "cloudflare-access";
     $("#operator-email").textContent = "";
     $("#create-form").reset();
     $("#password-form").reset();
@@ -76,7 +79,9 @@
       throw new Error("El enlace de activación requiere HTTPS.");
     $("#invitation-link").value = url.href;
     $("#invitation-description").textContent =
-      `Comparte este enlace con ${result.instance.ownerEmail} para activar ${result.instance.name}. Caduca en 48 horas.`;
+      result.authProvider === "cloudflare-access"
+        ? `Comparte la dirección con ${result.instance.ownerEmail}. Access verificará su correo con un código; ningún otro correo podrá ingresar.`
+        : `Comparte este enlace con ${result.instance.ownerEmail} para activar ${result.instance.name}. Caduca en 48 horas.`;
     $("#invitation-section").hidden = false;
     $("#invitation-section").scrollIntoView({ block: "center" });
   }
@@ -102,25 +107,39 @@
       const row = document.createElement("tr");
       row.append(cell(item.name), cell(item.ownerEmail));
       const urlCell = cell("");
-      const url = new URL(item.url);
-      if (url.protocol === "https:") {
+      const url = item.url ? new URL(item.url) : null;
+      if (url?.protocol === "https:") {
         const link = document.createElement("a");
         link.href = url.href;
         link.textContent = url.host;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         urlCell.append(link);
-      }
+      } else urlCell.textContent = "Pendiente de publicación";
       row.append(urlCell);
       const statusCell = cell("");
       const badge = document.createElement("span");
       badge.className = "status " + item.status;
-      badge.textContent = statuses[item.status] || item.status;
+      badge.textContent =
+        item.stage === "failed"
+          ? "Revisar publicación"
+          : statuses[item.status] || item.status;
       statusCell.append(badge);
       row.append(statusCell);
       const actions = document.createElement("div");
       actions.className = "actions";
-      if (item.status === "pending")
+      if (item.status === "pending" && authProvider === "cloudflare-access") {
+        const button = action(
+          item.stage === "failed" ? "Ver incidencia" : "En preparación",
+          () =>
+            message(
+              item.error ||
+                "La creación se procesa por turnos cada cinco minutos. La dirección aparecerá cuando la publicación esté terminada.",
+              Boolean(item.error),
+            ),
+        );
+        actions.append(button);
+      } else if (item.status === "pending")
         actions.append(
           action("Renovar invitación", async () =>
             showInvitation(
@@ -128,7 +147,7 @@
             ),
           ),
         );
-      else
+      else {
         actions.append(
           action(
             item.status === "active" ? "Suspender" : "Reactivar",
@@ -146,6 +165,15 @@
             item.status === "active" ? "danger" : "secondary",
           ),
         );
+        if (authProvider === "cloudflare-access" && item.status === "active")
+          actions.append(
+            action("Acceso propietario", async () =>
+              showInvitation(
+                await api(`/api/instances/${item.id}/invitation`, "POST", {}),
+              ),
+            ),
+          );
+      }
       const td = cell("");
       td.append(actions);
       row.append(td);
@@ -159,9 +187,22 @@
   async function loadSession() {
     const session = await api("/api/session");
     csrf = session.csrf;
+    authProvider = session.authProvider || "python";
+    $(".security-settings").hidden = authProvider === "cloudflare-access";
+    if (authProvider === "cloudflare-access") {
+      $("#create-form .full p").textContent =
+        "El CRM se publica con Worker y base propios. El propietario ingresa con un código enviado a su correo. La preparación se procesa cada cinco minutos; no se comparten datos ni claves de otros CRMs.";
+      $("#domain-hint").textContent =
+        `Se genera una dirección propia en ${session.baseDomain} al terminar la publicación.`;
+      if (!session.provisioningConfigured)
+        message(
+          "Conecta RETAIL_PROVISION_TOKEN en los secretos del Worker del panel para habilitar la creación de instancias.",
+        );
+    }
     $("#operator-email").textContent = session.email;
-    $("#domain-hint").textContent =
-      `Dirección: tu-subdominio.${session.baseDomain}`;
+    if (authProvider !== "cloudflare-access")
+      $("#domain-hint").textContent =
+        `Dirección: tu-subdominio.${session.baseDomain}`;
     $("#login-section").hidden = true;
     $("#dashboard").hidden = false;
     $("#session-controls").hidden = false;
@@ -185,7 +226,17 @@
   });
   $("#logout").addEventListener("click", async () => {
     try {
-      await api("/api/logout", "POST", {});
+      const result = await api("/api/logout", "POST", {});
+      if (result.logoutUrl) {
+        const target = new URL(result.logoutUrl);
+        if (
+          target.origin === location.origin &&
+          target.pathname === "/cdn-cgi/access/logout"
+        ) {
+          location.assign(target.href);
+          return;
+        }
+      }
       showLogin();
       message("Sesión cerrada.");
     } catch (error) {
@@ -255,8 +306,16 @@
       logoDataUrl = "";
       $("#create-section").hidden = true;
       await refresh();
-      showInvitation(result);
-      message("Instancia creada con una base de datos vacía e independiente.");
+      if (result.queued)
+        message(
+          "Instancia registrada. Su publicación se procesará en los próximos turnos; la dirección aparecerá al terminar.",
+        );
+      else {
+        showInvitation(result);
+        message(
+          "Instancia creada con una base de datos vacía e independiente.",
+        );
+      }
     } catch (error) {
       message(error.message, true);
     } finally {
@@ -282,6 +341,16 @@
       button.disabled = false;
     }
   });
+  setInterval(() => {
+    if (
+      authProvider === "cloudflare-access" &&
+      !$("#dashboard").hidden &&
+      instances.some(
+        (item) => item.status === "pending" && item.stage !== "failed",
+      )
+    )
+      refresh().catch((error) => message(error.message, true));
+  }, 15000);
   loadSession().catch((error) => {
     showLogin();
     if (error.message !== "Inicia sesión en el panel.")
