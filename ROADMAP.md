@@ -29,7 +29,7 @@ La infraestructura personal puede empezar dentro de cuotas gratuitas. No se prom
 
 ## Aplicación móvil y marca
 
-Disponible: nombre del CRM y logo raster personalizables, diseño adaptable y PWA instalable desde un navegador compatible. La PWA necesita Internet y no almacena HTML privado, credenciales ni respuestas de la API en caché. No se ha generado un APK ni publicado en Google Play. Un APK puede evaluarse más adelante usando la PWA como base.
+Disponible: nombre del CRM y logo raster personalizables, diseño adaptable y PWA instalable desde un navegador compatible. La PWA necesita Internet y no almacena HTML privado, credenciales ni respuestas de la API en caché. Disponible también: APK Android firmada para pruebas en `android/` y extensión Chrome con el CRM completo junto a WhatsApp Web en `extension/`. Consulta [COMPANIONS.md](COMPANIONS.md). Pendiente: validación con Access y WhatsApp en dispositivos del propietario, firma de distribución definitiva y publicación en tiendas si se elige ese canal.
 
 ## Plataforma de marca blanca
 

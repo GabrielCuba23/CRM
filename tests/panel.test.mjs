@@ -261,6 +261,7 @@ test("Two queued CRMs publish with independent D1, owner-only Access, locked fir
   assert.equal(uploads.length, 4);
   for (let i = 0; i < 2; i++) {
     const binding = uploads[i * 2].metadata.bindings;
+    assert.equal(binding.find((b) => b.name === "DB").database_id, databases[i].uuid);
     assert.equal(
       binding.find((b) => b.name === "ACCESS_AUD").text,
       "not-configured-closed",

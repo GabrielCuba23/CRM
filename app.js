@@ -5,6 +5,7 @@ import {
   promotionPrice,
 } from "./promotions.mjs";
 import { conversationEntries, manualMessage } from "./messaging.mjs";
+import { initializeCompanion } from "./companion-ui.mjs";
 import {
   defaultReports,
   validateReports,
@@ -54,6 +55,7 @@ let rules = [],
   externalTaskStates = new Map(),
   externalCompleted = new Set();
 let supplierOverviewPage = 1;
+let companionUI = null;
 let promotions = emptyPromotions();
 let inboxClientId = "";
 let reports = { ...defaultReports };
@@ -79,7 +81,8 @@ let secureMode = false,
   serverRevision = 0,
   saveInFlight = false;
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const transport = globalThis.NexoCompanion?.fetch || fetch;
+  const response = await transport(path, {
     ...options,
     credentials: "same-origin",
     headers: {
@@ -89,7 +92,7 @@ async function api(path, options = {}) {
     },
   });
   if (response.status === 401) {
-    location.replace("/login");
+    location.replace(globalThis.NexoCompanion?.loginUrl || "/login");
     throw Error("Tu sesión caducó. Inicia sesión nuevamente.");
   }
   const result = await response.json();
@@ -107,7 +110,7 @@ if (backendRequired) {
     authProvider = session.authProvider || "python";
     if (!secureMode) throw Error("Backend no disponible.");
   } catch {
-    location.replace("/login");
+    location.replace(globalThis.NexoCompanion?.loginUrl || "/login");
     throw Error("No se pudo verificar la sesión privada.");
   }
 }
@@ -376,6 +379,7 @@ function render() {
   }
   renderModules();
   renderRules();
+  companionUI?.refresh();
 }
 function editClient(c = {}) {
   delete $("#client-form").dataset.reactivate;
@@ -648,6 +652,26 @@ $("#message-password").addEventListener("input", compose);
 $("#message-text").addEventListener("input", updateLink);
 $("#open-whatsapp").addEventListener("click", async (event) => {
   updateLink();
+  if (globalThis.NexoCompanion) {
+    event.preventDefault();
+    try {
+      if (!recipient?.phone) throw Error("Selecciona un cliente con teléfono.");
+      const result = await globalThis.NexoCompanion.prepareMessage({
+        phone: recipient.phone,
+        text: $("#message-text").value,
+      });
+      if (result?.prepared === true)
+        $("#message-error").textContent =
+          "Borrador preparado en WhatsApp Web. Revísalo y pulsa Enviar allí.";
+      else if (result?.clipboard === true)
+        $("#message-error").textContent =
+          "Texto copiado. Pégalo manualmente en el chat correcto y revisa el borrador antes de enviarlo. No se reemplazó el texto de WhatsApp.";
+      else throw Error("No se pudo preparar el borrador. Puedes copiar el mensaje y pegarlo en el chat correcto.");
+    } catch (error) {
+      $("#message-error").textContent = error.message;
+    }
+    return;
+  }
   if (!$("#open-whatsapp").hasAttribute("href")) event.preventDefault();
 });
 $("#copy-message").addEventListener("click", async () => {
@@ -2400,7 +2424,7 @@ $("#install-app").onclick = async () => {
   installPrompt = null;
   $("#install-app").hidden = true;
 };
-if ("serviceWorker" in navigator)
+if (!globalThis.NexoCompanion && "serviceWorker" in navigator)
   navigator.serviceWorker
     .register("./sw.js")
     .then(() => navigator.serviceWorker.ready)
@@ -3141,4 +3165,27 @@ $("#supplier-page-next").addEventListener("click", () => {
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) renderSupplierOverview();
+});
+
+companionUI = initializeCompanion({
+  companion: globalThis.NexoCompanion,
+  getState: snapshot,
+  isBusy: () => saveInFlight,
+  notify,
+  openClient: editClient,
+  openRenew: (client) => {
+    if (!client.archived) return openRenew(client);
+    editClient({ ...client, accountId: "", profile: "", expires: "" });
+    $("#client-form").dataset.reactivate = "1";
+    $("#client-form").elements.paid.disabled = false;
+    $("#client-form").elements.paid.checked = true;
+  },
+  openMessage,
+  showClient: (client) => growthUI.showContact(client),
+  saveGrowth: async (next) => {
+    if (!(await persistState({ growth: next }))) return false;
+    growth = next;
+    renderInbox();
+    return true;
+  },
 });

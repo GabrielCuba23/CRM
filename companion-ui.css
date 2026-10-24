@@ -1,0 +1,8 @@
+.companion-box{border:1px solid var(--line,#dedbe8);border-radius:16px;padding:16px;margin:0 0 20px;background:var(--panel,#fff);color:var(--text,#242033)}
+.companion-box h2{font-size:1.15rem;margin:0 0 8px}.companion-box p{margin:8px 0}
+.companion-box label{display:flex;flex-direction:column;gap:5px;margin:10px 0;font-size:.9rem}
+.companion-box input[type=tel],.companion-box select{box-sizing:border-box;width:100%;min-width:0}
+.companion-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.companion-actions button{font-size:.83rem;white-space:normal;text-align:left}
+.companion-box .companion-toggle{display:block;line-height:1.5}.companion-toggle input{width:auto;display:inline;vertical-align:middle}
+.companion-box small{display:block;line-height:1.5}.companion-box #companion-status{font-size:.85rem;overflow-wrap:anywhere}
+@media(max-width:480px){.companion-box{padding:12px}.companion-actions button{flex:1 1 135px}}

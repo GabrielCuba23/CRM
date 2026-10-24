@@ -17,3 +17,8 @@ cloud/wrangler.generated.json
 cloud/panel/generated-*.mjs
 cloud/panel/build/
 node_modules/
+work/
+android/build/
+*.apk
+*.keystore
+*.jks

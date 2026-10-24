@@ -145,6 +145,17 @@ test("Access validates signatures, owner, audience, issuer and expiry", async ()
     503,
   );
 });
+test("Companion connection page preserves owner authentication and frame protection", async () => {
+  const unauthenticated = await handleRequest(new Request("https://crm.example/companion"), env, { fetcher });
+  assert.equal(unauthenticated.status, 401);
+  const page = await handleRequest(request("/companion"), env, { fetcher });
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get("X-Frame-Options"), "DENY");
+  assert.equal(page.headers.get("Cache-Control"), "no-store");
+  assert.match(await page.text(), /Conexión privada/);
+  const extensionWrite = await handleRequest(request("/api/workspace", "PUT", { state: emptyState(), revision: 0 }, { Origin: "chrome-extension://untrusted" }), env, { fetcher });
+  assert.equal(extensionWrite.status, 403);
+});
 test("Private workspace persists in D1, rejects stale updates and CSRF, strips unknown secrets", async () => {
   const state = emptyState();
   state.settings.secret = "not-stored";

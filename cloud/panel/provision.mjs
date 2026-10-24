@@ -46,7 +46,7 @@ async function upload(env, row, audience, fetcher) {
     main_module: "client.mjs",
     compatibility_date: "2026-10-06",
     bindings: [
-      { type: "d1", name: "DB", id: row.database_id },
+      { type: "d1", name: "DB", database_id: row.database_id },
       { type: "plain_text", name: "OWNER_EMAIL", text: row.owner_email },
       {
         type: "plain_text",
