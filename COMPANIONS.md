@@ -22,7 +22,8 @@ a la extensión ni a los archivos públicos.
 
 ## Instalar la extensión
 
-1. Descomprime `nexo-crm-chrome.zip` en una carpeta que conservarás.
+1. Descarga la [extensión integrada 1.1.2](https://drive.google.com/file/d/1nO2lFfisJOCClBCUvXyb7HbcNO7ieAQt/view)
+   y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
 3. En las opciones de Nexo, introduce la dirección HTTPS del CRM y autoriza
@@ -33,7 +34,7 @@ a la extensión ni a los archivos públicos.
 5. Abre o recarga WhatsApp Web. Nexo aparece integrado junto a la conversación.
    Pulsa su botón o el icono de la extensión para mostrarlo u ocultarlo.
 
-Si ya instalaste la versión 1.0, reemplaza los archivos en la misma carpeta,
+Si ya instalaste una versión anterior, reemplaza los archivos en la misma carpeta,
 pulsa **Recargar** en la tarjeta de Nexo en `chrome://extensions` y recarga
 WhatsApp Web. Así conservas la dirección del CRM configurada.
 Conserva una sola instalación de Nexo activa para que no compitan varios paneles.
@@ -90,7 +91,8 @@ grande. Un error de almacenamiento detiene la captura; no se anuncia como guarda
 
 ## Instalar Android
 
-1. Descarga `nexo-crm-android-testing.apk` e instálala en Android 8 o posterior.
+1. Descarga la [APK de pruebas](https://drive.google.com/file/d/1_5whYdX4tINDmxxAmngtaXmc38_AH5yn/view)
+   e instálala en Android 8 o posterior.
    Autoriza esa fuente de instalación cuando Android lo solicite.
 2. Abre Nexo e introduce la dirección HTTPS del CRM principal o de tu instancia.
 3. Cuando solicite autorización del equipo Access, comprueba su dominio exacto;

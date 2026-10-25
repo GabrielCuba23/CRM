@@ -4,11 +4,13 @@ Esta alternativa usa Cloudflare Workers (servidor), D1 (base de datos), Access (
 
 ## Estado
 
-El código, las pruebas y el aprovisionamiento están preparados. No se ha publicado en una cuenta real: faltan la autorización de Cloudflare y el correo del propietario. Las pruebas de WhatsApp son simuladas; no se enviaron mensajes reales.
+El CRM principal y el panel de instancias ya están publicados con Cloudflare Access. El propietario confirmó el ingreso por correo y creó una instancia desde el panel. Las direcciones y las instrucciones actuales de la extensión y Android están en [COMPANIONS.md](COMPANIONS.md).
+
+Quedan por comprobar la versión actual de la extensión en la sesión real de WhatsApp del propietario, la APK en un teléfono Android y las pruebas reales de aislamiento y suspensión antes de vender instancias. Las pruebas automatizadas de WhatsApp usan datos y documentos controlados; no se enviaron mensajes reales durante ellas. La APK está firmada para pruebas y no está publicada en Google Play.
 
 ## Único requisito previo de la cuenta
 
-Crea tu cuenta en https://dash.cloudflare.com/ y activa Zero Trust eligiendo **Free**. La cuenta y la aceptación de las condiciones deben ser tuyas. Si el proveedor pide información de facturación, comprueba el plan antes de aceptarlo; el script no contrata ni activa planes de pago.
+Para un despliegue nuevo, crea tu cuenta en https://dash.cloudflare.com/ y activa Zero Trust eligiendo **Free**. La publicación actual ya tiene esos requisitos configurados. La cuenta y la aceptación de las condiciones deben ser tuyas. Si el proveedor pide información de facturación, comprueba el plan antes de aceptarlo; el script no contrata ni activa planes de pago.
 
 En los ajustes seguros del entorno configura:
 
@@ -16,12 +18,14 @@ En los ajustes seguros del entorno configura:
 - `CRM_OWNER_EMAIL`: tu correo, el único que podrá ingresar.
 - `CLOUDFLARE_API_TOKEN`: token privado limitado a esa cuenta, con permisos de edición para Workers Scripts, D1, Access Apps and Policies, Access Identity Providers y lectura de Access Organizations. Usa los nombres equivalentes que muestre Cloudflare. No lo envíes por chat ni lo subas a GitHub.
 
-Una vez conectada la cuenta, el agente puede ejecutar el despliegue completo:
+Una vez conectada la cuenta, el agente puede ejecutar el despliegue inicial completo:
 
 ```sh
 npm install --prefix /tmp/crm-cloud-tools --cache /tmp/crm-npm-cache --no-package-lock --no-audit --no-fund wrangler@4.148.0
 python3 cloud/deploy.py
 ```
+
+Para actualizar una publicación existente, conserva sus identificadores y bindings; no repitas el despliegue inicial para crear otra copia. La ruta utilizada con la conexión autorizada está documentada en [cloud/CONNECTOR_DEPLOY.md](cloud/CONNECTOR_DEPLOY.md).
 
 Tras completar la publicación conserva un archivo local ignorado `cloud/wrangler.generated.json` sin secretos, para futuras operaciones de Wrangler. El script reutiliza la base `nexo-crm`, aplica un esquema que no borra datos, genera los archivos de la interfaz y publica primero el Worker bloqueado. Crea una aplicación de Access con una política exclusiva para el correo del dueño y vuelve a publicar con su identificador. No imprime el token. Si falla a mitad, no abre el CRM al público. Conserva el nombre `nexo-crm` exclusivamente para este proyecto. Una aplicación de Access existente con otro nombre no se sobrescribe.
 
