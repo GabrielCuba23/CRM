@@ -11,6 +11,7 @@
   const STYLE_ID = "nexo-whatsapp-dock-layout";
   const PUSH_CLASS = "nexo-dock-push";
   const OPEN_CLASS = "nexo-dock-open";
+  const ANCHOR_CLASS = "nexo-dock-anchor";
   const extensionId = chrome.runtime.id;
   const extensionOrigin = chrome.runtime.getURL("");
   const host = document.createElement("nexo-whatsapp-dock");
@@ -114,28 +115,42 @@
 
   const layoutStyle = document.createElement("style");
   layoutStyle.id = STYLE_ID;
-  // This single outside-shadow rule is scoped to the exact WhatsApp app root
+  // These outside-shadow rules are scoped to the exact WhatsApp app root
   // and exists only while our own root class is set. Closing restores layout.
   layoutStyle.textContent = `
     html.${PUSH_CLASS} #app{
-      position:relative!important;
-      height:100%!important;
       width:calc(100% - var(--nexo-dock-width))!important;
       max-width:calc(100% - var(--nexo-dock-width))!important;
       min-width:0!important;
     }
+    html.${PUSH_CLASS} #app.${ANCHOR_CLASS}{position:relative!important}
   `;
 
   let opened = true;
   let scheduled = false;
   let oldStatus = "";
+  let anchoredRoot = null;
   function width() {
     return Math.max(0, Math.min(innerWidth - 12, Math.max(360, Math.min(420, Math.round(innerWidth * .30)))));
   }
   function updateLayout() {
     if (!document.documentElement) return;
     const size = width();
-    const push = opened && innerWidth >= 1100 && !!document.querySelector("#app");
+    const app = document.querySelector("#app");
+    const push = opened && innerWidth >= 1100 && !!app;
+    // Preserve WhatsApp's own vertical sizing and any native positioned root.
+    // Replacing a definite viewport height with 100% under an auto-height body
+    // collapses absolute/flex conversation layouts. A static root needs only a
+    // containing block so its absolute children follow the reserved width.
+    if (anchoredRoot) anchoredRoot.classList.remove(ANCHOR_CLASS);
+    // A SPA can replace the root with a clone containing our previous marker.
+    // Remove that marker too before inspecting the native positioning rule.
+    app?.classList.remove(ANCHOR_CLASS);
+    anchoredRoot = null;
+    if (push && getComputedStyle(app).position === "static") {
+      app.classList.add(ANCHOR_CLASS);
+      anchoredRoot = app;
+    }
     host.style.setProperty("--nexo-width", size + "px");
     host.dataset.state = opened ? "open" : "closed";
     host.dataset.layout = push ? "push" : "overlay";

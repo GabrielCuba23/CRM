@@ -489,9 +489,11 @@ $("#client-form").addEventListener("submit", async (event) => {
             : "Cliente guardado sin cobro registrado. Puedes registrar su ingreso desde Finanzas → Ingreso / venta."
           : "Cliente actualizado. No se duplicó su venta.",
       );
+    } else if ($("#client-error")) {
+      $("#client-error").textContent = $("#status")?.textContent || "No se guardaron los cambios. Revisa tu conexión y vuelve a intentarlo.";
     }
   } catch (error) {
-    $("#client-error").textContent = error.message;
+    if ($("#client-error")) $("#client-error").textContent = error.message;
   }
 });
 $("#search").addEventListener("input", render);
@@ -1275,9 +1277,11 @@ function initializeModules() {
         render();
         $("#renew-dialog").close();
         notify("Renovación guardada.");
+      } else if ($("#renew-error")) {
+        $("#renew-error").textContent = $("#status")?.textContent || "No se guardó la renovación. Revisa tu conexión y vuelve a intentarlo.";
       }
     } catch (error) {
-      $("#renew-error").textContent = error.message;
+      if ($("#renew-error")) $("#renew-error").textContent = error.message;
     }
   });
   $("#new-expense").addEventListener("click", async () => {

@@ -31,10 +31,19 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
   selector.id = "companion-client";
   selectorLabel.append(selector);
   const actions = node("div", "", "companion-actions");
-  const action = (label, id, fn) => {
+  const clientActions = [];
+  const selectionRequired = "Crea o importa primero la ficha del cliente y selecciónala.";
+  let bindButton, newClientButton;
+  const action = (label, id, fn, requiresClient = false) => {
     const button = node("button", label, "button secondary");
     button.type = "button";
     button.id = id;
+    if (requiresClient) {
+      button.disabled = true;
+      button.title = selectionRequired;
+      button.setAttribute("aria-describedby", "companion-selection-help");
+      clientActions.push(button);
+    }
     button.addEventListener("click", () => Promise.resolve().then(fn).catch(report));
     actions.append(button);
     return button;
@@ -42,13 +51,18 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
   const status = node("p", "Selecciona una ficha para trabajar con este chat.", "muted");
   status.id = "companion-status";
   status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  const selectionHelp = node("p", `${selectionRequired} Así podrás ver su detalle, renovar, preparar entregas o guardar conversaciones.`, "muted");
+  selectionHelp.id = "companion-selection-help";
   const automaticLabel = node("label", "", "companion-toggle");
   const automatic = node("input");
   automatic.type = "checkbox";
   automatic.id = "companion-auto-capture";
+  automatic.disabled = true;
+  automatic.setAttribute("aria-describedby", "companion-selection-help");
   automaticLabel.append(automatic, document.createTextNode(" Guardar nuevos textos visibles de este chat mientras trabajo"));
   const details = node("small", "Solo se registran textos cargados en la conversación vinculada. Puedes detener el registro en cualquier momento. Los archivos, audios y mensajes anteriores sin cargar permanecen en WhatsApp.");
-  box.append(title, identity, phoneLabel, selectorLabel, actions, automaticLabel, details, status);
+  box.append(title, identity, phoneLabel, selectorLabel, actions, selectionHelp, automaticLabel, details, status);
   document.querySelector("main").prepend(box);
   const banner = document.querySelector("#messages .mode-banner");
   if (banner) banner.textContent = "Conectado mediante la extensión de WhatsApp Web. Vincula el chat y registra sus textos visibles. Revisa y envía los borradores desde WhatsApp.";
@@ -60,11 +74,30 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
     automatic.checked = false;
     status.textContent = error?.message || "No se pudo completar la operación.";
     notify(status.textContent);
+    status.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   function selectedClient() {
     const client = getState().clients.find((item) => item.id === selector.value);
     if (!client) throw Error("Selecciona la ficha de este cliente; si es nuevo, crea y guarda su ficha primero.");
     return client;
+  }
+  function syncActions() {
+    const selected = getState().clients.some((item) => item.id === selector.value);
+    for (const button of clientActions) {
+      button.disabled = !selected;
+      button.title = selected ? "" : selectionRequired;
+    }
+    selectionHelp.hidden = selected;
+    automatic.disabled = !selected;
+    automatic.title = selected ? "" : selectionRequired;
+    if (!selected) automatic.checked = false;
+    const identified = Boolean(context?.chatId && !context.isGroup && !context.ambiguous);
+    newClientButton.disabled = !identified;
+    newClientButton.title = identified ? "Crear la ficha de este chat" : "Abre un chat individual con teléfono visible o carga un mensaje para identificarlo.";
+    let validPhone = false;
+    try { normalizeCompanionPhone(phone.value); validPhone = true; } catch {}
+    bindButton.disabled = !identified || !validPhone;
+    bindButton.title = identified && validPhone ? "Confirmar el teléfono de este chat" : "Identifica un chat individual e introduce su teléfono completo con código de país.";
   }
   function refreshMatches() {
     const previous = selector.value;
@@ -83,10 +116,11 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
     if (selector.value !== previous) automatic.checked = false;
     if (result.reason === "group") status.textContent = "Selecciona una conversación individual para vincular un cliente.";
     else if (!phone.value) status.textContent = "WhatsApp no muestra el teléfono. Escríbelo con código de país y pulsa Vincular este chat.";
-    else if (!result.matches.length) status.textContent = "No hay ficha con ese teléfono. Puedes crearla aquí mismo.";
+    else if (!result.matches.length) status.textContent = "No hay ficha con ese teléfono. Crea un cliente nuevo aquí o importa su ficha desde tu respaldo.";
     else if (result.matches.length > 1) status.textContent = "Este teléfono tiene varios servicios. Selecciona la ficha correcta.";
     else status.textContent = "Ficha disponible. Puedes vender, renovar o preparar una respuesta.";
     observedState = getState().clients;
+    syncActions();
   }
   function updateContext(next) {
     const changed = context?.chatId !== next?.chatId;
@@ -99,6 +133,7 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
       if (changed) selector.value = "";
       refreshMatches();
     }
+    syncActions();
   }
   async function currentLinkedContext() {
     const latest = await companion.getContext();
@@ -138,7 +173,7 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
     } finally { busy = false; }
   }
   action("Actualizar chat", "companion-context-refresh", async () => { updateContext(await companion.getContext()); refreshMatches(); });
-  action("Vincular este chat", "companion-bind", async () => {
+  bindButton = action("Vincular este chat", "companion-bind", async () => {
     if (!context?.chatId || context.isGroup) throw Error("Abre una conversación individual.");
     const normalized = normalizeCompanionPhone(phone.value);
     if (!confirm(`¿Confirmas que la conversación «${context.name || "Chat abierto"}» corresponde al teléfono +${normalized}?`)) return;
@@ -148,23 +183,27 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
     refreshMatches();
     status.textContent = "Chat vinculado. Selecciona la ficha o crea un cliente nuevo.";
   });
-  action("Nuevo cliente / venta", "companion-new-client", async () => {
+  newClientButton = action("Nuevo cliente / venta", "companion-new-client", async () => {
     const latest = await currentLinkedContext();
     openClient({ name: latest.name || "", phone: normalizeCompanionPhone(latest.phone) });
   });
-  action("Ficha completa", "companion-open-client", () => showClient(selectedClient()));
+  action("Ficha completa", "companion-open-client", () => showClient(selectedClient()), true);
   action("Renovar", "companion-renew", () => {
     const client = selectedClient();
     openRenew(client);
-  });
-  action("Preparar respuesta / entrega", "companion-compose", () => openMessage(selectedClient()));
-  action("Guardar textos visibles", "companion-capture", capture);
+  }, true);
+  action("Preparar respuesta / entrega", "companion-compose", () => openMessage(selectedClient()), true);
+  action("Guardar textos visibles", "companion-capture", capture, true);
   action("Recargar datos del CRM", "companion-reload", () => {
     if (isBusy() || document.querySelector("dialog[open]")) throw Error("Guarda o cierra el formulario abierto antes de recargar.");
     location.reload();
   });
   phone.addEventListener("input", () => { automatic.checked = false; refreshMatches(); });
-  selector.addEventListener("change", () => { automatic.checked = false; });
+  selector.addEventListener("change", () => {
+    automatic.checked = false;
+    syncActions();
+    status.textContent = selector.value ? "Ficha seleccionada. Puedes renovar, preparar una respuesta o guardar los textos de este chat." : selectionRequired;
+  });
   automatic.addEventListener("change", async () => {
     if (!automatic.checked) { status.textContent = "Registro automático detenido."; return; }
     try {
@@ -182,6 +221,7 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
       status.textContent = "Registro automático detenido al ocultar el panel.";
     }
   });
+  syncActions();
   Promise.resolve().then(() => companion.getContext()).then(updateContext).catch(report);
   const timer = setInterval(async () => {
     if (document.hidden || companion.isVisible?.() === false || busy || isBusy()) return;

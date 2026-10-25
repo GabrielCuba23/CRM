@@ -32,13 +32,23 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
    aparece dentro de la página. Su botón o el icono de la extensión muestran y
    ocultan las herramientas, sin abrir el CRM en otra pestaña.
 
-### Actualizar desde la versión 1.0
+### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.1.0. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.1.1. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. La pestaña privada de
 conexión `/companion` sí debe permanecer abierta en segundo plano.
+
+La versión 1.1.1 conserva la altura y el posicionamiento nativos de WhatsApp al
+reservar espacio horizontal. Evita que un cambio de altura del contenedor oculte
+el historial y desplace el editor debajo del encabezado. La navegación integrada
+incluye un selector de secciones para acceder a todas las herramientas en un
+panel estrecho.
+Los botones que requieren una ficha explican ese requisito y se habilitan al
+seleccionarla. Los errores de guardado aparecen dentro del formulario. La entrega
+verifica también los borradores multilínea sin confundir los saltos de línea del
+editor con un mensaje fallido.
 
 No se introducen tokens administrativos de Cloudflare en la extensión. Se usa
 la misma sesión privada del propietario y el mismo control de revisiones del

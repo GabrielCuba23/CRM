@@ -109,3 +109,27 @@ body.nexo-embedded.dark { --accent: #00a884; --muted: #aebac1; color: #e9edef; b
 @media (max-width: 370px) {
   .nexo-embedded #summary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
+
+/* A native section selector makes every CRM module reachable in a narrow dock. */
+.nexo-embedded .crm-sidebar > .brand,
+.nexo-embedded .crm-sidebar > nav { display: none !important; }
+.nexo-embedded .crm-sidebar { padding: 8px 10px !important; }
+.nexo-embedded .nexo-module-nav { display: flex; align-items: center; gap: 9px; margin: 0; color: #52656e; font-size: 12px; }
+.nexo-embedded .nexo-module-nav > span { flex: 0 0 auto; }
+.nexo-embedded #nexo-module-select { flex: 1; min-width: 0; width: 100%; padding: 8px 10px; border-radius: 8px; background: #f5f8f7; color: #173a2e; font-size: 13px; }
+.nexo-embedded .nexo-chat-tools { border: 1px solid #d2e5df; border-radius: 10px; background: #fff; margin: 0 0 10px; min-width: 0; }
+.nexo-embedded .nexo-chat-tools > summary { display: flex; align-items: center; gap: 9px; list-style: none; padding: 10px 11px; cursor: pointer; color: #173a2e; font-size: 12px; }
+.nexo-embedded .nexo-chat-tools > summary::-webkit-details-marker { display: none; }
+.nexo-embedded .nexo-chat-tools > summary::after { content: "⌄"; margin-left: auto; font-size: 15px; flex: 0 0 auto; }
+.nexo-embedded .nexo-chat-tools[open] > summary::after { transform: rotate(180deg); }
+.nexo-embedded .nexo-chat-tools > summary:focus-visible { outline: 2px solid #008069; outline-offset: 2px; border-radius: 8px; }
+.nexo-embedded .nexo-chat-tools > summary strong { flex: 0 0 auto; }
+.nexo-embedded .nexo-chat-identity { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: #667781; font-size: 11px; }
+.nexo-embedded .nexo-chat-tools > .companion-box { border: 0; margin: 0; padding: 0 11px 11px; border-radius: 0 0 10px 10px; }
+.nexo-embedded .nexo-chat-tools .companion-box > h2 { display: none; }
+.nexo-embedded .nexo-chat-tools .companion-box > p:first-of-type { display: none; }
+.nexo-embedded.dark .nexo-module-nav { color: #aebac1; }
+.nexo-embedded.dark #nexo-module-select { background: #202c33; color: #e9edef; border-color: #34434b; }
+.nexo-embedded.dark .nexo-chat-tools { background: #202c33; border-color: #34434b; }
+.nexo-embedded.dark .nexo-chat-tools > summary { color: #e9edef; }
+.nexo-embedded.dark .nexo-chat-identity { color: #aebac1; }

@@ -92,15 +92,37 @@
     const composer = main()?.querySelector('footer [contenteditable="true"][role="textbox"]') || main()?.querySelector('[data-testid="conversation-compose-box-input"][contenteditable="true"]');
     if (!composer) return { prepared: false, clipboard: true, reason: "WhatsApp cambió su editor. El mensaje se copiará para que lo pegues tú." };
     const oldText = (composer.innerText || composer.textContent || "").trim();
-    if (oldText && oldText !== text.trim()) return { prepared: false, clipboard: true, reason: "Ya hay un borrador en WhatsApp. Se conserva; el mensaje nuevo se copiará al portapapeles." };
-    if (oldText === text.trim()) return { prepared: true, requiresConfirmation: true, chatId: current.chatId };
+    if (oldText && !editorMatches(composer, text)) return { prepared: false, clipboard: true, reason: "Ya hay un borrador en WhatsApp. Se conserva; el mensaje nuevo se copiará al portapapeles." };
+    if (oldText) return { prepared: true, requiresConfirmation: true, chatId: current.chatId };
     composer.focus();
     const beforeInsert = requireChat(expectedPhone);
     if (beforeInsert.chatId !== current.chatId) throw Error("La conversación cambió. Revisa el destinatario.");
     // insertText updates WhatsApp's normal editor; no send button is clicked.
     const inserted = document.execCommand?.("insertText", false, text) === true;
-    if (!inserted || (composer.innerText || composer.textContent || "").trim() !== text.trim()) return { prepared: false, clipboard: true, reason: "No se pudo preparar el editor. Se copiará el mensaje para pegarlo manualmente." };
+    if (!inserted || !editorMatches(composer, text)) return { prepared: false, clipboard: true, reason: "No se pudo verificar el borrador. Revisa el editor antes de pegar el mensaje manualmente." };
     return { prepared: true, requiresConfirmation: true, chatId: current.chatId };
+  }
+  function editorMatches(composer, expected) {
+    const normalized = value => String(value || "").replace(/\r\n?/g, "\n").trim();
+    if (normalized(composer.innerText || composer.textContent) === normalized(expected)) return true;
+    if (!composer.childNodes) return false;
+    // Chromium represents inserted line breaks with block elements. innerText
+    // can report an extra newline for an empty <div><br></div>, even though the
+    // editor's block structure preserves the requested blank line. Read that
+    // structure exactly rather than dropping or collapsing message content.
+    const plain = element => {
+      if (element.nodeType === 3) return element.textContent || "";
+      if (element.nodeName === "BR") return "\n";
+      let result = "";
+      for (const [index, child] of [...element.childNodes].entries()) {
+        const block = /^(DIV|P|LI)$/.test(child.nodeName || "");
+        if (block && index > 0) result += "\n";
+        const placeholder = block && child.childNodes.length === 1 && child.firstChild.nodeName === "BR";
+        if (!placeholder) result += plain(child);
+      }
+      return result;
+    };
+    return normalized(plain(composer)) === normalized(expected);
   }
   globalThis.__nexoWhatsAppAdapter = { context, bind, capture, prepare, phone };
   if (!globalThis.chrome?.runtime?.id) return;

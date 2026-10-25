@@ -149,6 +149,92 @@ function setupCard(message) {
   document.body.hidden = false;
 }
 
+
+function installEmbeddedNavigation() {
+  if (!embedded) return;
+  const sidebar = document.querySelector(".crm-sidebar");
+  const sourceNavigation = sidebar?.querySelector("nav");
+  const workspace = document.querySelector("#companion-workspace");
+  if (!sourceNavigation || !workspace || document.querySelector("#nexo-module-select")) return;
+  const links = [...sourceNavigation.querySelectorAll("a[data-view]")];
+  const modules = new Map();
+  for (const link of links) {
+    const id = link.dataset.view;
+    if (!id || modules.has(id)) continue;
+    const label = link.cloneNode(true);
+    label.querySelectorAll("svg, span").forEach(node => node.remove());
+    modules.set(id, { link, label: label.textContent.replace(/\s+/g, " ").trim() });
+  }
+  const navigation = document.createElement("label");
+  navigation.className = "nexo-module-nav";
+  const caption = document.createElement("span");
+  caption.textContent = "Ir a";
+  const selector = document.createElement("select");
+  selector.id = "nexo-module-select";
+  selector.setAttribute("aria-label", "Ir a una sección del CRM");
+  for (const [id, item] of modules) {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = item.label;
+    selector.append(option);
+  }
+  navigation.append(caption, selector);
+  sidebar.append(navigation);
+
+  // Move the existing section instead of rebuilding it: forms, selected client,
+  // conversation linkage and all original handlers remain on the same nodes.
+  const tools = document.createElement("details");
+  tools.id = "nexo-chat-tools";
+  tools.className = "nexo-chat-tools";
+  const summary = document.createElement("summary");
+  summary.title = "Mostrar u ocultar las herramientas del chat actual";
+  const summaryTitle = document.createElement("strong");
+  summaryTitle.textContent = "Chat actual";
+  const identity = document.createElement("span");
+  identity.className = "nexo-chat-identity";
+  summary.append(summaryTitle, identity);
+  workspace.before(tools);
+  tools.append(summary, workspace);
+  const sourceIdentity = workspace.querySelector(":scope > p");
+  const refreshIdentity = () => {
+    identity.textContent = (sourceIdentity?.textContent || "").replace(/^Chat abierto:\s*/, "");
+  };
+  refreshIdentity();
+  const observer = new MutationObserver(refreshIdentity);
+  if (sourceIdentity) observer.observe(sourceIdentity, { subtree: true, childList: true, characterData: true });
+
+  let previousView = "", requestedScroll = false;
+  const sync = () => {
+    const current = links.find(link => link.getAttribute("aria-current") === "page")?.dataset.view || "home";
+    selector.value = modules.has(current) ? current : "home";
+    if (current !== previousView) {
+      tools.open = current === "home";
+      previousView = current;
+    }
+    if (requestedScroll) {
+      requestedScroll = false;
+      requestAnimationFrame(() => {
+        if (document.scrollingElement) {
+          document.scrollingElement.scrollTop = 0;
+          document.scrollingElement.scrollLeft = 0;
+        }
+      });
+    }
+  };
+  selector.addEventListener("change", () => {
+    const item = modules.get(selector.value);
+    if (!item) return;
+    requestedScroll = true;
+    location.hash = item.link.hash;
+  });
+  window.addEventListener("hashchange", sync);
+  window.addEventListener("pagehide", () => {
+    observer.disconnect();
+    window.removeEventListener("hashchange", sync);
+  }, { once: true });
+  sync();
+}
+
 try {
   const configuration = await rpc("configuration.get");
   configuredOrigin = configuration.origin || "";
@@ -159,6 +245,7 @@ try {
       : undefined);
   } else {
     await import("./app/app.js");
+    installEmbeddedNavigation();
     document.body.hidden = false;
   }
 } catch (error) {
