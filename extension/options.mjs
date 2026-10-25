@@ -29,4 +29,4 @@ document.querySelector("#check").addEventListener("click", () => action(async ()
   if (result.status !== 200 || session.mode !== "server") throw Error(session.error || "Termina el inicio de sesión del CRM.");
   status.textContent = "Conexión privada verificada para " + session.email + ". Ya puedes abrir el panel junto a WhatsApp Web.";
 }));
-document.querySelector("#workspace").addEventListener("click", () => { chrome.tabs.create({ url: chrome.runtime.getURL("app/index.html") }); });
+document.querySelector("#workspace").addEventListener("click", () => action(async () => { await rpc("wa.open"); status.textContent = "Nexo se abre dentro de WhatsApp Web. El botón Nexo permite mostrarlo u ocultarlo."; }));

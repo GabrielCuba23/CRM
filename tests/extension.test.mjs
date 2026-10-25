@@ -5,7 +5,7 @@ import { readFile, mkdtemp, readdir, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { crmOrigin, allowedApi, isExtensionPage, isWhatsAppSender, draftInput, safeContext } from "../extension/policy.mjs";
+import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, draftInput, safeContext, WA_ORIGIN } from "../extension/policy.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const id = "a".repeat(32);
@@ -37,6 +37,155 @@ test("A WhatsApp content script cannot impersonate the privileged CRM interface"
   assert.equal(isWhatsAppSender({ id, url: "https://web.whatsapp.com/", tab: { id: 4 }, frameId: 1 }, id), false);
   assert.equal(safeContext({ name: "x".repeat(500), phone: "<script>" }, 1).name.length, 160);
   assert.equal(safeContext({ phone: "not-a-phone" }, 1).phone, "");
+});
+
+test("Only the packaged CRM iframe inside a WhatsApp tab receives embedded privileges", () => {
+  const embedded = {
+    id, url: `chrome-extension://${id}/app/index.html?embedded=1`,
+    frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" },
+  };
+  assert.equal(isExtensionPage(embedded, id), true);
+  assert.equal(embeddedWhatsAppTab(embedded, id), 11);
+  for (const sender of [
+    { ...embedded, url: `chrome-extension://${id}/app/index.html` },
+    { ...embedded, url: `chrome-extension://${id}/app/index.html?embedded=0` },
+    { ...embedded, url: `chrome-extension://${id}/options.html?embedded=1` },
+    { ...embedded, url: `chrome-extension://${id}/bootstrap.mjs?embedded=1` },
+    { ...embedded, url: `chrome-extension://${id}/app/other.html?embedded=1` },
+    { ...embedded, id: "b".repeat(32) },
+    { ...embedded, url: `chrome-extension://${"b".repeat(32)}/app/index.html?embedded=1` },
+    { ...embedded, frameId: -1 },
+    { ...embedded, frameId: "7" },
+    { ...embedded, tab: undefined },
+    { ...embedded, tab: { id: "11", url: "https://web.whatsapp.com/" } },
+    { ...embedded, tab: { id: 11, url: "https://web.whatsapp.com.evil.example/" } },
+    { ...embedded, tab: { id: 11, url: "https://crm.example/" } },
+    { ...embedded, tab: { id: 11, url: "about:blank" } },
+  ]) {
+    assert.equal(isExtensionPage(sender, id), false, JSON.stringify(sender));
+    assert.equal(embeddedWhatsAppTab(sender, id), undefined);
+  }
+  assert.equal(embeddedWhatsAppTab({ id, url: `chrome-extension://${id}/app/index.html`, frameId: 0 }, id), undefined);
+  assert.equal(embeddedWhatsAppTab({ id, url: `chrome-extension://${id}/options.html`, frameId: 0 }, id), undefined);
+});
+
+async function backgroundFixture() {
+  const source = await readFile(join(root, "extension/background.mjs"), "utf8");
+  const calls = [];
+  const tabs = new Map([
+    [11, { id: 11, url: "https://web.whatsapp.com/", status: "complete", active: false }],
+    [22, { id: 22, url: "https://web.whatsapp.com/", status: "complete", active: true }],
+    [33, { id: 33, url: "https://crm.example/companion", status: "complete", active: false }],
+  ]);
+  const session = { waTabId: 22, crmTabId: 33 };
+  const local = { crmOrigin: "https://crm.example" };
+  let messageListener, actionListener;
+  const storage = values => ({
+    async get(key) { return { [key]: values[key] }; },
+    async set(update) { Object.assign(values, update); },
+    async remove(key) { delete values[key]; },
+  });
+  const chrome = {
+    runtime: {
+      id, getURL: path => `chrome-extension://${id}/${path}`,
+      onMessage: { addListener(handler) { messageListener = handler; } },
+      onInstalled: { addListener() {} },
+      async sendMessage(message) { calls.push({ type: "broadcast", message }); },
+      async openOptionsPage() { calls.push({ type: "options" }); },
+    },
+    storage: { session: storage(session), local: { ...storage(local), async setAccessLevel() {} } },
+    permissions: { async contains() { return true; } },
+    action: { onClicked: { addListener(handler) { actionListener = handler; } } },
+    tabs: {
+      async get(tabId) {
+        calls.push({ type: "get", tabId });
+        if (!tabs.has(tabId)) throw Error("Closed tab");
+        return { ...tabs.get(tabId) };
+      },
+      async query(query) {
+        calls.push({ type: "query", query });
+        return [...tabs.values()].filter(tab => (!query.active || tab.active) && (!query.url || tab.url.startsWith(query.url.slice(0, -1))));
+      },
+      async sendMessage(tabId, message, options) {
+        calls.push({ type: "send", tabId, message, options });
+        if (message.channel === "nexo.whatsapp") {
+          const context = { name: `Chat ${tabId}`, phone: tabId === 11 ? "51999999999" : "51888888888", chatId: `wa:peer-${tabId}@lid` };
+          return { ok: true, result: message.action === "context" ? context : message.action === "capture" ? [{ ...context, body: `Message ${tabId}` }] : { ...context, prepared: true } };
+        }
+        return { ok: true };
+      },
+      async update(tabId, update) { calls.push({ type: "update", tabId, update }); return { ...tabs.get(tabId), ...update }; },
+      async create(input) { calls.push({ type: "create", input }); return { id: 44, ...input }; },
+    },
+    scripting: { async executeScript(input) { calls.push({ type: "inject", input }); } },
+  };
+  const context = vm.createContext({ chrome, URL, TextEncoder, crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN });
+  vm.runInContext(source.replace(/^import[^\n]+\n/, ""), context);
+  assert.equal(typeof messageListener, "function");
+  const invoke = (message, sender) => new Promise(resolve => {
+    assert.equal(messageListener({ channel: "nexo", ...message }, sender, resolve), true);
+  });
+  return { invoke, calls, tabs, session, action: tab => actionListener(tab) };
+}
+
+test("An embedded CRM targets its own WhatsApp tab even when another conversation tab is active", async () => {
+  const { invoke, calls, tabs } = await backgroundFixture();
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  const configuration = await invoke({ type: "configuration.get" }, sender);
+  assert.equal(configuration.ok, true);
+  assert.equal(configuration.result.waTabId, 11);
+  const context = await invoke({ type: "wa.context", tabId: 22 }, sender);
+  assert.equal(context.ok, true);
+  assert.equal(context.result.tabId, 11);
+  assert.equal(context.result.chatId, "wa:peer-11@lid");
+  const capture = await invoke({ type: "wa.capture", tabId: 22 }, sender);
+  assert.equal(capture.ok, true);
+  assert.equal(capture.result[0].body, "Message 11");
+  const bind = await invoke({ type: "wa.bind", tabId: 22, input: { phone: "51999999999", chatId: "wa:peer-11@lid" } }, sender);
+  assert.equal(bind.ok, true);
+  const prepare = await invoke({ type: "wa.prepare", tabId: 22, input: { phone: "51999999999", text: "Entrega revisada" } }, sender);
+  assert.equal(prepare.ok, true);
+  const sends = calls.filter(call => call.type === "send");
+  assert.deepEqual(sends.map(call => call.tabId), [11, 11, 11, 11]);
+  assert.deepEqual(sends.map(call => call.message.action), ["context", "capture", "bind", "prepare"]);
+  assert(sends.every(call => call.options.frameId === 0));
+  assert(!calls.some(call => call.type === "query"));
+
+  const sendCount = sends.length;
+  tabs.set(11, { id: 11, url: "https://other.example/", status: "complete" });
+  const navigated = await invoke({ type: "wa.prepare", input: { phone: "51999999999", text: "No insertar" } }, sender);
+  assert.equal(navigated.ok, false);
+  assert.match(navigated.error, /pestaña de WhatsApp cambió/);
+  assert.equal(calls.filter(call => call.type === "send").length, sendCount);
+});
+
+test("The actual background denies CRM APIs to WhatsApp content and embedded configuration changes", async () => {
+  const { invoke, calls } = await backgroundFixture();
+  const content = { id, url: "https://web.whatsapp.com/", frameId: 0, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  for (const type of ["crm.request", "crm.connect", "configuration.get", "configuration.set", "wa.prepare"]) {
+    const denied = await invoke({ type, expectedOrigin: "https://crm.example", path: "/api/workspace", method: "PUT", body: "{}", origin: "https://other-crm.example" }, content);
+    assert.equal(denied.ok, false, type);
+    assert.match(denied.error, /no permitida/);
+  }
+  const embedded = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: content.tab };
+  const change = await invoke({ type: "configuration.set", origin: "https://other-crm.example" }, embedded);
+  assert.equal(change.ok, false);
+  assert.match(change.error, /configuración de la extensión/);
+  assert.equal(calls.length, 0);
+});
+
+test("The toolbar opens the dock in its WhatsApp tab without the Chrome side panel", async () => {
+  const { action, calls, tabs } = await backgroundFixture();
+  action(tabs.get(11));
+  await new Promise(setImmediate);
+  const sends = calls.filter(call => call.type === "send");
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].tabId, 11);
+  assert.equal(sends[0].message.channel, "nexo.dock");
+  assert.equal(sends[0].message.action, "toggle");
+  assert.equal(sends[0].options.frameId, 0);
+  assert(calls.some(call => call.type === "update" && call.tabId === 11 && call.update.active));
+  assert(!calls.some(call => call.type === "query"));
 });
 
 async function whatsappFixture({ title = "+51 999 999 999", peer = "opaque-peer@lid", group = false, draft = "", entries = [] } = {}) {
@@ -155,9 +304,22 @@ test("The package contains the entire CRM and no server data or remote executabl
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.version, "1.1.0");
   assert.deepEqual(manifest.host_permissions, ["https://web.whatsapp.com/*"]);
   assert.equal(manifest.externally_connectable, undefined);
+  assert.equal(manifest.side_panel, undefined);
+  assert(!manifest.permissions.includes("sidePanel"));
   assert(!manifest.permissions.includes("debugger"));
+  assert.deepEqual(manifest.content_scripts, [{
+    matches: ["https://web.whatsapp.com/*"], js: ["whatsapp.js", "dock.js"],
+    run_at: "document_idle", all_frames: false,
+  }]);
+  assert.deepEqual(manifest.web_accessible_resources, [{
+    resources: ["app/*", "bootstrap.mjs", "companion.css"],
+    matches: ["https://web.whatsapp.com/*"],
+  }]);
+  const dock = await readFile(join(output, "dock.js"), "utf8");
+  assert.match(dock, /embedded=1/);
   const html = await readFile(join(output, "app/index.html"), "utf8");
   assert.match(html, /name="crm-backend" content="required"/);
   assert.match(html, /src="\.\.\/bootstrap\.mjs"/);

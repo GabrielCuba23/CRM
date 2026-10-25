@@ -55,7 +55,7 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
   const prepare = document.querySelector("#open-whatsapp");
   if (prepare) prepare.textContent = "Preparar en WhatsApp Web";
 
-  let context = null, busy = false, observedState = null;
+  let context = null, busy = false, observedState = null, visibilityRevision = 0;
   function report(error) {
     automatic.checked = false;
     status.textContent = error?.message || "No se pudo completar la operación.";
@@ -116,13 +116,23 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
     if (busy || isBusy()) return;
     busy = true;
     try {
+      const captureVisibility = visibilityRevision;
+      const requireVisible = () => {
+        if (companion.isVisible?.() === false || captureVisibility !== visibilityRevision)
+          throw Error("La captura se detuvo al ocultar el panel. No se guardaron mensajes.");
+      };
+      requireVisible();
       const client = selectedClient();
       const linked = await currentLinkedContext();
+      requireVisible();
       const messages = await companion.captureVisibleMessages();
+      requireVisible();
       const after = await companion.getContext();
+      requireVisible();
       if (after?.chatId !== linked.chatId || after?.phone !== linked.phone)
         throw Error("La conversación cambió durante la lectura. No se guardaron mensajes.");
       const result = await importVisibleMessages(getState().growth, client, after, messages, { expectedChatId: linked.chatId });
+      requireVisible();
       if (result.count && !(await saveGrowth(result.growth))) throw Error("No se pudieron guardar los mensajes. Recarga los datos del CRM antes de continuar.");
       status.textContent = result.count ? `${result.count} mensajes guardados en el CRM.` : "Los textos visibles ya están registrados o no contienen mensajes nuevos.";
     } finally { busy = false; }
@@ -165,9 +175,16 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
     } catch (error) { report(error); }
   });
   if (companion.onContext) companion.onContext(updateContext);
+  document.addEventListener("nexo-companion-visibility", event => {
+    if (event.detail?.visible === false) {
+      visibilityRevision++;
+      automatic.checked = false;
+      status.textContent = "Registro automático detenido al ocultar el panel.";
+    }
+  });
   Promise.resolve().then(() => companion.getContext()).then(updateContext).catch(report);
   const timer = setInterval(async () => {
-    if (document.hidden || busy || isBusy()) return;
+    if (document.hidden || companion.isVisible?.() === false || busy || isBusy()) return;
     try {
       updateContext(await companion.getContext());
       if (observedState !== getState().clients) refreshMatches();

@@ -1,9 +1,8 @@
-import { crmOrigin, allowedApi, isExtensionPage, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN } from "./policy.mjs";
+import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN } from "./policy.mjs";
 
 const EXTENSION_ID = chrome.runtime.id;
 const storage = chrome.storage.session;
 chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
 async function configuration() {
   const { crmOrigin: value } = await chrome.storage.local.get("crmOrigin");
@@ -44,7 +43,12 @@ async function bridge(message, expectedOrigin) {
     throw Error("Cambió el CRM conectado. Recarga el panel antes de guardar.");
   return chrome.tabs.sendMessage(tab.id, { channel: "nexo.crm.bridge", expectedOrigin, ...message }, { frameId: 0 });
 }
-async function whatsappTab() {
+async function whatsappTab(pinnedTabId) {
+  if (Number.isInteger(pinnedTabId)) {
+    const tab = await chrome.tabs.get(pinnedTabId);
+    if (!tab?.url || new URL(tab.url).origin !== WA_ORIGIN) throw Error("La pestaña de WhatsApp cambió. Recarga WhatsApp Web.");
+    return tab;
+  }
   const active = (await chrome.tabs.query({ active: true, currentWindow: true })).find(tab => tab.url && new URL(tab.url).origin === WA_ORIGIN);
   let tab = active;
   if (!tab) {
@@ -57,8 +61,8 @@ async function whatsappTab() {
   await storage.set({ waTabId: tab.id });
   return tab;
 }
-async function waRequest(action, input) {
-  const tab = await whatsappTab();
+async function waRequest(action, input, sender) {
+  const tab = await whatsappTab(embeddedWhatsAppTab(sender, EXTENSION_ID));
   let response;
   try { response = await chrome.tabs.sendMessage(tab.id, { channel: "nexo.whatsapp", action, ...input }, { frameId: 0 }); }
   catch { throw Error("Recarga WhatsApp Web después de instalar la extensión."); }
@@ -67,8 +71,28 @@ async function waRequest(action, input) {
   if (action === "capture") return response.result;
   return response.result;
 }
+async function openWhatsAppDock(candidate, action = "open") {
+  let tab = candidate;
+  if (!tab?.url || new URL(tab.url).origin !== WA_ORIGIN)
+    tab = (await chrome.tabs.query({ url: WA_ORIGIN + "/*", currentWindow: true }))[0];
+  if (!tab) {
+    tab = await chrome.tabs.create({ url: WA_ORIGIN + "/", active: true });
+    // The document_idle content scripts open the dock after WhatsApp loads.
+    return { tabId: tab.id };
+  }
+  await chrome.tabs.update(tab.id, { active: true });
+  try {
+    const result = await chrome.tabs.sendMessage(tab.id, { channel: "nexo.dock", action }, { frameId: 0 });
+    if (!result?.ok) throw Error("El panel todavía no está cargado.");
+  } catch {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: ["whatsapp.js", "dock.js"] });
+    await chrome.tabs.sendMessage(tab.id, { channel: "nexo.dock", action: "open" }, { frameId: 0 });
+  }
+  return { tabId: tab.id };
+}
 async function execute(message, sender) {
   if (isWhatsAppSender(sender, EXTENSION_ID)) {
+    if (message?.type === "configuration.open") { await chrome.runtime.openOptionsPage(); return { opened: true }; }
     if (message?.type !== "wa.contextChanged") throw Error("Operación no permitida desde esta página.");
     await storage.set({ waTabId: sender.tab.id });
     // Broadcast only public chat identity; never a response from the CRM.
@@ -79,10 +103,11 @@ async function execute(message, sender) {
   switch (message?.type) {
     case "configuration.get": {
       const values = await chrome.storage.local.get("crmOrigin");
-      return { origin: values.crmOrigin || "" };
+      return { origin: values.crmOrigin || "", waTabId: embeddedWhatsAppTab(sender, EXTENSION_ID) };
     }
+    case "configuration.open": { await chrome.runtime.openOptionsPage(); return { opened: true }; }
     case "configuration.set": {
-      if (new URL(sender.url).pathname !== "/options.html") throw Error("Abre la configuración de la extensión.");
+      if ((sender.frameId ?? 0) !== 0 || new URL(sender.url).pathname !== "/options.html") throw Error("Abre la configuración de la extensión.");
       const origin = crmOrigin(message.origin);
       if (!(await chrome.permissions.contains({ origins: [origin + "/*"] }))) throw Error("Autoriza primero el dominio del CRM.");
       await chrome.storage.local.set({ crmOrigin: origin });
@@ -105,15 +130,16 @@ async function execute(message, sender) {
       }
       return reply.response;
     }
-    case "wa.context": return waRequest("context");
-    case "wa.capture": return waRequest("capture");
+    case "wa.open": return openWhatsAppDock();
+    case "wa.context": return waRequest("context", undefined, sender);
+    case "wa.capture": return waRequest("capture", undefined, sender);
     case "wa.bind": {
       const phone = String(message.input?.phone || "").replace(/[\s()+.-]/g, "");
       const chatId = message.input?.chatId;
       if (!/^\d{7,15}$/.test(phone) || typeof chatId !== "string" || chatId.length > 300) throw Error("Confirma el teléfono y la conversación a vincular.");
-      return waRequest("bind", { input: { phone, chatId } });
+      return waRequest("bind", { input: { phone, chatId } }, sender);
     }
-    case "wa.prepare": return waRequest("prepare", { input: draftInput(message.input) });
+    case "wa.prepare": return waRequest("prepare", { input: draftInput(message.input) }, sender);
     default: throw Error("Operación desconocida.");
   }
 }
@@ -127,3 +153,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   if (reason === "install") chrome.runtime.openOptionsPage();
 });
+chrome.action.onClicked.addListener(tab => { openWhatsAppDock(tab, "toggle").catch(() => chrome.runtime.openOptionsPage()); });

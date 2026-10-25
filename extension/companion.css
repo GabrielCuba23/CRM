@@ -1,1 +1,111 @@
-html{min-width:320px}body{min-width:0}main{padding:14px!important;max-width:100%;margin:0!important}.crm-sidebar{position:static!important;width:auto!important;padding:12px!important;max-height:none!important}.crm-sidebar .brand{font-size:1rem}.crm-sidebar>p{display:none}.crm-sidebar nav{display:flex!important;flex-direction:row!important;overflow-x:auto!important;gap:6px;max-height:none!important;margin-top:10px}.crm-sidebar nav a{white-space:nowrap;flex-shrink:0;padding:9px}.crm-sidebar .nav-icon{display:none}.hero{padding:15px!important;grid-template-columns:1fr!important}.hero-art{display:none!important}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}.panel{padding:14px!important}.form-grid,.account-grid,.inbox-grid{grid-template-columns:1fr!important}dialog{max-width:calc(100vw - 16px)!important;width:calc(100vw - 16px)!important;max-height:calc(100vh - 16px)!important;padding:14px!important}.section-head{flex-wrap:wrap;gap:8px}.table-wrap{overflow-x:auto}table{min-width:560px}input,select,textarea{max-width:100%}.nexo-companion-header{position:sticky;top:0;z-index:5;background:#f4f1ff;padding:12px;border:1px solid #cfc2ff;border-radius:12px;margin-bottom:12px}.nexo-companion-header button{font-size:.85rem;padding:8px}.nexo-companion-header input{width:100%}#status{overflow-wrap:anywhere}body.dark .nexo-companion-header{background:#27223b;color:#f6f2ff}
+/* The complete CRM is reused in the extension. Only its layout is compacted. */
+html { min-width: 320px; }
+body { min-width: 0; }
+main { padding: 14px !important; max-width: 100%; margin: 0 !important; }
+.crm-sidebar { position: static !important; width: auto !important; padding: 12px !important; max-height: none !important; }
+.crm-sidebar .brand { font-size: 1rem; }
+.crm-sidebar > p { display: none; }
+.crm-sidebar nav { display: flex !important; flex-direction: row !important; overflow-x: auto !important; gap: 6px; max-height: none !important; margin-top: 10px; }
+.crm-sidebar nav a { white-space: nowrap; flex-shrink: 0; padding: 9px; }
+.crm-sidebar .nav-icon { display: none; }
+.hero { padding: 15px !important; grid-template-columns: 1fr !important; }
+.hero-art { display: none !important; }
+.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.panel { padding: 14px !important; }
+.form-grid, .account-grid, .inbox-grid { grid-template-columns: 1fr !important; }
+dialog { max-width: calc(100vw - 16px) !important; width: calc(100vw - 16px) !important; max-height: calc(100vh - 16px) !important; padding: 14px !important; }
+.section-head { flex-wrap: wrap; gap: 8px; }
+.table-wrap, .table-scroll { overflow-x: auto; max-width: 100%; }
+table { min-width: 560px; }
+input, select, textarea { max-width: 100%; }
+#status { overflow-wrap: anywhere; }
+
+/* A dock is part of the user's working window, with a familiar WhatsApp palette. */
+html.nexo-embedded { min-width: 320px; min-height: 100%; background: #f0f2f5; }
+body.nexo-embedded {
+  --accent: #008069;
+  --muted: #667781;
+  color: #111b21;
+  background: #f0f2f5;
+  font-size: 13px;
+}
+.nexo-embedded .crm-sidebar {
+  position: sticky !important;
+  top: 0;
+  z-index: 10;
+  padding: 8px 10px !important;
+  background: #fff;
+  border-bottom: 1px solid #dce4e7;
+  color: #111b21;
+  box-shadow: none;
+}
+.nexo-embedded .crm-sidebar .brand { display: flex; align-items: center; gap: 7px; color: #075e54; font-size: 15px; }
+.nexo-embedded .brand img { width: 25px; height: 25px; object-fit: contain; }
+.nexo-embedded .brand span { font-size: 9px; margin-left: 0; padding: 3px 5px; background: #e7f5ef; color: #075e54; }
+.nexo-embedded .crm-sidebar nav { margin-top: 7px; padding-bottom: 3px; gap: 4px; scrollbar-width: thin; }
+.nexo-embedded .crm-sidebar nav a { padding: 7px 8px; border-radius: 8px; color: #52656e; font-size: 12px; }
+.nexo-embedded .crm-sidebar nav a:hover,
+.nexo-embedded .crm-sidebar nav a.active { background: #e7f5ef; color: #075e54; }
+.nexo-embedded main { padding: 10px !important; }
+.nexo-embedded main > header { display: block; margin: 10px 0; }
+.nexo-embedded main > header > div:first-child { display: none; }
+.nexo-embedded main > header > .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.nexo-embedded main > header button { padding: 7px 9px; font-size: 12px; }
+.nexo-embedded #home > .hero { display: none; }
+.nexo-embedded #summary { gap: 6px; margin: 10px 0; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+.nexo-embedded #summary article { padding: 8px; border-radius: 9px; }
+.nexo-embedded #summary span { display: block; font-size: 9px; line-height: 1.35; }
+.nexo-embedded #summary strong { font-size: 20px; margin-top: 4px; }
+.nexo-embedded .panel { border-radius: 12px; margin: 12px 0; padding: 12px !important; }
+.nexo-embedded h2 { font-size: 17px; }
+.nexo-embedded h3 { font-size: 15px; }
+.nexo-embedded .mode-banner { font-size: 11px; padding: 8px; }
+.nexo-embedded .companion-box { padding: 11px; margin-bottom: 12px; border-radius: 12px; border-color: #d2e5df; background: #fff; color: #111b21; }
+.nexo-embedded .companion-box h2 { font-size: 16px; }
+.nexo-embedded .companion-box label { font-size: 12px; margin: 8px 0; }
+.nexo-embedded .companion-box p { font-size: 12px; line-height: 1.4; margin: 6px 0; }
+.nexo-embedded .companion-box input,
+.nexo-embedded .companion-box select { padding: 8px; border-radius: 8px; }
+.nexo-embedded .companion-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 9px 0; }
+.nexo-embedded .companion-actions button { width: 100%; padding: 8px; font-size: 11px; min-width: 0; }
+.nexo-embedded .companion-box small { font-size: 10px; line-height: 1.4; color: #667781; }
+.nexo-embedded .companion-box .companion-toggle { line-height: 1.4; }
+.nexo-embedded .toolbar { flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.nexo-embedded .toolbar > *, .nexo-embedded .search { min-width: 0; }
+.nexo-embedded .cards { gap: 10px; margin: 12px 0; }
+.nexo-embedded .account-card { padding: 12px; }
+.nexo-embedded .inset { padding: 10px; }
+.nexo-embedded dialog { border-radius: 12px; }
+.nexo-embedded :is(button, .button) { border-radius: 8px; }
+.nexo-embedded :is(input, select, textarea) { font-size: 13px; }
+.nexo-embedded #storage-footer { font-size: 10px; line-height: 1.4; }
+
+/* Empty configuration and expired sessions remain usable inside the dock. */
+body.nexo-setup { background: #f0f2f5; color: #111b21; font-size: 14px; }
+.nexo-setup-card {
+  box-sizing: border-box;
+  margin: 0 auto !important;
+  padding: 28px 20px !important;
+  width: 100%;
+  max-width: 500px;
+  min-width: 0;
+}
+.nexo-setup-card > img { display: block; margin-bottom: 18px; }
+.nexo-setup-label { color: #008069; font-size: 11px; font-weight: 750; letter-spacing: 1.6px; }
+.nexo-setup-card h1 { font-size: 24px; line-height: 1.2; letter-spacing: -.5px; }
+.nexo-setup-card > p { line-height: 1.6; overflow-wrap: anywhere; }
+.nexo-setup-actions { display: grid; gap: 9px; margin-top: 22px; }
+.nexo-setup-actions :is(button, .button) { box-sizing: border-box; text-align: center; padding: 12px; font-size: 13px; white-space: normal; }
+.nexo-setup-status { font-size: 12px; color: #075e54; }
+.nexo-setup-note { margin-top: 24px; color: #667781; font-size: 12px; }
+body.nexo-embedded.dark { --accent: #00a884; --muted: #aebac1; color: #e9edef; background: #111b21; }
+.nexo-embedded.dark .crm-sidebar,
+.nexo-embedded.dark .companion-box { background: #202c33; color: #e9edef; border-color: #34434b; }
+.nexo-embedded.dark .crm-sidebar .brand { color: #d9fdd3; }
+.nexo-embedded.dark .crm-sidebar nav a { color: #aebac1; }
+.nexo-embedded.dark .crm-sidebar nav a:hover,
+.nexo-embedded.dark .crm-sidebar nav a.active { background: #34434b; color: #d9fdd3; }
+.nexo-embedded.dark .companion-box small { color: #aebac1; }
+@media (max-width: 370px) {
+  .nexo-embedded #summary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}

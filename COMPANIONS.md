@@ -1,7 +1,7 @@
 # Nexo CRM en WhatsApp Web y Android
 
-La extensión reutiliza la aplicación completa del CRM en un panel lateral de
-Chrome de computadora. La APK abre el mismo CRM privado en Android. Las ventas,
+La extensión reutiliza la aplicación completa del CRM dentro de la misma página
+de WhatsApp Web en Chrome de computadora. La APK abre el mismo CRM privado en Android. Las ventas,
 cuentas, perfiles, cobros, renovaciones, notas y configuración usan la misma base
 del negocio; no se mantiene una copia independiente del inventario en cada app.
 
@@ -13,10 +13,11 @@ del negocio; no se mantiene una copia independiente del inventario en cada app.
 - Equipo Access: `green-waterfall-3b33.cloudflareaccess.com`.
 
 Los dos Workers, sus bases independientes, sus programaciones y las aplicaciones
-Access se publicaron el 24 de octubre de 2026. El acceso por correo del propietario
-y el funcionamiento en sus dispositivos requieren la comprobación del usuario.
-La creación de copias desde el panel necesita además `RETAIL_PROVISION_TOKEN`
-como secreto del Worker de producción; nunca se incorpora ese token a la APK,
+Access se publicaron el 24 de octubre de 2026. El propietario confirmó su acceso
+por correo y creó la instancia PRUEBA. Se verificaron su estado activo, su base
+independiente y la política de acceso exclusiva de su correo. El secreto
+`RETAIL_PROVISION_TOKEN` está configurado en el Worker de producción y permitió
+esa creación real; nunca se incorpora ese token a la APK,
 a la extensión ni a los archivos públicos.
 
 ## Instalar la extensión
@@ -28,12 +29,19 @@ a la extensión ni a los archivos públicos.
    exclusivamente ese dominio. Pulsa **Guardar y abrir sesión**.
 4. Inicia sesión con el código enviado al correo propietario. Deja abierta la
    pestaña de conexión `/companion`; puede permanecer en segundo plano.
-5. Abre o recarga WhatsApp Web y pulsa el icono de Nexo para abrir su panel lateral.
+5. Abre o recarga WhatsApp Web. Nexo aparece integrado junto a la conversación.
+   Pulsa su botón o el icono de la extensión para mostrarlo u ocultarlo.
+
+Si ya instalaste la versión 1.0, reemplaza los archivos en la misma carpeta,
+pulsa **Recargar** en la tarjeta de Nexo en `chrome://extensions` y recarga
+WhatsApp Web. Así conservas la dirección del CRM configurada.
 
 El ZIP sirve para instalación local. Esta entrega no es una publicación en
 Chrome Web Store. Una sesión de Access vencida requiere volver a identificarse.
 Si cambias de CRM en las opciones, recarga el panel: las solicitudes de un panel
-anterior se rechazan para evitar mezclar datos entre negocios.
+anterior se rechazan para evitar mezclar datos entre negocios. Cada panel
+integrado trabaja con el chat de su propia pestaña de WhatsApp. Al ocultarlo se
+detiene la captura periódica, que requiere activación de nuevo al regresar.
 
 ## Trabajar sin salir de WhatsApp Web
 

@@ -80,6 +80,10 @@ let secureMode = false,
   csrf = "",
   serverRevision = 0,
   saveInFlight = false;
+function redirectToLogin(destination) {
+  if (globalThis.NexoCompanion?.showLogin) globalThis.NexoCompanion.showLogin();
+  else location.replace(destination || globalThis.NexoCompanion?.loginUrl || "/login");
+}
 async function api(path, options = {}) {
   const transport = globalThis.NexoCompanion?.fetch || fetch;
   const response = await transport(path, {
@@ -92,7 +96,7 @@ async function api(path, options = {}) {
     },
   });
   if (response.status === 401) {
-    location.replace(globalThis.NexoCompanion?.loginUrl || "/login");
+    redirectToLogin();
     throw Error("Tu sesión caducó. Inicia sesión nuevamente.");
   }
   const result = await response.json();
@@ -110,7 +114,7 @@ if (backendRequired) {
     authProvider = session.authProvider || "python";
     if (!secureMode) throw Error("Backend no disponible.");
   } catch {
-    location.replace(globalThis.NexoCompanion?.loginUrl || "/login");
+    redirectToLogin();
     throw Error("No se pudo verificar la sesión privada.");
   }
 }
@@ -1699,7 +1703,7 @@ $("#refresh-automation").addEventListener("click", refreshAutomationStatus);
 $("#logout").addEventListener("click", async () => {
   try {
     const result = await api("/api/logout", { method: "POST", body: "{}" });
-    location.replace(result.logoutUrl || "/login");
+    redirectToLogin(result.logoutUrl || "/login");
   } catch (error) {
     notify(error.message);
   }

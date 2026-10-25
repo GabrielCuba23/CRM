@@ -51,6 +51,7 @@ const { chromium } = require("playwright");
       storage: { local: storage(local), session: storage(session) },
       permissions: { async contains({ origins }) { return origins.every(value => ["https://crm.test/*", "https://crm-b.test/*"].includes(value)); } },
       sidePanel: { async setPanelBehavior() {} },
+      action: { onClicked: { addListener() {} } },
       tabs: {
         async get(tabId) { const page = findPage(tabId); if (!page) throw Error("tab closed"); return tab(page); },
         async query(query) {

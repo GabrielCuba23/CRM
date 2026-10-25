@@ -17,15 +17,26 @@ const { chromium } = require("playwright");
       window.__remoteState = initial;
       window.__remoteRevision = 0;
       window.__chat = { name: "Ana", phone: "51912345678", chatId: "chat-ana", isGroup: false, tabId: 7 };
+      window.__companionVisible = true;
       window.NexoCompanion = {
         loginUrl: "https://companion.test/login.html",
+        isVisible: () => window.__companionVisible,
         getContext: async () => structuredClone(window.__chat),
         bindConversation: async ({ phone, chatId }) => {
           if (chatId !== window.__chat.chatId) throw Error("Chat cambiado");
           window.__chat.phone = phone;
           return structuredClone(window.__chat);
         },
-        captureVisibleMessages: async () => [{ id: "visible-one", body: "Hola, quiero Netflix", direction: "received", phone: window.__chat.phone, chatId: window.__chat.chatId }],
+        captureVisibleMessages: async () => {
+          const messages = structuredClone(window.__captureRows || [{ id: "visible-one", body: "Hola, quiero Netflix", direction: "received", phone: window.__chat.phone, chatId: window.__chat.chatId }]);
+          if (window.__holdCapture) {
+            window.__capturePending = true;
+            await new Promise(resolve => { window.__releaseCapture = resolve; });
+            window.__capturePending = false;
+            window.__holdCapture = false;
+          }
+          return messages;
+        },
         prepareMessage: async (value) => {
           if (value.phone !== window.__chat.phone) throw Error("El destinatario cambió");
           if (window.__prepareClipboard) return { prepared: false, clipboard: true, reason: "existing-draft" };
@@ -94,6 +105,28 @@ const { chromium } = require("playwright");
     await page.locator("#companion-capture").click();
     await page.waitForTimeout(100);
     assert.equal(await page.evaluate(() => window.__remoteState.growth.interactions.length), 1);
+    const beforeInterruptedCapture = await page.evaluate(() => {
+      window.__holdCapture = true;
+      window.__captureRows = [{ id: "visible-after-collapse", body: "Este mensaje no debe guardarse tras cerrar el panel", direction: "received", phone: window.__chat.phone, chatId: window.__chat.chatId }];
+      return window.__remoteRevision;
+    });
+    await page.locator("#companion-capture").click();
+    await page.waitForFunction(() => window.__capturePending === true);
+    await page.evaluate(() => {
+      window.__companionVisible = false;
+      document.dispatchEvent(new CustomEvent("nexo-companion-visibility", { detail: { visible: false } }));
+      // Reopening before the pending transport returns must not revive the
+      // capture that belonged to the previous visible session.
+      window.__companionVisible = true;
+      document.dispatchEvent(new CustomEvent("nexo-companion-visibility", { detail: { visible: true } }));
+      window.__releaseCapture();
+    });
+    await page.waitForFunction(() => document.querySelector("#companion-status").textContent.includes("La captura se detuvo al ocultar el panel"));
+    assert.equal(await page.evaluate(() => window.NexoCompanion.isVisible()), true);
+    assert.equal(await page.evaluate(() => window.__remoteRevision), beforeInterruptedCapture);
+    assert.equal(await page.evaluate(() => window.__remoteState.growth.interactions.length), 1);
+    assert.equal(await page.locator("#companion-auto-capture").isChecked(), false);
+    await page.evaluate(() => { delete window.__captureRows; });
     await page.locator("#companion-renew").click();
     await page.locator('#renew-form').getByRole("button", { name: "Confirmar renovación", exact: true }).click();
     await page.waitForFunction(() => !document.querySelector("#renew-dialog").open);
@@ -123,6 +156,6 @@ const { chromium } = require("playwright");
     await page.waitForFunction(() => document.querySelector("#companion-status").textContent.includes("conversación cambió"));
     assert.equal(await page.locator("#client-dialog").evaluate((dialog) => dialog.open), false);
     assert.deepEqual(errors, []);
-    console.log("Companion browser: full CRM sale/profile/payment, delivery draft, visible conversation dedupe, renewal and recipient mismatch verified at 390px.");
+    console.log("Companion browser: full CRM sale/profile/payment, delivery draft, visible conversation dedupe, in-flight capture cancellation after close/reopen, renewal and recipient mismatch verified at 390px.");
   } finally { await browser.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

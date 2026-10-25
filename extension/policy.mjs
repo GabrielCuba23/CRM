@@ -24,8 +24,20 @@ export function allowedApi(path, method = "GET", body) {
   return { path, method, ...(body === undefined ? {} : { body }) };
 }
 export function isExtensionPage(sender, extensionId) {
-  if (sender.id !== extensionId || sender.frameId && sender.frameId !== 0) return false;
-  try { const url = new URL(sender.url || ""); return url.protocol === "chrome-extension:" && url.hostname === extensionId; } catch { return false; }
+  if (sender.id !== extensionId) return false;
+  try {
+    const url = new URL(sender.url || "");
+    if (url.protocol !== "chrome-extension:" || url.hostname !== extensionId || !["/app/index.html", "/options.html"].includes(url.pathname)) return false;
+    if ((sender.frameId ?? 0) === 0) return true;
+    // Only our own CRM document may run inside a WhatsApp tab. The browser
+    // supplies these sender fields; page messages cannot choose a tab/frame.
+    return url.pathname === "/app/index.html" && url.searchParams.get("embedded") === "1" &&
+      Number.isInteger(sender.frameId) && sender.frameId > 0 &&
+      Number.isInteger(sender.tab?.id) && new URL(sender.tab.url).origin === WA_ORIGIN;
+  } catch { return false; }
+}
+export function embeddedWhatsAppTab(sender, extensionId) {
+  return isExtensionPage(sender, extensionId) && (sender.frameId ?? 0) > 0 ? sender.tab.id : undefined;
 }
 export function isWhatsAppSender(sender, extensionId) {
   if (sender.id !== extensionId || !Number.isInteger(sender.tab?.id) || (sender.frameId ?? 0) !== 0) return false;

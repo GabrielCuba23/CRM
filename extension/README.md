@@ -1,8 +1,11 @@
 # Nexo CRM para WhatsApp Web
 
 Extensión Manifest V3 para Chrome de computadora. Reutiliza la interfaz completa
-del CRM dentro del panel lateral: clientes, cuentas, perfiles, renovaciones,
+del CRM dentro de la misma página de WhatsApp Web: clientes, cuentas, perfiles, renovaciones,
 finanzas, mensajes, reportes, proveedores, marketing y configuración.
+Un botón **Nexo** muestra u oculta el panel integrado a la derecha. En pantallas
+amplias se reserva espacio para mantener la conversación visible; en ventanas
+estrechas el panel puede superponerse y cerrarse con el botón **×**.
 
 ## Construir e instalar
 
@@ -25,8 +28,17 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
 3. Completa el inicio de sesión de Cloudflare Access con tu correo. Conserva
    abierta la pestaña **Conexión de Nexo CRM**; puedes trabajar en otra pestaña.
 4. Comprueba la conexión desde las opciones.
-5. Abre WhatsApp Web, recarga la página si ya estaba abierta al instalar, y pulsa
-   el icono de Nexo CRM para abrir el panel lateral.
+5. Abre WhatsApp Web y recarga la página si ya estaba abierta al instalar. Nexo
+   aparece dentro de la página. Su botón o el icono de la extensión muestran y
+   ocultan las herramientas, sin abrir el CRM en otra pestaña.
+
+### Actualizar desde la versión 1.0
+
+Reemplaza los archivos de la carpeta original por los del ZIP 1.1.0. Conserva la
+misma ruta para mantener la configuración. En `chrome://extensions` pulsa
+**Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
+por `chrome-extension://` ya no es necesaria para trabajar. La pestaña privada de
+conexión `/companion` sí debe permanecer abierta en segundo plano.
 
 No se introducen tokens administrativos de Cloudflare en la extensión. Se usa
 la misma sesión privada del propietario y el mismo control de revisiones del
@@ -39,6 +51,9 @@ El panel permite vincular el chat individual actual con un cliente. Cuando
 WhatsApp muestra un nombre y oculta el número, confirma el teléfono al vincular;
 el nombre por sí solo no identifica a un cliente. La vinculación manual es
 efímera y se invalida cuando cambia la identidad del chat.
+Si tienes varias pestañas de WhatsApp, cada panel usa la conversación de su propia
+pestaña. Ocultar el panel detiene el registro periódico de textos; al volver a
+mostrarlo debes activarlo otra vez si lo necesitas.
 
 La captura obtiene solo textos de mensajes cargados y visibles en la conversación
 vinculada. No descarga el historial completo, archivos adjuntos ni mensajes de
@@ -63,6 +78,7 @@ de respaldo que solicites expresamente.
 ```sh
 node --test tests/extension.test.mjs
 NODE_PATH=/ruta/a/node_modules node tests/extension-browser.cjs
+NODE_PATH=/ruta/a/node_modules node tests/embedded-extension-browser.cjs
 ```
 
 Las pruebas usan documentos controlados, sin acceder a cuentas de WhatsApp.

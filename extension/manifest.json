@@ -1,23 +1,28 @@
 {
   "manifest_version": 3,
   "name": "Nexo CRM para WhatsApp Web",
-  "description": "Todo tu CRM junto a WhatsApp Web: clientes, disponibilidad, ventas, renovaciones y mensajes con tu confirmación.",
-  "version": "1.0.0",
+  "description": "Tu CRM integrado dentro de WhatsApp Web: clientes, disponibilidad, ventas, renovaciones y mensajes con tu confirmación.",
+  "version": "1.1.0",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage", "scripting", "clipboardWrite"],
+  "permissions": ["storage", "scripting", "clipboardWrite"],
   "host_permissions": ["https://web.whatsapp.com/*"],
   "optional_host_permissions": ["https://*/*"],
   "background": { "service_worker": "background.mjs", "type": "module" },
   "action": { "default_title": "Abrir Nexo CRM" },
-  "side_panel": { "default_path": "app/index.html" },
   "options_ui": { "page": "options.html", "open_in_tab": true },
   "icons": { "192": "app/app-icon-192.png", "512": "app/app-icon-512.png" },
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["whatsapp.js"],
+      "js": ["whatsapp.js", "dock.js"],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["app/*", "bootstrap.mjs", "companion.css"],
+      "matches": ["https://web.whatsapp.com/*"]
     }
   ],
   "content_security_policy": {
