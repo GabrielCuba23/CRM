@@ -68,6 +68,8 @@ export function initializeCompanion({ companion, getState, saveGrowth, openClien
   if (banner) banner.textContent = "Conectado mediante la extensión de WhatsApp Web. Vincula el chat y registra sus textos visibles. Revisa y envía los borradores desde WhatsApp.";
   const prepare = document.querySelector("#open-whatsapp");
   if (prepare) prepare.textContent = "Preparar en WhatsApp Web";
+  const deliveryNote = document.querySelector("#message-delivery-note");
+  if (deliveryNote) deliveryNote.textContent = "Abre el chat de la ficha seleccionada y revisa el destinatario. Preparar deja un borrador para que lo envíes tú en WhatsApp. Copiar guarda el texto en el portapapeles.";
 
   let context = null, busy = false, observedState = null, visibilityRevision = 0;
   function report(error) {

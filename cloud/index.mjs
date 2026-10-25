@@ -148,8 +148,9 @@ export async function handleRequest(request, env, options = {}) {
   if (path === "/api/session" && request.method === "GET")
     return json({ ...user, mode: "server", authProvider: "cloudflare-access" });
   if (path === "/companion" && ["GET", "HEAD"].includes(request.method))
-    return new Response(request.method === "HEAD" ? null : `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nexo · Conexión privada</title></head><body><main><h1>Conexión privada con Nexo CRM</h1><p>Sesión autorizada. La extensión puede consultar y guardar tus operaciones mientras trabajas en WhatsApp Web.</p><p>Conserva esta pestaña abierta. Puedes volver a WhatsApp Web; no necesitas trabajar en esta pantalla.</p><p><a href="/">Abrir el CRM completo</a></p></main></body></html>`, {
-      headers: { ...securityHeaders, "Content-Type": "text/html; charset=utf-8" },
+    return new Response(null, {
+      status: 302,
+      headers: { ...securityHeaders, Location: url.origin + "/" },
     });
   if (path === "/api/workspace" && request.method === "GET")
     return json(await workspace(env.DB));

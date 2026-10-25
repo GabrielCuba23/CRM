@@ -24,21 +24,24 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
 
 1. Abre las opciones de la extensión. Introduce el origen HTTPS real de tu CRM,
    por ejemplo `https://nexo-crm.acxelcubaaraoz.workers.dev` una vez publicado.
-2. Autoriza exclusivamente ese dominio y pulsa **Guardar y abrir sesión**.
-3. Completa el inicio de sesión de Cloudflare Access con tu correo. Conserva
-   abierta la pestaña **Conexión de Nexo CRM**; puedes trabajar en otra pestaña.
-4. Comprueba la conexión desde las opciones.
-5. Abre WhatsApp Web y recarga la página si ya estaba abierta al instalar. Nexo
+2. Pulsa **Conectar CRM** o **Abrir WhatsApp con Nexo**. Ambos botones guardan
+   la dirección y solicitan acceso exclusivamente a ese dominio.
+3. Completa el inicio de sesión con tu correo si se solicita. Se abre el CRM
+   normal; puedes conservarlo en segundo plano mientras trabajas en WhatsApp.
+4. El panel reconoce la sesión y se conecta automáticamente. La dirección
+   sugerida en las opciones se guarda al pulsar cualquiera de los botones de conexión.
+5. Recarga WhatsApp Web si ya estaba abierta al instalar. Nexo
    aparece dentro de la página. Su botón o el icono de la extensión muestran y
    ocultan las herramientas, sin abrir el CRM en otra pestaña.
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.1.1. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.1.2. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
-por `chrome-extension://` ya no es necesaria para trabajar. La pestaña privada de
-conexión `/companion` sí debe permanecer abierta en segundo plano.
+por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
+instalación de Nexo activa. El CRM normal puede permanecer en segundo plano;
+la dirección antigua `/companion` ahora abre ese CRM.
 
 La versión 1.1.1 conserva la altura y el posicionamiento nativos de WhatsApp al
 reservar espacio horizontal. Evita que un cambio de altura del contenedor oculte
@@ -49,6 +52,11 @@ Los botones que requieren una ficha explican ese requisito y se habilitan al
 seleccionarla. Los errores de guardado aparecen dentro del formulario. La entrega
 verifica también los borradores multilínea sin confundir los saltos de línea del
 editor con un mensaje fallido.
+La versión 1.1.2 mantiene vacíos los precios sin indicar al editar, renovar y
+exportar, y distingue un precio pendiente de un cero introducido expresamente.
+También recupera automáticamente una tarjeta de conexión que estaba abierta
+antes de guardar la configuración o completar el ingreso. Copiar mensajes usa
+un documento interno de la extensión para funcionar desde el panel integrado.
 
 No se introducen tokens administrativos de Cloudflare en la extensión. Se usa
 la misma sesión privada del propietario y el mismo control de revisiones del
@@ -76,6 +84,8 @@ Rechaza grupos y destinatarios diferentes. Si el editor no está disponible o ya
 contiene otro borrador, conserva el borrador y copia el mensaje para pegarlo.
 **El envío final lo confirmas tú en WhatsApp**. Capturar un texto enviado no
 demuestra que el destinatario lo haya recibido.
+La ficha elegida y el chat abierto deben corresponder a la misma persona antes
+de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destinatario.
 
 Los registros se guardan en el CRM mediante su API privada. El almacenamiento
 local de Chrome contiene únicamente la URL de configuración; la sesión del

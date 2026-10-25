@@ -133,3 +133,7 @@ body.nexo-embedded.dark { --accent: #00a884; --muted: #aebac1; color: #e9edef; b
 .nexo-embedded.dark .nexo-chat-tools { background: #202c33; border-color: #34434b; }
 .nexo-embedded.dark .nexo-chat-tools > summary { color: #e9edef; }
 .nexo-embedded.dark .nexo-chat-identity { color: #aebac1; }
+.nexo-connection-notice { margin-top: 9px; padding: 10px; border: 1px solid #e2c58a; border-radius: 8px; background: #fff8e8; color: #664b1d; }
+.nexo-connection-notice p { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+.nexo-connection-notice .button { display: inline-block; font-size: 12px; padding: 8px; }
+.dark .nexo-connection-notice { background: #3b3423; color: #f1dfb4; border-color: #6c5a32; }

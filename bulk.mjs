@@ -158,6 +158,7 @@ export function prepareClientImport(rows, state) {
     try {
       const name = text(get("name"));
       if (!name) throw Error("Falta el nombre.");
+      const price = text(get("price")).replace(/^S\/?\s*/i, "").replace(",", ".");
       const c = {
         id: /^[A-Za-z0-9_-]{1,100}$/.test(text(get("id")))
           ? text(get("id"))
@@ -169,11 +170,8 @@ export function prepareClientImport(rows, state) {
         service: text(get("service")),
         profile: text(get("profile")),
         expires: date(get("expires")),
-        price: cents(
-          text(get("price"))
-            .replace(/^S\/?\s*/i, "")
-            .replace(",", ".") || "0",
-        ),
+        price: cents(price || "0"),
+        ...(price ? {} : { pricePending: true }),
         pin: text(get("pin")),
         notes: text(get("notes")),
         accountId: "",
@@ -234,7 +232,7 @@ function values(c) {
     c.service,
     c.profile,
     c.expires,
-    (c.price / 100).toFixed(2),
+    c.pricePending === true ? "" : (c.price / 100).toFixed(2),
     c.pin,
     c.notes,
     c.accountId,

@@ -2,7 +2,7 @@
   if (globalThis.__nexoWhatsAppAdapter) return;
   let manualBinding = null;
   const phone = value => {
-    const text = String(value || "").trim();
+    const text = String(value || "").replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").trim();
     if (!/^\+?[\d\s().-]+$/.test(text)) return "";
     const digits = text.replace(/\D/g, "");
     if (!text.startsWith("+") && digits.length < 10) return "";

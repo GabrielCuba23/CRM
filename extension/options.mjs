@@ -1,32 +1,71 @@
 import { crmOrigin, DEFAULT_ORIGIN } from "./policy.mjs";
 const status = document.querySelector("#status");
+let busy = false;
 async function rpc(type, data = {}) {
   const reply = await chrome.runtime.sendMessage({ channel: "nexo", type, ...data });
   if (!reply?.ok) throw Error(reply?.error || "No se pudo completar la operación.");
   return reply.result;
 }
 async function action(callback) {
+  if (busy) return;
+  busy = true;
+  const buttons = [...document.querySelectorAll("button")];
+  buttons.forEach(button => { button.disabled = true; });
   try { await callback(); } catch (error) { status.textContent = error.message; }
+  finally { busy = false; buttons.forEach(button => { button.disabled = false; }); }
 }
 const current = await rpc("configuration.get");
 document.querySelector("#origin").value = current.origin || DEFAULT_ORIGIN;
+status.textContent = current.origin
+  ? "Dirección guardada: " + current.origin + ". Abre WhatsApp con Nexo para conectar tu sesión."
+  : "La dirección mostrada es una sugerencia; todavía no está guardada. Pulsa Conectar CRM o Abrir WhatsApp para guardarla y entrar.";
+
+async function saveInputConfiguration() {
+  const origin = crmOrigin(document.querySelector("#origin").value.trim());
+  // This is deliberately the first await in a direct user-click handler.
+  // Chrome must ask the user for this exact host before any background work.
+  const granted = await chrome.permissions.request({ origins: [origin + "/*"] });
+  if (!granted) throw Error("No se autorizó el sitio del CRM. Puedes intentarlo nuevamente.");
+  const saved = await rpc("configuration.get");
+  if (saved.origin !== origin) await rpc("configuration.set", { origin });
+  return origin;
+}
+async function connectWorkspace() {
+  const origin = await saveInputConfiguration();
+  status.textContent = "Dirección guardada. Abriendo WhatsApp y conectando tu sesión…";
+  // Remember the explicitly selected WhatsApp tab before opening authentication,
+  // so a successful login can return to that same conversation automatically.
+  await rpc("wa.open");
+  const verified = await rpc("crm.verify", { expectedOrigin: origin });
+  if (verified.ready) {
+    status.textContent = "Conexión lista. Nexo ya está disponible dentro de WhatsApp Web.";
+    return;
+  }
+  const connection = await rpc("crm.connect", { expectedOrigin: origin });
+  status.textContent = connection.ready
+    ? "Conexión lista. Nexo ya está disponible dentro de WhatsApp Web."
+    : "Completa el ingreso con tu correo y código si Cloudflare lo solicita. Al terminar, Nexo se conectará en WhatsApp automáticamente.";
+}
 document.querySelector("#configuration").addEventListener("submit", event => {
   event.preventDefault();
-  action(async () => {
-    const origin = crmOrigin(document.querySelector("#origin").value.trim());
-    const granted = await chrome.permissions.request({ origins: [origin + "/*"] });
-    if (!granted) throw Error("No se autorizó el sitio del CRM. Puedes intentarlo nuevamente.");
-    await rpc("configuration.set", { origin });
-    await rpc("crm.connect");
-    status.textContent = "Termina el inicio de sesión en la pestaña del CRM. Después vuelve aquí y comprueba la conexión.";
-  });
+  action(connectWorkspace);
 });
-document.querySelector("#connect").addEventListener("click", () => action(async () => { await rpc("crm.connect"); status.textContent = "Inicia sesión y mantén abierta la pestaña de conexión."; }));
+document.querySelector("#connect").addEventListener("click", () => action(connectWorkspace));
 document.querySelector("#check").addEventListener("click", () => action(async () => {
-  const { origin } = await rpc("configuration.get");
-  const result = await rpc("crm.request", { expectedOrigin: origin, path: "/api/session", method: "GET" });
-  const session = JSON.parse(result.body);
-  if (result.status !== 200 || session.mode !== "server") throw Error(session.error || "Termina el inicio de sesión del CRM.");
-  status.textContent = "Conexión privada verificada para " + session.email + ". Ya puedes abrir el panel junto a WhatsApp Web.";
+  const origin = await saveInputConfiguration();
+  const result = await rpc("crm.verify", { expectedOrigin: origin });
+  status.textContent = result.ready
+    ? "Conexión lista. Nexo ya está disponible dentro de WhatsApp Web."
+    : "Tu sesión todavía no está conectada. Pulsa Abrir WhatsApp con Nexo para completar el ingreso.";
 }));
-document.querySelector("#workspace").addEventListener("click", () => action(async () => { await rpc("wa.open"); status.textContent = "Nexo se abre dentro de WhatsApp Web. El botón Nexo permite mostrarlo u ocultarlo."; }));
+document.querySelector("#workspace").addEventListener("click", () => action(connectWorkspace));
+chrome.runtime.onMessage?.addListener((message, sender) => {
+  if (sender.id !== chrome.runtime.id || sender.tab || message?.channel !== "nexo.connection") return false;
+  rpc("configuration.get").then(({ origin }) => {
+    if (!origin || origin !== message.origin) return;
+    status.textContent = message.ready === true
+      ? "Conexión lista. Nexo ya está disponible dentro de WhatsApp Web."
+      : "Dirección guardada: " + origin + ". Conecta tu sesión para empezar a trabajar.";
+  }).catch(() => {});
+  return false;
+});

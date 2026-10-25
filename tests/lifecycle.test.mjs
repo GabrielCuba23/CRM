@@ -71,3 +71,20 @@ test("former-contact rule needs marketing consent and legacy reminders exclude a
   c.marketingConsent = true;
   assert(await ruleTask(state, rule, c, options));
 });
+
+test("Archiving keeps pending prices distinct from known zero throughout private history", () => {
+  const pending = archiveContact({ ...client, price: 0, pricePending: true }, "2026-10-07T14:00:00Z");
+  const knownZero = archiveContact({ ...client, id: "known-zero", price: 0 }, "2026-10-07T14:00:00Z");
+  const state = emptyState();
+  state.clients = [pending, knownZero];
+  const cleaned = cleanState(state);
+  assert.equal(cleaned.clients[0].pricePending, true);
+  assert.equal(cleaned.clients[0].serviceHistory[0].pricePending, true);
+  assert.equal(cleaned.clients[1].serviceHistory[0].price, 0);
+  assert.equal(cleaned.clients[1].serviceHistory[0].pricePending, undefined);
+  for (const invalid of [{ pricePending: "true" }, { pricePending: true, price: 1 }]) {
+    const bad = structuredClone(pending);
+    Object.assign(bad.serviceHistory[0], invalid);
+    assert.throws(() => validateLifecycle(bad));
+  }
+});

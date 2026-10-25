@@ -26,15 +26,17 @@ a la extensión ni a los archivos públicos.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
 3. En las opciones de Nexo, introduce la dirección HTTPS del CRM y autoriza
-   exclusivamente ese dominio. Pulsa **Guardar y abrir sesión**.
-4. Inicia sesión con el código enviado al correo propietario. Deja abierta la
-   pestaña de conexión `/companion`; puede permanecer en segundo plano.
+   exclusivamente ese dominio. Pulsa **Conectar CRM** o **Abrir WhatsApp con Nexo**.
+4. Inicia sesión con el código enviado al correo propietario si se solicita.
+   El CRM normal puede permanecer abierto en segundo plano; el panel de WhatsApp
+   reconoce la conexión automáticamente. No hay una pantalla auxiliar de verificación.
 5. Abre o recarga WhatsApp Web. Nexo aparece integrado junto a la conversación.
    Pulsa su botón o el icono de la extensión para mostrarlo u ocultarlo.
 
 Si ya instalaste la versión 1.0, reemplaza los archivos en la misma carpeta,
 pulsa **Recargar** en la tarjeta de Nexo en `chrome://extensions` y recarga
 WhatsApp Web. Así conservas la dirección del CRM configurada.
+Conserva una sola instalación de Nexo activa para que no compitan varios paneles.
 
 El ZIP sirve para instalación local. Esta entrega no es una publicación en
 Chrome Web Store. Una sesión de Access vencida requiere volver a identificarse.
@@ -42,6 +44,8 @@ Si cambias de CRM en las opciones, recarga el panel: las solicitudes de un panel
 anterior se rechazan para evitar mezclar datos entre negocios. Cada panel
 integrado trabaja con el chat de su propia pestaña de WhatsApp. Al ocultarlo se
 detiene la captura periódica, que requiere activación de nuevo al regresar.
+Los precios sin indicar quedan vacíos en formularios y exportaciones; no se
+consideran una venta gratuita ni se calculan márgenes completos con esos datos.
 
 ## Trabajar sin salir de WhatsApp Web
 

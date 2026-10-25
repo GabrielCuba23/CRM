@@ -2,7 +2,38 @@ import unittest, tempfile, os, datetime as dt, json, zipfile, io
 from unittest.mock import patch
 from backend.storage import initialize, connect, default_workspace
 from backend.email_reports import due_reports, sheets, workbook, process_reports
+from backend.validation import validate_workspace
 class ReportsTest(unittest.TestCase):
+    def test_pending_prices_persist_and_export_blank_without_hiding_known_zero(self):
+        state = default_workspace()
+        state['clients'] = []
+        for index, pending in enumerate([True, False]):
+            client = {'id':str(index),'name':'Synthetic','phone':'','email':'','service':'Netflix','profile':'','expires':'','notes':'','accountId':'','pin':'','price':0,
+                      'serviceHistory':[{'id':'history','service':'Netflix','accountId':'','profile':'','expires':'','price':0,'endedAt':'2026-10-07T14:00:00Z'}]}
+            if pending:
+                client['pricePending'] = True
+                client['serviceHistory'][0]['pricePending'] = True
+            state['clients'].append(client)
+        clean = validate_workspace(state)
+        self.assertIs(clean['clients'][0]['pricePending'], True)
+        self.assertIs(clean['clients'][0]['serviceHistory'][0]['pricePending'], True)
+        self.assertNotIn('pricePending', clean['clients'][1])
+        tables = sheets(clean, 'clients', '2026-10-15')
+        self.assertEqual(tables[0][1][1][8], '')
+        self.assertEqual(tables[0][1][2][8], 0)
+        self.assertEqual(tables[1][1][1][4], '')
+        self.assertEqual(tables[1][1][2][4], 0)
+        for location in [state['clients'][0], state['clients'][0]['serviceHistory'][0]]:
+            for bad in ['true', 1]:
+                location['pricePending'] = bad
+                with self.assertRaises(ValueError):
+                    validate_workspace(state)
+            location['pricePending'] = True
+            location['price'] = 1
+            with self.assertRaises(ValueError):
+                validate_workspace(state)
+            location['price'] = 0
+
     def test_schedule_and_literal_excel(self):
         settings={'clientsWeekly':True,'financeTwiceMonthly':True,'hour':9}
         self.assertEqual(len(due_reports(settings,dt.datetime.fromisoformat('2026-05-15T14:00:00+00:00'))),2)

@@ -104,6 +104,26 @@ test("Excel includes archived clients, literal text, numeric cost and cutoff led
   assert.equal(f.getWorksheet("Resumen").getCell("B6").value, 12);
   assert.equal(f.getWorksheet("Movimientos").rowCount, 3);
 });
+
+test("Client and history reports leave pending prices blank and retain explicit zero as numeric zero", async () => {
+  const state = emptyState();
+  state.clients = [true, false].map((pending, index) => ({
+    id: `client-${index}`, name: pending ? "Sin precio" : "Precio cero", phone: "", email: "", service: "Netflix", profile: "", expires: "", notes: "", accountId: "", price: 0,
+    ...(pending ? { pricePending: true } : {}),
+    serviceHistory: [{ service: "Netflix", expires: "2026-10-01", price: 0, ...(pending ? { pricePending: true } : {}), endedAt: "2026-10-07T14:00:00Z" }],
+  }));
+  const tables = reportSheets(state, "clients", "2026-10-15");
+  assert.equal(tables[0].rows[1][8], "");
+  assert.equal(tables[0].rows[2][8], 0);
+  assert.equal(tables[1].rows[1][4], "");
+  assert.equal(tables[1].rows[2][4], 0);
+  const file = new ExcelJS.Workbook();
+  await file.xlsx.load(workbook(tables));
+  assert.equal(file.getWorksheet("Clientes").getCell("I2").value, null);
+  assert.equal(file.getWorksheet("Clientes").getCell("I3").value, 0);
+  assert.equal(file.getWorksheet("Historial de servicios").getCell("E2").value, null);
+  assert.equal(file.getWorksheet("Historial de servicios").getCell("E3").value, 0);
+});
 test("D1 atomic claim prevents duplicate reports and does not retry unknown provider outcomes", async () => {
   const req = createRequire("/tmp/crm-cloud-tools/package.json"),
     { Miniflare, convertV4MiniflareOptions } = req("miniflare");

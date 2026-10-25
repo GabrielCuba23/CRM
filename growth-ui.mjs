@@ -94,7 +94,7 @@ export function initializeGrowth({
       body.append(
         node(
           "p",
-          `${new Date(record.endedAt).toLocaleDateString("es-PE", { timeZone: "America/Lima" })} · ${record.service} · ${record.profile || "Sin perfil"} · Vencimiento ${record.expires || "Sin fecha"} · Precio S/ ${(record.price / 100).toFixed(2)}`,
+          `${new Date(record.endedAt).toLocaleDateString("es-PE", { timeZone: "America/Lima" })} · ${record.service} · ${record.profile || "Sin perfil"} · Vencimiento ${record.expires || "Sin fecha"} · ${record.pricePending ? "Precio sin indicar" : `Precio S/ ${(record.price / 100).toFixed(2)}`}`,
         ),
       );
     if (c.archived)

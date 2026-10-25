@@ -37,7 +37,7 @@ export const defaultTemplates = [
   },
 ];
 export function normalizePhone(value) {
-  const raw = String(value).trim();
+  const raw = String(value).replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").trim();
   if (
     !raw ||
     /[^\d+\s().-]/.test(raw) ||
@@ -167,6 +167,9 @@ export function validateWorkspace(state) {
         date(c.expires) &&
         Number.isInteger(c.price) &&
         c.price >= 0 &&
+        (c.pricePending === undefined ||
+          (typeof c.pricePending === "boolean" &&
+            (!c.pricePending || c.price === 0))) &&
         (c.reminderConsent === undefined ||
           typeof c.reminderConsent === "boolean") &&
         (c.whatsappUsername === undefined ||

@@ -304,11 +304,12 @@ test("The package contains the entire CRM and no server data or remote executabl
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "1.1.1");
+  assert.equal(manifest.version, "1.1.2");
   assert.deepEqual(manifest.host_permissions, ["https://web.whatsapp.com/*"]);
   assert.equal(manifest.externally_connectable, undefined);
   assert.equal(manifest.side_panel, undefined);
   assert(!manifest.permissions.includes("sidePanel"));
+  assert(manifest.permissions.includes("offscreen"));
   assert(!manifest.permissions.includes("debugger"));
   assert.deepEqual(manifest.content_scripts, [{
     matches: ["https://web.whatsapp.com/*"], js: ["whatsapp.js", "dock.js"],
@@ -319,6 +320,8 @@ test("The package contains the entire CRM and no server data or remote executabl
     matches: ["https://web.whatsapp.com/*"],
   }]);
   const dock = await readFile(join(output, "dock.js"), "utf8");
+  assert((await readdir(output)).includes("clipboard.html"));
+  assert((await readdir(output)).includes("clipboard.js"));
   assert.match(dock, /embedded=1/);
   const html = await readFile(join(output, "app/index.html"), "utf8");
   assert.match(html, /name="crm-backend" content="required"/);

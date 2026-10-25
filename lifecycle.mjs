@@ -19,6 +19,7 @@ export function archiveContact(client, at) {
         profile: client.profile,
         expires: client.expires,
         price: client.price,
+        ...(client.pricePending === undefined ? {} : { pricePending: client.pricePending }),
         endedAt: at,
       },
     ],
@@ -46,6 +47,9 @@ export function validateLifecycle(c) {
           Number.isSafeInteger(r.price) &&
           r.price >= 0 &&
           r.price <= 99999900 &&
+          (r.pricePending === undefined ||
+            (typeof r.pricePending === "boolean" &&
+              (!r.pricePending || r.price === 0))) &&
           Number.isFinite(Date.parse(r.endedAt)),
       ))
   )

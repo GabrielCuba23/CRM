@@ -23,6 +23,9 @@ def validate_workspace(state):
     def amount(value):
         return type(value) is int and 0 <= value <= 99999900
 
+    def pending_price(item):
+        return 'pricePending' not in item or (type(item['pricePending']) is bool and (not item['pricePending'] or item.get('price') == 0))
+
     if not isinstance(state, dict) or state.get('version') != 2:
         fail()
     for key in ['clients', 'accounts', 'templates', 'combos', 'ledger']:
@@ -32,7 +35,7 @@ def validate_workspace(state):
         if len({row['id'] for row in rows}) != len(rows):
             fail()
     for c in state['clients']:
-        if not strings(c, ['id', 'name', 'email', 'phone', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin']) or not c['name'].strip() or not date(c['expires']) or not amount(c.get('price')):
+        if not strings(c, ['id', 'name', 'email', 'phone', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin']) or not c['name'].strip() or not date(c['expires']) or not amount(c.get('price')) or not pending_price(c):
             fail()
         for flag in ['archived','marketingConsent']:
             if flag in c and type(c[flag]) is not bool:
@@ -41,7 +44,7 @@ def validate_workspace(state):
             fail()
         if 'serviceHistory' in c:
             history=c['serviceHistory']
-            if not isinstance(history,list) or len(history)>1000 or any(not strings(r,['id','service','accountId','profile','expires','endedAt']) or not amount(r.get('price')) for r in history):
+            if not isinstance(history,list) or len(history)>1000 or any(not strings(r,['id','service','accountId','profile','expires','endedAt']) or not amount(r.get('price')) or not pending_price(r) for r in history):
                 fail()
             for r in history:
                 try:
@@ -174,7 +177,7 @@ def validate_workspace(state):
             fail()
     # Preserve explicit account credentials, but never arbitrary tokens or unknown fields.
     keys = {
-        'clients': ['id', 'name', 'email', 'phone', 'whatsappUsername', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'reminderConsent', 'archived', 'marketingConsent', 'serviceHistory'],
+        'clients': ['id', 'name', 'email', 'phone', 'whatsappUsername', 'service', 'profile', 'expires', 'notes', 'accountId', 'pin', 'price', 'pricePending', 'reminderConsent', 'archived', 'marketingConsent', 'serviceHistory'],
         'accounts': ['id', 'service', 'email', 'provider', 'expires', 'capacity', 'password', 'supplierId','offerId','costCents','costIntervalMonths'],
         'templates': ['id', 'name', 'body', 'context'],
         'combos': ['id', 'name', 'services', 'price'],
@@ -197,5 +200,5 @@ def validate_workspace(state):
         clean[collection] = [{k: row[k] for k in allowed if k in row} for row in state[collection]]
     for c in clean['clients']:
         if 'serviceHistory' in c:
-            c['serviceHistory'] = [{k:r[k] for k in ['id','service','accountId','profile','expires','price','endedAt']} for r in c['serviceHistory']]
+            c['serviceHistory'] = [{k:r[k] for k in ['id','service','accountId','profile','expires','price','pricePending','endedAt'] if k in r} for r in c['serviceHistory']]
     return clean

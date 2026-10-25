@@ -48,9 +48,11 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
   const extensionId = "a".repeat(32);
   const extensionUrl = `chrome-extension://${extensionId}/`;
   const fixtureExtension = "https://extension.test/";
-  const pages = new Map(), backgroundListeners = [], errors = [];
+  const pages = new Map(), backgroundListeners = [], tabUpdatedListeners = [], errors = [];
   const local = { crmOrigin: "https://crm.test" }, session = {};
   let whatsapp, nextTabId = 1, writes = 0, embeddedMessages = 0, sessionExpired = false, rejectNextWrite = false;
+  let clipboardDocumentReady = false;
+  const clipboardWrites = [];
   const tab = page => ({ id: pages.get(page), url: page.url(), status: "complete" });
   const pageFor = tabId => [...pages].find(([, id]) => id === tabId)?.[0];
   const storage = values => ({
@@ -74,7 +76,13 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
         id: extensionId, getURL: suffix => extensionUrl + suffix,
         onMessage: { addListener: listener => backgroundListeners.push(listener) },
         onInstalled: { addListener() {} }, async openOptionsPage() {},
+        async getContexts() { return clipboardDocumentReady ? [{ documentUrl: extensionUrl + "clipboard.html" }] : []; },
         async sendMessage(message) {
+          if (message.channel === "nexo.clipboard.offscreen") {
+            assert.equal(clipboardDocumentReady, true);
+            clipboardWrites.push(message.text);
+            return { ok: true };
+          }
           for (const page of pages.keys()) for (const frame of page.frames()) {
             if (!frame.url().startsWith(fixtureExtension)) continue;
             await frame.evaluate(({ message, id }) => {
@@ -84,11 +92,16 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
         },
       },
       storage: { local: storage(local), session: storage(session) },
+      offscreen: { async createDocument(input) {
+        assert.equal(input.url, "clipboard.html");
+        assert.deepEqual(input.reasons, ["CLIPBOARD"]);
+        clipboardDocumentReady = true;
+      } },
       permissions: { async contains({ origins }) { return origins.every(origin => origin === "https://crm.test/*"); } },
       action: { onClicked: { addListener() {} } },
       sidePanel: { async setPanelBehavior() {}, async open() {} },
       tabs: {
-        onUpdated: { addListener() {} }, onRemoved: { addListener() {} }, onActivated: { addListener() {} },
+        onUpdated: { addListener: listener => tabUpdatedListeners.push(listener) }, onRemoved: { addListener() {} }, onActivated: { addListener() {} },
         async get(id) { const page = pageFor(id); if (!page) throw Error("Pestaña cerrada."); return tab(page); },
         async query(query) {
           if (query.active) return whatsapp ? [tab(whatsapp)] : [];
@@ -128,7 +141,12 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     });
     await context.addInitScript(({ id, fixtureExtension }) => {
       globalThis.__chromeListeners = [];
-      globalThis.chrome = { runtime: {
+      // Reproduce the site's clipboard policy/focus failure. The packaged UI
+      // must use its extension-owned clipboard route rather than this API.
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+        writeText: async () => { throw new DOMException("Clipboard blocked in the embedded page", "NotAllowedError"); },
+      } });
+      globalThis.chrome = { permissions: { request: async ({ origins }) => origins.every(origin => origin === "https://crm.test/*") }, runtime: {
         id, getURL: suffix => location.origin === "https://crm.test" ? `chrome-extension://${id}/` + suffix : fixtureExtension + suffix,
         sendMessage: message => globalThis.nexoToBackground(message),
         onMessage: {
@@ -172,7 +190,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       return route.fulfill({ contentType: type, body: fs.readFileSync(filename) });
     });
     await context.route("https://web.whatsapp.com/**", route => route.fulfill({ contentType: "text/html", body: WHATSAPP_FIXTURE }));
-    const crm = await context.newPage(); pages.set(crm, nextTabId++); await crm.goto("https://crm.test/companion");
+    const crm = await context.newPage(); pages.set(crm, nextTabId++); await crm.goto("https://crm.test/");
     whatsapp = await context.newPage(); pages.set(whatsapp, nextTabId++); await whatsapp.goto("https://web.whatsapp.com/");
     async function layoutMetrics() {
       return whatsapp.evaluate(() => {
@@ -415,6 +433,16 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     assert.notEqual(state.clients[0].expires, "2099-11-24");
     await embedded.locator("#companion-compose").click();
     await embedded.locator("#message-template").selectOption("password");
+    const messageToCopy = await embedded.locator("#message-text").inputValue();
+    await embedded.locator("#copy-message").click();
+    await embedded.locator("#message-error").filter({ hasText: "Mensaje copiado" }).waitFor();
+    assert.equal(clipboardWrites.at(-1), messageToCopy);
+    await editor.fill("Borrador personal que debe conservarse");
+    await embedded.locator("#open-whatsapp").click();
+    await embedded.locator("#message-error").filter({ hasText: "Texto copiado" }).waitFor();
+    assert.equal(clipboardWrites.at(-1), messageToCopy);
+    assert.equal(await editor.innerText(), "Borrador personal que debe conservarse");
+    await editor.fill("");
     await embedded.locator("#open-whatsapp").click();
     await appFrame.waitForFunction(() => document.querySelector("#message-error").textContent.trim().length > 0);
     const preparedStatus = await embedded.locator("#message-error").innerText();
@@ -451,6 +479,29 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     assert.equal(whatsapp.url(), "https://web.whatsapp.com/");
     assert.equal(pages.size, 2, "La sesión caducada debe mostrar una tarjeta dentro del dock sin abrir opciones automáticamente.");
     await editor.fill("Puedo seguir atendiendo mientras vuelvo a iniciar sesión en el CRM.");
+    assert.equal(await editor.innerText(), "Puedo seguir atendiendo mientras vuelvo a iniciar sesión en el CRM.");
+    // A completed login should recover the already-open embedded card without
+    // requiring the operator to reload WhatsApp or re-enter the CRM address.
+    sessionExpired = false;
+    for (const listener of tabUpdatedListeners) listener(pages.get(crm), { status: "complete" }, tab(crm));
+    await embedded.locator("#nexo-module-select").waitFor({ state: "visible", timeout: 20000 });
+    assert.equal(await embedded.locator("body.nexo-setup").count(), 0);
+    assert.equal(whatsapp.url(), "https://web.whatsapp.com/");
+    // Reproduce a fresh installation with a prefilled options input but no
+    // saved configuration. The actual Open WhatsApp button must save the input
+    // and recover the stale setup iframe as part of that single user action.
+    delete local.crmOrigin;
+    delete session.crmTabId;
+    await appFrame.goto(fixtureExtension + "app/index.html?embedded=1");
+    await embedded.getByRole("heading", { name: "Tu CRM dentro de WhatsApp", exact: true }).waitFor();
+    const options = await context.newPage(); pages.set(options, nextTabId++);
+    await options.goto(fixtureExtension + "options.html");
+    await options.locator("#origin").fill("https://crm.test");
+    await options.locator("#workspace").click();
+    await embedded.locator("#nexo-module-select").waitFor({ state: "visible", timeout: 20000 });
+    assert.equal(local.crmOrigin, "https://crm.test");
+    assert.equal(await embedded.locator("body.nexo-setup").count(), 0);
+    assert.equal(pages.size, 3, "La configuración debe reutilizar el CRM normal sin abrir otra pantalla de verificación.");
     assert.equal(await editor.innerText(), "Puedo seguir atendiendo mientras vuelvo a iniciar sesión en el CRM.");
     assert.deepEqual(errors, []);
     console.log("Embedded extension fixture: same WhatsApp document, actual packaged CRM in shadow iframe, background/CSRF bridge, live customer edit, visible-text capture, capture stopped on collapse/reopen, manual chat and expired-session inline setup passed.");

@@ -69,20 +69,21 @@ export function validateProcurement(raw = emptyProcurement()) {
 export function accountMargin(account, clients) {
   if (account.costCents === undefined) return null;
   const assigned = clients.filter((c) => c.accountId === account.id),
-    revenue = assigned.reduce((sum, c) => sum + c.price, 0),
+    pending = assigned.some((c) => c.pricePending === true),
+    revenue = pending ? null : assigned.reduce((sum, c) => sum + c.price, 0),
     cost = account.costCents;
   return {
     cost,
     revenue,
-    margin: revenue - cost,
+    margin: pending ? null : revenue - cost,
     unitCost: cost / account.capacity,
     occupied: assigned.length,
     capacity: account.capacity,
     profiles: assigned.map((c) => ({
       id: c.id,
       name: c.name,
-      price: c.price,
-      margin: c.price - cost / account.capacity,
+      price: c.pricePending ? null : c.price,
+      margin: c.pricePending ? null : c.price - cost / account.capacity,
     })),
   };
 }

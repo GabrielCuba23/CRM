@@ -18,6 +18,8 @@ test("Peruvian and international phone normalization rejects malformed numbers",
     "+51 987 654 321",
     "0051 987654321",
     "51987654321",
+    "987654321\u202c",
+    "\u2066+51 987 654 321\u2069",
   ])
     assert.equal(normalizePhone(phone), "51987654321");
   assert.equal(normalizePhone("+1 (415) 555-2671"), "14155552671");

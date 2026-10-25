@@ -38,6 +38,7 @@ export function cleanState(raw) {
       "accountId",
       "pin",
       "price",
+      "pricePending",
       "reminderConsent",
       "archived",
       "marketingConsent",
@@ -127,8 +128,9 @@ export function cleanState(raw) {
             "profile",
             "expires",
             "price",
+            "pricePending",
             "endedAt",
-          ].map((k) => [k, r[k]]),
+          ].filter((k) => r[k] !== undefined).map((k) => [k, r[k]]),
         ),
       );
   state.rules = (raw.rules || []).map((r) => ({

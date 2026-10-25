@@ -136,3 +136,33 @@ test("Account credentials and optional usernames survive private schema validati
   state.accounts[0].password = { unexpected: true };
   assert.throws(() => cleanState(state));
 });
+
+test("Blank prices stay pending through private persistence and CSV/Excel while an explicit zero stays known", async () => {
+  const state = emptyState();
+  state.clients = prepareClientImport(parseCSV("nombre,precio\nSin precio,\nPrecio cero,0\nPrecio conocido,12.50"), state).clients;
+  assert.equal(state.clients.length, 3);
+  assert.equal(state.clients[0].price, 0);
+  assert.equal(state.clients[0].pricePending, true);
+  assert.equal(state.clients[1].price, 0);
+  assert.equal(state.clients[1].pricePending, undefined);
+  state.clients[1].pricePending = false;
+  const cleaned = cleanState(state);
+  assert.equal(cleaned.clients[0].pricePending, true);
+  assert.equal(cleaned.clients[1].pricePending, false);
+  const rows = parseCSV(exportClientCSV(cleaned.clients));
+  assert.equal(rows[1][8], "");
+  assert.equal(rows[2][8], "0.00");
+  assert.equal(rows[3][8], "12.50");
+  for (const exported of [rows, await readExcelRows(await exportClientExcel(cleaned.clients, ExcelJS), ExcelJS)]) {
+    const again = prepareClientImport(exported, emptyState()).clients;
+    assert.equal(again[0].pricePending, true);
+    assert.equal(again[1].price, 0);
+    assert.equal(again[1].pricePending, undefined);
+    assert.equal(again[2].price, 1250);
+  }
+  for (const invalid of [{ pricePending: "true" }, { pricePending: true, price: 1 }, { price: null }]) {
+    const bad = structuredClone(state);
+    Object.assign(bad.clients[0], invalid);
+    assert.throws(() => cleanState(bad));
+  }
+});

@@ -31,6 +31,21 @@ const catalog = () => ({
     },
   ],
 });
+test("an unknown sale price leaves forecast margins pending, while an explicit zero stays known", () => {
+  const account = { id: "a", costCents: 1000, capacity: 2 };
+  const clients = [
+    { id: "known", name: "Sin cargo", accountId: "a", price: 0 },
+    { id: "pending", name: "Por completar", accountId: "a", price: 0, pricePending: true },
+  ];
+  const result = accountMargin(account, clients);
+  assert.equal(result.revenue, null);
+  assert.equal(result.margin, null);
+  assert.equal(result.profiles[0].price, 0);
+  assert.equal(result.profiles[0].margin, -500);
+  assert.equal(result.profiles[1].price, null);
+  assert.equal(result.profiles[1].margin, null);
+  assert.equal(accountMargin(account, clients.slice(0, 1)).revenue, 0);
+});
 test("account margin allocates all capacity, includes unsold cost and does not mutate cash ledger", () => {
   const a = { id: "a", costCents: 4000, capacity: 5 };
   const c = [{ id: "c", name: "Ana", accountId: "a", price: 1200 }];

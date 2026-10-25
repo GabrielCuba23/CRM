@@ -35,8 +35,8 @@ def sheets(state, kind, day):
             a = next((a for a in accounts if a['id'] == c.get('accountId')), {})
             cost = a['costCents']/a['capacity']/100 if 'costCents' in a and a.get('capacity') else ''
             status = 'Archivado' if c.get('archived') else 'Sin servicio' if not c.get('expires') else 'Vencido' if c['expires'] < day else 'Vigente'
-            rows.append([c['id'], c['name'], c['phone'], c.get('whatsappUsername',''), c['email'], c['service'], c['profile'], c['expires'], c.get('price',0)/100, cost, status,c['notes']])
-        history = [['Cliente ID','Nombre','Servicio','Vencimiento','Precio S/','Finalizado']] + [[c['id'],c['name'],h['service'],h['expires'],h['price']/100,h['endedAt']] for c in clients for h in c.get('serviceHistory',[])]
+            rows.append([c['id'], c['name'], c['phone'], c.get('whatsappUsername',''), c['email'], c['service'], c['profile'], c['expires'], '' if c.get('pricePending') is True else c.get('price',0)/100, cost, status,c['notes']])
+        history = [['Cliente ID','Nombre','Servicio','Vencimiento','Precio S/','Finalizado']] + [[c['id'],c['name'],h['service'],h['expires'],'' if h.get('pricePending') is True else h['price']/100,h['endedAt']] for c in clients for h in c.get('serviceHistory',[])]
         purchases = [['Fecha','Cliente ID','Descripción','Servicio','Importe S/']] + [[l['date'],l.get('clientId',''),l['description'],l['service'],l['amount']/100] for l in ledger if l['kind'] != 'expense']
         return [('Clientes',rows),('Historial de servicios',history),('Compras',purchases)]
     movements = [l for l in ledger if l['date'].startswith(day[:7]) and l['date'] <= day]

@@ -59,7 +59,7 @@ export function reportSheets(state, kind, day = todayLima()) {
               c.service,
               c.profile,
               c.expires,
-              c.price / 100,
+              c.pricePending === true ? "" : c.price / 100,
               a?.capacity && a.costCents !== undefined
                 ? a.costCents / a.capacity / 100
                 : "",
@@ -92,7 +92,7 @@ export function reportSheets(state, kind, day = todayLima()) {
               c.name,
               h.service,
               h.expires,
-              h.price / 100,
+              h.pricePending === true ? "" : h.price / 100,
               h.endedAt,
             ]),
           ),

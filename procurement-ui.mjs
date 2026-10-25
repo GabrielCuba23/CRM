@@ -102,9 +102,10 @@ export function initializeProcurement({
       node = $("#client-cost-info");
     if (!node) return;
     try {
+      const price = $("#client-form").elements.price.value;
       node.textContent =
         account?.costCents !== undefined
-          ? `Coste por perfil: ${money(account.costCents / account.capacity)} / ${period(account.costIntervalMonths ?? 1)} · Margen previsto del perfil: ${money(cents($("#client-form").elements.price.value) - account.costCents / account.capacity)}. Usa un precio de venta para ese mismo periodo.`
+          ? `Coste por perfil: ${money(account.costCents / account.capacity)} / ${period(account.costIntervalMonths ?? 1)} · ${price.trim() ? `Margen previsto del perfil: ${money(cents(price) - account.costCents / account.capacity)}. Usa un precio de venta para ese mismo periodo.` : "Precio de venta sin indicar; margen pendiente."}`
           : "Esta cuenta no tiene un coste definido.";
     } catch {
       node.textContent = "Introduce un precio de venta válido.";
@@ -255,14 +256,14 @@ export function initializeProcurement({
           ),
           el(
             "p",
-            `${m.occupied}/${m.capacity} perfiles asignados · Precios de venta sumados ${money(m.revenue)}`,
+            `${m.occupied}/${m.capacity} perfiles asignados · ${m.revenue === null ? "Hay precios de venta sin indicar" : `Precios de venta sumados ${money(m.revenue)}`}`,
           ),
         );
         const result = el(
           "strong",
-          `Margen previsto de la cuenta: ${money(m.margin)}`,
+          m.margin === null ? "Margen previsto pendiente de completar precios." : `Margen previsto de la cuenta: ${money(m.margin)}`,
         );
-        result.className = m.margin < 0 ? "error" : "";
+        result.className = m.margin !== null && m.margin < 0 ? "error" : "";
         card.append(result);
         const offer = catalog.offers.find((o) => o.id === a.offerId);
         if (offer)
@@ -277,7 +278,7 @@ export function initializeProcurement({
           card.append(
             el(
               "p",
-              `${c.name}: cobra ${money(c.price)} · margen ${money(c.margin)}`,
+              c.price === null ? `${c.name}: precio sin indicar; margen pendiente.` : `${c.name}: cobra ${money(c.price)} · margen ${money(c.margin)}`,
             ),
           );
         return card;

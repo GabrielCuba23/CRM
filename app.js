@@ -84,6 +84,10 @@ function redirectToLogin(destination) {
   if (globalThis.NexoCompanion?.showLogin) globalThis.NexoCompanion.showLogin();
   else location.replace(destination || globalThis.NexoCompanion?.loginUrl || "/login");
 }
+async function copyText(text) {
+  if (globalThis.NexoCompanion?.copyText) return globalThis.NexoCompanion.copyText(text);
+  return navigator.clipboard.writeText(text);
+}
 async function api(path, options = {}) {
   const transport = globalThis.NexoCompanion?.fetch || fetch;
   const response = await transport(path, {
@@ -222,6 +226,7 @@ try {
       accountId: "",
       pin: "",
       price: 0,
+      pricePending: true,
     }));
     templates = JSON.parse(
       localStorage.getItem(templateKey) || JSON.stringify(defaultTemplates),
@@ -405,7 +410,7 @@ function editClient(c = {}) {
     "price",
   ])
     $("#client-form").elements.namedItem(key).value =
-      key === "price" ? ((c.price || 0) / 100).toFixed(2) : c[key] || "";
+      key === "price" ? (c.pricePending || c.price === undefined ? "" : (c.price / 100).toFixed(2)) : c[key] || "";
   $("#client-title").textContent = c.id ? "Editar cliente" : "Nuevo cliente";
   $("#client-form").elements.marketingConsent.checked = !!c.marketingConsent;
   $("#client-form").elements.reminderConsent.checked = !!c.reminderConsent;
@@ -423,6 +428,7 @@ $("#client-form").addEventListener("submit", async (event) => {
     if (!data.name) throw Error("Introduce el nombre del cliente.");
     data.phone = data.phone.trim() ? normalizePhone(data.phone) : "";
     data.whatsappUsername = (data.whatsappUsername || "").trim();
+    data.pricePending = !data.price.trim();
     data.price = cents(data.price || "0");
     data.reminderConsent = data.reminderConsent === "on";
     if (data.expires && !validDate(data.expires))
@@ -682,7 +688,7 @@ $("#open-whatsapp").addEventListener("click", async (event) => {
 });
 $("#copy-message").addEventListener("click", async () => {
   try {
-    await navigator.clipboard.writeText($("#message-text").value);
+    await copyText($("#message-text").value);
     $("#message-error").textContent = "Mensaje copiado.";
   } catch {
     $("#message-error").textContent =
@@ -890,7 +896,8 @@ function openRenew(c) {
   const form = $("#renew-form");
   form.reset();
   form.elements.id.value = c.id;
-  form.elements.amount.value = ((c.price || 0) / 100).toFixed(2);
+  form.elements.amount.value = c.pricePending ? "" : ((c.price || 0) / 100).toFixed(2);
+  form.elements.amount.required = form.elements.paid.checked;
   const base = c.expires && c.expires > todayLima() ? c.expires : todayLima();
   const date = new Date(`${base}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + 30);
@@ -1252,7 +1259,7 @@ function initializeModules() {
         throw Error(
           "El nuevo vencimiento debe ser posterior al actual y a hoy.",
         );
-      const amount = cents(data.amount);
+      const amount = data.paid === "on" || data.amount.trim() ? cents(data.amount) : 0;
       const next = clients.map((x) =>
         x.id === c.id ? { ...x, expires: data.expires } : x,
       );
@@ -1283,6 +1290,9 @@ function initializeModules() {
     } catch (error) {
       if ($("#renew-error")) $("#renew-error").textContent = error.message;
     }
+  });
+  $("#renew-form").elements.paid.addEventListener("change", () => {
+    $("#renew-form").elements.amount.required = $("#renew-form").elements.paid.checked;
   });
   $("#new-expense").addEventListener("click", async () => {
     $("#expense-form").reset();
@@ -1366,7 +1376,7 @@ function initializeModules() {
         notify("No hay números en esta selección.");
         return;
       }
-      await navigator.clipboard.writeText(phones.join("\n"));
+      await copyText(phones.join("\n"));
       notify(`${phones.length} números copiados.`);
     } catch {
       notify(
@@ -2173,7 +2183,7 @@ $("#income-client").addEventListener("change", () => {
   const c = clients.find((c) => c.id === $("#income-client").value);
   if (!c) return;
   const form = $("#income-form");
-  form.elements.amount.value = (c.price / 100).toFixed(2);
+  form.elements.amount.value = c.pricePending ? "" : (c.price / 100).toFixed(2);
   form.elements.service.value = c.service;
   form.elements.description.value = `${form.elements.kind.value === "renewal" ? "Renovación" : "Venta"} · ${c.name}`;
 });
@@ -2278,6 +2288,7 @@ $("#download-client-example").addEventListener("click", () => {
     profile: "",
     expires: "",
     price: 0,
+    pricePending: true,
     pin: "",
     notes: "",
     accountId: "",
@@ -2825,9 +2836,7 @@ function openPromotion(o) {
 function loadPromotionBase() {
   const c = clients.find((c) => c.id === $("#promotion-client").value),
     combo = combos.find((c) => c.id === $("#promotion-source").value);
-  $("#promotion-base").value = ((combo?.price ?? c?.price ?? 0) / 100).toFixed(
-    2,
-  );
+  $("#promotion-base").value = !combo && c?.pricePending ? "" : ((combo?.price ?? c?.price ?? 0) / 100).toFixed(2);
   $("#promotion-update-price").disabled = !!combo;
   $("#promotion-update-price").checked = !combo;
   previewPromotion();
@@ -2962,7 +2971,7 @@ $("#promotion-apply-form").addEventListener("submit", async (e) => {
       },
       nextClients = updateClientPrice
         ? clients.map((c) =>
-            c.id === client.id ? { ...c, price: result.final } : c,
+            c.id === client.id ? { ...c, price: result.final, pricePending: false } : c,
           )
         : clients,
       nextLedger = paid
