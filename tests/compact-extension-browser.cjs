@@ -180,6 +180,13 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       { ...state.clients[0], id: "maria-disney", service: "Disney+", profile: "Infantil", email: "disney@example.test", accountId: "", expires: "2031-12-01", price: 0, pricePending: true },
       { ...state.clients[0], id: "jose-demo", name: "José · ejemplo", phone: "51988888888", service: "Max", profile: "Perfil 1", email: "jose@example.test", accountId: "", expires: "2031-12-01", price: 1800 },
     );
+    if (process.env.NATIVE_CONTACT_ONLY === '1') {
+      const { emptyGrowth } = await import(path.join(root, 'growth.mjs'));
+      state.clients[0].serviceHistory = [{ id: 'history-native', service: 'Max anterior', accountId: '', profile: 'Perfil anterior', expires: '2026-09-01', price: 1000, endedAt: '2026-09-01T12:00:00.000Z' }];
+      state.ledger = [{ id: 'payment-native', kind: 'sale', date: '2026-10-01', description: 'Pago histórico de ejemplo', clientId: 'maria-demo', service: 'Netflix', amount: 2500 }];
+      state.growth = emptyGrowth();
+      state.growth.interactions.push({ id: 'conversation-native', name: 'Conversación histórica de ejemplo', clientId: 'maria-demo', network: 'WhatsApp', kind: 'received_manual', body: 'Registro histórico de prueba conservado', agent: 'Propietario', outcome: 'open', occurredAt: '2026-10-01T12:00:00.000Z' });
+    }
     await context.route("https://crm.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
       if (["/", "/companion"].includes(url.pathname)) return route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Sesión CRM de prueba</title><p>Puente autenticado de prueba</p>" });
@@ -227,6 +234,39 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await context.route("https://web.whatsapp.com/**", route => route.fulfill({ contentType: "text/html", body: WHATSAPP_FIXTURE }));
     const crm = await context.newPage(); pages.set(crm, nextTabId++); await crm.goto("https://crm.test/");
     whatsapp = await context.newPage(); pages.set(whatsapp, nextTabId++); await whatsapp.goto("https://web.whatsapp.com/");
+    async function installPlainNativePane(name, { outsideNativeApp = false, insideMain = false } = {}) {
+      await whatsapp.evaluate(({ name, outsideNativeApp, insideMain }) => {
+        document.querySelector('#fixture-plain-contact-pane')?.remove();
+        const pane = document.createElement('div');
+        pane.id = 'fixture-plain-contact-pane';
+        pane.style.cssText = 'position:absolute;right:0;top:0;width:300px;height:100%;z-index:4;background:#fff;padding:0;overflow:auto';
+        const header = document.createElement('header');
+        header.style.cssText = 'padding:20px 16px;height:66px;background:#f0f2f5';
+        const heading = document.createElement('span'); heading.textContent = 'Info. del contacto';
+        const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.style.cssText = 'border:0;background:none;font-size:24px;margin-right:12px';
+        close.addEventListener('click', () => pane.remove());
+        header.append(close, heading);
+        const profile = document.createElement('div'); profile.style.cssText = 'padding:24px 16px;text-align:center';
+        const avatar = document.createElement('div'); avatar.style.cssText = 'margin:0 auto 20px;background:#e0e6e9;border-radius:50%;height:90px;width:90px';
+        const identity = document.createElement('h2'); identity.textContent = name; identity.style.fontSize = '24px';
+        const phone = document.createElement('span'); phone.id = 'fixture-plain-phone'; phone.style.cssText = 'display:block;font-size:19px;color:#667781';
+        const national = document.createElement('span'); national.textContent = '999 999 999'; phone.append(document.createTextNode('+51 '), national);
+        profile.append(avatar, identity, phone);
+        const actions = document.createElement('div'); actions.style.cssText = 'display:flex;justify-content:space-around;padding:15px';
+        for (const label of ['Llamar', 'Video', 'Buscar']) { const item = document.createElement('span'); item.textContent = label; actions.append(item); }
+        const note = document.createElement('p'); note.textContent = 'Añade notas sobre tu cliente'; note.style.padding = '16px';
+        pane.append(header, profile, actions, note);
+        (outsideNativeApp ? document.body : insideMain ? document.querySelector('#main') : document.querySelector('#main').parentElement).append(pane);
+      }, { name, outsideNativeApp, insideMain });
+    }
+    if (process.env.NATIVE_CONTACT_ONLY === '1') {
+      await whatsapp.evaluate(() => {
+        const title = document.querySelector('#main header span[title]');
+        title.title = 'Contacto guardado · ejemplo'; title.textContent = title.title;
+        document.querySelectorAll('#main .history [data-id]').forEach(node => node.removeAttribute('data-id'));
+      });
+      await installPlainNativePane('Contacto guardado · ejemplo');
+    }
     async function layoutMetrics() {
       return whatsapp.evaluate(() => {
         const rect = selector => {
@@ -362,6 +402,110 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await service("maria-disney").waitFor({ state: "visible" });
     assert.equal(await service("jose-demo").count(), 0, "El chat actual solo debe mostrar las fichas de ese teléfono.");
     assert.match(await embedded.locator('#compact-chat-phone').innerText(), /51.*999/);
+
+    if (process.env.NATIVE_CONTACT_ONLY === '1') {
+      // The reported real pane exposes ordinary text, not the data-testid,
+      // aria-label or tel-link contracts used by the older idealized fixture.
+      // This approximates the screenshot's structure; it is not a real WA DOM.
+      const plainName = 'Contacto guardado · ejemplo';
+      const nativeContext = () => appFrame.evaluate(() => globalThis.NexoCompanion.getContext());
+      async function nativeChat(peer = '') {
+        await whatsapp.evaluate(({ name, peer }) => {
+          const title = document.querySelector('#main header span[title]');
+          title.title = name; title.textContent = name;
+          for (const [index, item] of [...document.querySelectorAll('#main .history > div')].filter(node => node.querySelector('.message-in,.message-out')).entries()) {
+            if (peer) item.dataset.id = `false_${peer}_${index}`;
+            else item.removeAttribute('data-id');
+          }
+        }, { name: plainName, peer });
+        await until(async () => (await nativeContext()).name === plainName, 'El encabezado de ejemplo debe reflejar el chat guardado.');
+      }
+      const plainPane = (name = plainName, outsideNativeApp = false, insideMain = false) => installPlainNativePane(name, { outsideNativeApp, insideMain });
+      assert.equal((await nativeContext()).phone, '51999999999', 'Un panel nativo ya abierto al cargar la extensión debe identificar tras confirmar un encabezado estable.');
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await whatsapp.locator('#fixture-plain-contact-pane').evaluate(node => node.remove());
+      await nativeChat();
+      await until(async () => !(await nativeContext()).phone && await service('maria-demo').count() === 0, 'Un alias no puede seleccionar por sí solo una ficha.');
+      await whatsapp.locator('.history .message-in .selectable-text').first().evaluate((node, name) => {
+        node.replaceChildren();
+        const fakeHeading = document.createElement('header'); fakeHeading.textContent = 'Info. del contacto';
+        const fakeIdentity = document.createElement('h2'); fakeIdentity.textContent = name;
+        const fakePhone = document.createElement('span'); fakePhone.textContent = '+51 999 999 999';
+        node.append(fakeHeading, fakeIdentity, fakePhone);
+      }, plainName);
+      assert.equal((await nativeContext()).phone, '', 'Un número dentro de un mensaje no identifica al destinatario.');
+      await whatsapp.locator('.history .message-in .selectable-text').first().evaluate(node => { node.textContent = 'Hola, necesito revisar mi servicio registrado.'; });
+      await plainPane('Otro contacto');
+      await nativeContext();
+      assert.equal((await nativeContext()).phone, '', 'El panel de otro nombre no puede seleccionar al cliente.');
+      await plainPane();
+      assert.equal(await whatsapp.locator('#fixture-plain-contact-pane [data-testid], #fixture-plain-contact-pane [role], #fixture-plain-contact-pane [aria-label], #fixture-plain-contact-pane a[href^="tel:"]').count(), 0);
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await service('maria-disney').waitFor({ state: 'visible' });
+      assert.equal((await nativeContext()).phone, '51999999999');
+      assert.match(await embedded.locator('#compact-chat-name').innerText(), /María/);
+      await embedded.getByText('Información e historial', { exact: true }).click();
+      await embedded.getByText('Max anterior', { exact: true }).waitFor({ state: 'visible' });
+      await embedded.locator('#compact-content').getByText('01/10/2026', { exact: true }).waitFor({ state: 'visible' });
+      await embedded.getByText('Conversación guardada', { exact: true }).click();
+      await embedded.locator('.compact-conversation-entry').filter({ hasText: 'Registro histórico de prueba conservado' }).waitFor({ state: 'visible' });
+      const screenshot = process.env.NATIVE_CONTACT_SCREENSHOT || '/workspace/work/deliverables/native-contact-panel-example.png';
+      fs.mkdirSync(path.dirname(screenshot), { recursive: true });
+      await appFrame.evaluate(() => { document.scrollingElement.scrollTop = 0; });
+      await whatsapp.screenshot({ path: screenshot, fullPage: true });
+      await whatsapp.locator('#fixture-plain-phone').evaluate(node => { node.hidden = true; });
+      await until(async () => !(await nativeContext()).phone, 'Un número oculto no puede autorizar una ficha sin peer.');
+      await whatsapp.locator('#fixture-plain-phone').evaluate(node => { node.hidden = false; });
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await whatsapp.locator('#fixture-plain-phone').evaluate(node => {
+        const second = document.createElement('span'); second.id = 'fixture-plain-second-phone'; second.style.display = 'block'; second.textContent = '+51 988 888 888'; node.after(second);
+      });
+      await until(async () => !(await nativeContext()).phone && await service('maria-demo').count() === 0, 'Dos números visibles en la identidad requieren aclaración.');
+      await whatsapp.locator('#fixture-plain-second-phone').evaluate(node => node.remove());
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await whatsapp.locator('#fixture-plain-contact-pane').evaluate(node => node.remove());
+      await until(async () => !(await nativeContext()).phone, 'Sin peer, retirar el panel visible debe retirar el teléfono observado.');
+      await plainPane(plainName, false, true);
+      await whatsapp.locator('#fixture-plain-contact-pane h2').evaluate(node => {
+        const wrapper = document.createElement('div'), nested = document.createElement('div'), text = document.createElement('span');
+        text.textContent = node.textContent; text.style.cssText = 'display:block;font-size:24px;margin:18px 0';
+        nested.append(text); wrapper.append(nested); node.replaceWith(wrapper);
+      });
+      await service('maria-demo').waitFor({ state: 'visible' });
+      assert.equal((await nativeContext()).phone, '51999999999', 'Un panel nativo dentro del contenedor exterior del chat admite nombres de texto anidados sin atributos de prueba.');
+      await whatsapp.locator('#fixture-plain-contact-pane').evaluate(node => node.remove());
+      await until(async () => !(await nativeContext()).phone, 'El panel anidado sin peer tampoco puede dejar una identidad basada solo en el nombre.');
+      await nativeChat('native-same-name-a@lid');
+      await plainPane();
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await whatsapp.locator('#fixture-plain-contact-pane > header button').click();
+      assert.equal((await nativeContext()).phone, '51999999999', 'Una identidad verificada por peer debe conservar su ficha al cerrar información.');
+      await appFrame.waitForTimeout(1300);
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await plainPane();
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await whatsapp.locator('footer [contenteditable="true"]').fill('Borrador previo que debe conservarse');
+      await nativeChat('native-same-name-b@lid');
+      await until(async () => !(await nativeContext()).phone && await service('maria-demo').count() === 0, 'Otro peer con el mismo nombre no puede heredar el panel previo.');
+      const prepare = await appFrame.evaluate(async () => {
+        try { await globalThis.NexoCompanion.prepareMessage({ phone: '51999999999', text: 'No se debe preparar para otro chat' }); return 'unexpected'; }
+        catch (error) { return error.message; }
+      });
+      assert.match(prepare, /teléfono|vincula|identificar/i);
+      assert.equal(await whatsapp.locator('footer [contenteditable="true"]').innerText(), 'Borrador previo que debe conservarse');
+      await whatsapp.locator('#fixture-plain-contact-pane').evaluate(node => node.remove());
+      await plainPane(plainName, true);
+      await nativeContext();
+      assert.equal((await nativeContext()).phone, '', 'Un panel de texto externo a la app nativa no puede aportar identidad.');
+      assert.equal(writes, 0);
+      assert.equal(state.clients.length, 3);
+      assert.equal(state.ledger.length, 1);
+      assert.equal(state.growth.interactions.length, 1);
+      assert.deepEqual(errors, []);
+      console.log('Plain native-contact pane: no semantic test attributes, verified registered services/payment/service/conversation history, hidden/multiple/wrong phones rejected, stable-peer close retained and same-name stale peer/draft denied.');
+      console.log('This is a screenshot-shaped DOM fixture, not the owner\'s real WhatsApp DOM or Chrome session.');
+      return;
+    }
 
     if (process.env.COMPACT_SYNC_RACE_ONLY === '1') {
       await embedded.getByText('Conversación guardada', { exact: true }).click();

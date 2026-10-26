@@ -387,3 +387,32 @@ test("An actual in-place drawer phone update remains fresh after its new convers
   assert.equal(adapter.context().phone, "");
   assert.equal(adapter.context().phone, "51987654321");
 });
+
+test("Closing verified contact info retains its phone only for the same opaque peer and header generation", () => {
+  const { state, adapter } = fixture({ name: "Same name", peer: "a@lid" });
+  adapter.context();
+  state.drawers = [{ name: "Same name", phones: ["+51 912 345 678"] }];
+  assert.equal(adapter.context().phone, "51912345678");
+  state.drawers = [];
+  assert.equal(adapter.context().phone, "51912345678");
+  assert.equal(adapter.context().phoneSource, "visible");
+  state.peer = "b@lid";
+  assert.equal(adapter.context().phone, "");
+  assert.throws(() => adapter.prepare({ phone: "51912345678", text: "Not this customer" }), /teléfono/);
+  assert.equal(state.draft, "");
+});
+
+test("A selected native row can retain a verified no-peer phone but navigation invalidates it", () => {
+  const { state, adapter, navigate } = fixture({ name: "Same name", peer: "" });
+  state.selected = {};
+  adapter.context();
+  state.drawers = [{ name: "Same name", phones: ["+51 912 345 678"] }];
+  assert.equal(adapter.context().phone, "51912345678");
+  state.drawers = [];
+  assert.equal(adapter.context().phone, "51912345678");
+  assert.equal(adapter.context().chatId, "phone:51912345678");
+  navigate();
+  assert.equal(adapter.context().phone, "");
+  state.selected = {};
+  assert.equal(adapter.context().phone, "");
+});

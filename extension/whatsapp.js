@@ -3,8 +3,12 @@
   // Bindings are local to this WhatsApp document and the exact peer that was
   // confirmed. A draft telephone field in the CRM never changes this context.
   const manualBindings = new Map();
+  const observedPhones = new Map();
   const observedDrawers = new WeakMap();
+  const plainContactPanes = new Set();
+  let selectedPhone = null;
   let nativeHeader = null, nativeGeneration = 0, navigationRevision = 0, openIntent = null, openIntentRevision = 0;
+  let initialNativeGeneration = 0;
   let requestContextUpdate = () => {};
   let lastObserved = null, identityTransition = null;
   const transitionDelay = 250;
@@ -45,11 +49,72 @@
   const contactName = value => String(value || "").normalize("NFC").replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").replace(/\s+/g, " ").trim();
   const nativeChatListSelector = '#pane-side, [data-testid="chat-list"], [aria-label="Chat list"], [aria-label="Lista de chats"]';
   const nativeSelectedSelector = '#pane-side [aria-selected="true"], [data-testid="chat-list"] [aria-selected="true"], [aria-label="Chat list"] [aria-selected="true"], [aria-label="Lista de chats"] [aria-selected="true"]';
+  const excludedContactRegion = 'footer, [role="log"], [data-id], [data-pre-plain-text], .copyable-text, .message-in, .message-out, [data-testid="quoted-message"], .quoted-mention, iframe, nexo-whatsapp-dock, #nexo-whatsapp-dock, nexo-crm-dock, #nexo-crm-dock';
+  const nativeInfoTitles = new Set(['info. del contacto', 'info del contacto', 'información del contacto', 'información de contacto', 'contact info', 'contact information']);
+  function outsideContactRegion(node) {
+    return Boolean(node?.closest?.(excludedContactRegion + ', ' + nativeChatListSelector));
+  }
+  function boundedElements(root, limit = 220) {
+    if (!document.createTreeWalker) return [];
+    const walker = document.createTreeWalker(root, 1, {
+      acceptNode: item => outsideContactRegion(item) ? 2 : 1,
+    });
+    const result = [];
+    for (let item = walker.nextNode(); item && result.length < limit; item = walker.nextNode()) result.push(item);
+    return result;
+  }
+  function smallText(node) {
+    // Do not inspect a wrapper's aggregate conversation text. Heading/profile
+    // candidates contain their own short, visible text only.
+    if (node.childElementCount > 3 || outsideContactRegion(node)) return '';
+    let value = '';
+    // Plain text or one shallow formatting layer is enough for native headings
+    // and profile labels. Do not aggregate a distant wrapper's hidden messages.
+    for (const child of node.childNodes || []) {
+      if (child.nodeType === 3) value += child.textContent || '';
+      else if (child.nodeType === 1 && !child.childElementCount && !outsideContactRegion(child) && visible(child)) value += child.textContent || '';
+      else return '';
+      if (value.length > 180) return '';
+    }
+    return value.length <= 180 ? contactName(value) : '';
+  }
+  function structuralContactPanels(name) {
+    const app = document.querySelector('#app');
+    if (!app || !document.createTreeWalker || !name) return [];
+    const descriptors = new Map();
+    // Prune chat lists and message bubbles before reading text. Production
+    // WhatsApp renders this pane with ordinary spans, without test IDs or ARIA.
+    for (const heading of boundedElements(app, 2200)) {
+      if (!nativeInfoTitles.has(smallText(heading).toLocaleLowerCase('es')) || !visible(heading)) continue;
+      for (let pane = heading.parentElement, depth = 0; pane && pane !== app && depth < 6; pane = pane.parentElement, depth++) {
+        if (pane === main() || outsideContactRegion(pane) || !visible(pane)) continue;
+        const elements = boundedElements(pane);
+        const identity = elements.find(item => item !== heading && !item.contains?.(heading) && !item.closest?.('header') && visible(item) && smallText(item) === contactName(name));
+        if (!identity) continue;
+        let phoneNodes = [];
+        // The smallest profile block holding name and phone wins. Later note,
+        // media and message sections cannot supply a telephone accidentally.
+        for (let block = identity.parentElement, hops = 0; block && pane.contains(block) && hops < 4; block = block.parentElement, hops++) {
+          const fields = boundedElements(block, 100);
+          phoneNodes = fields.filter(item => visible(item) && phone(smallText(item)));
+          if (phoneNodes.length || block === pane) break;
+        }
+        if (!phoneNodes.length) continue;
+        descriptors.set(pane, { element: pane, identity, phoneNodes, anchored: true });
+        plainContactPanes.add(pane);
+        for (const remembered of plainContactPanes) if (!remembered.isConnected) plainContactPanes.delete(remembered);
+        if (plainContactPanes.size > 8) plainContactPanes.delete(plainContactPanes.values().next().value);
+        break;
+      }
+    }
+    return [...descriptors.values()];
+  }
   function observeNativeHeader(header, name, peer, headerPhone) {
     const selected = document.querySelector(nativeSelectedSelector);
     const stable = Boolean(nativeHeader && nativeHeader.element === header && nativeHeader.name === name && nativeHeader.peer === peer && nativeHeader.phone === headerPhone && nativeHeader.selected === selected && nativeHeader.navigationRevision === navigationRevision);
     if (!stable)
       nativeGeneration++;
+    if (!initialNativeGeneration && !navigationRevision) initialNativeGeneration = nativeGeneration;
     nativeHeader = { element: header, name, peer, phone: headerPhone, selected, navigationRevision };
     return stable;
   }
@@ -59,21 +124,24 @@
     // Read only an explicitly visible native contact-info surface. Never scan
     // messages, the document's generic phone-like text, extension shadow roots
     // or CRM iframes. The exact contact heading ties it to the current header.
-    for (const drawer of document.querySelectorAll(contactDrawerSelector)) {
+    const drawers = new Map([...document.querySelectorAll(contactDrawerSelector)].map(element => [element, { element }]));
+    for (const descriptor of structuralContactPanels(name)) drawers.set(descriptor.element, descriptor);
+    for (const descriptor of drawers.values()) {
+      const drawer = descriptor.element;
       if (drawer.closest?.("nexo-whatsapp-dock, nexo-crm-dock, #nexo-crm-dock, iframe")) continue;
       const previous = observedDrawers.get(drawer);
       if (!visible(drawer)) {
         observedDrawers.set(drawer, { ...previous, visible: false });
         continue;
       }
-      let identity;
+      let identity = descriptor.identity;
       for (const selector of contactNameSelectors) {
-        identity = drawer.querySelector(selector);
         if (identity) break;
+        identity = drawer.querySelector(selector);
       }
       const drawerName = identity && visible(identity) ? contactName(identity.getAttribute("title") || identity.textContent) : "";
       const drawerNumbers = new Set();
-      for (const node of drawer.querySelectorAll(contactPhoneSelector)) {
+      for (const node of descriptor.phoneNodes || drawer.querySelectorAll(contactPhoneSelector)) {
         if (!visible(node)) continue;
         const href = node.getAttribute("href") || "";
         const found = phone(href.startsWith("tel:") ? href.slice(4) : node.getAttribute("title") || node.textContent);
@@ -88,9 +156,10 @@
       // native conversation generation; an unchanged old drawer cannot lend its
       // phone to a new peer with the same name. A changed phone or a fresh native
       // drawer appearance is needed after navigation, even for equal aliases.
-      const fresh = (!previous && knownHeader) || reopened || (previous?.singlePhone && singlePhone && previous.singlePhone !== singlePhone);
+      const stableInitialPane = descriptor.anchored && previous?.initialGeneration === nativeGeneration && nativeGeneration === initialNativeGeneration && !navigationRevision;
+      const fresh = (!previous && knownHeader) || reopened || stableInitialPane || (previous?.singlePhone && singlePhone && previous.singlePhone !== singlePhone);
       const authorized = Boolean(matching && knownHeader && (previous?.generation === nativeGeneration && previous.authorized || fresh));
-      observedDrawers.set(drawer, { generation: nativeGeneration, authorized, visible: true, numbers, singlePhone: authorized && singlePhone ? singlePhone : previous?.singlePhone || singlePhone, openIntentRevision: authorized && currentIntent ? openIntent.revision : previous?.openIntentRevision });
+      observedDrawers.set(drawer, { generation: nativeGeneration, initialGeneration: previous?.initialGeneration || (descriptor.anchored && nativeGeneration === initialNativeGeneration && !navigationRevision ? nativeGeneration : 0), authorized, visible: true, numbers, singlePhone: authorized && singlePhone ? singlePhone : previous?.singlePhone || singlePhone, openIntentRevision: authorized && currentIntent ? openIntent.revision : previous?.openIntentRevision });
       if (authorized) for (const number of drawerNumbers) candidates.add(number);
     }
     return { phone: candidates.size === 1 ? [...candidates][0] : "", ambiguous: candidates.size > 1 };
@@ -146,13 +215,27 @@
   }
   function context() {
     const value = identifiedContext();
-    if (value.isGroup || value.ambiguous || !value.chatId) return value;
+    if (selectedPhone && (selectedPhone.name !== value.name || selectedPhone.generation !== nativeGeneration || selectedPhone.selected !== nativeHeader?.selected)) selectedPhone = null;
+    if (value.isGroup || value.ambiguous) return value;
+    if (!value.chatId) {
+      if (selectedPhone && nativeHeader?.selected) return { ...value, phone: selectedPhone.phone, chatId: 'phone:' + selectedPhone.phone, phoneSource: 'visible' };
+      return value;
+    }
+    if (value.phone && value.phoneSource === 'visible' && nativeHeader?.selected) selectedPhone = { name: value.name, phone: value.phone, generation: nativeGeneration, selected: nativeHeader.selected };
     const binding = manualBindings.get(value.chatId);
+    const observed = observedPhones.get(value.chatId);
+    if (observed && (observed.name !== value.name || observed.generation !== nativeGeneration || value.phone && value.phone !== observed.phone)) observedPhones.delete(value.chatId);
+    if (value.phone && value.phoneSource === 'visible' && value.chatId.startsWith('wa:')) {
+      observedPhones.set(value.chatId, { name: value.name, phone: value.phone, generation: nativeGeneration });
+      if (observedPhones.size > 100) observedPhones.delete(observedPhones.keys().next().value);
+    }
     if (binding && (binding.name !== value.name || value.phone && value.phone !== binding.phone)) {
       manualBindings.delete(value.chatId);
     } else if (!value.phone && binding) {
       return { ...value, phone: binding.phone, phoneSource: "manual" };
     }
+    const retained = observedPhones.get(value.chatId);
+    if (!value.phone && retained) return { ...value, phone: retained.phone, phoneSource: 'visible' };
     return value;
   }
   function requireChat(expectedPhone) {
@@ -261,7 +344,7 @@
       rawContext();
       openIntent = { header, navigationRevision, generation: nativeGeneration, revision: ++openIntentRevision };
     }
-    else if (!conversation?.contains?.(target) && !target?.closest?.(contactDrawerSelector)) invalidateNativeNavigation();
+    else if (!conversation?.contains?.(target) && !target?.closest?.(contactDrawerSelector) && ![...plainContactPanes].some(pane => pane.isConnected && pane.contains(target))) invalidateNativeNavigation();
   }, true);
   document.addEventListener?.("keydown", event => {
     if ((["Enter", "ArrowUp", "ArrowDown"].includes(event.key) && event.target?.closest?.(nativeChatListSelector)) || ((event.ctrlKey || event.metaKey) && event.altKey)) invalidateNativeNavigation();

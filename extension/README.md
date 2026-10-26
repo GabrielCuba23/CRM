@@ -37,14 +37,18 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.2.0. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.2.1. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
 instalación de Nexo activa. El CRM normal puede permanecer en segundo plano;
 la dirección antigua `/companion` ahora abre ese CRM.
 
-La versión 1.2.0 abre la ficha del chat cuyo teléfono está identificado, agrupa
+La versión 1.2.1 reconoce también el panel nativo «Info. del contacto» cuando
+WhatsApp muestra su nombre y teléfono como texto normal. Conserva la ficha
+al cerrar ese panel si el chat tiene una identidad estable comprobada.
+
+La interfaz abre la ficha del chat cuyo teléfono está identificado, agrupa
 sus servicios y limpia la ficha al cambiar a otra conversación. Un número escrito
 sin confirmar no selecciona clientes. Si WhatsApp oculta el teléfono, busca una
 ficha o introduce el número y confirma la vinculación; los nombres no bastan para
