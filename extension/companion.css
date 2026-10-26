@@ -137,3 +137,11 @@ body.nexo-embedded.dark { --accent: #00a884; --muted: #aebac1; color: #e9edef; b
 .nexo-connection-notice p { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
 .nexo-connection-notice .button { display: inline-block; font-size: 12px; padding: 8px; }
 .dark .nexo-connection-notice { background: #3b3423; color: #f1dfb4; border-color: #6c5a32; }
+
+/* The extension uses a focused workspace; the full web CRM remains available
+   in its own authenticated tab. Its hidden modules still share the same model. */
+body.nexo-compact { min-width: 0; display: block; margin: 0; padding: 0; }
+body.nexo-compact > .crm-sidebar,
+body.nexo-compact main > :not(#companion-workspace),
+body.nexo-compact > footer { display: none !important; }
+body.nexo-compact main { display: block; max-width: 100%; margin: 0 !important; padding: 0 !important; }

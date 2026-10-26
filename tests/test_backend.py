@@ -43,7 +43,7 @@ class BackendTest(unittest.TestCase):
         return state
 
     def test_private_routes_and_no_exposed_database(self):
-        for url in ['/','/index.html','/app.js','/crm.mjs']:
+        for url in ['/','/index.html','/app.js','/crm.mjs','/companions/workspace.mjs']:
             self.assertEqual(self.client.get(url).status_code, 302)
         for url in ['/api/workspace','/api/session','/api/automation-status']:
             self.assertEqual(self.client.get(url).status_code, 401)
@@ -51,6 +51,10 @@ class BackendTest(unittest.TestCase):
         for url in ['/backend/app.py','/.env','/crm.sqlite3','/../backend/app.py']:
             self.assertEqual(self.client.get(url).status_code, 404)
         self.assertIn(b'crm-backend', self.client.get('/').data)
+        commands = self.client.get('/companions/workspace.mjs')
+        self.assertEqual(commands.status_code, 200)
+        self.assertIn(b'applyWorkspaceCommand', commands.data)
+        commands.close()
 
     def test_login_hash_cookie_and_origin_csrf(self):
         response = self.client.post('/api/login', json={'email':'owner@example.com','password':self.password}, headers=self.headers)

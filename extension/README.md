@@ -1,8 +1,9 @@
 # Nexo CRM para WhatsApp Web
 
-Extensión Manifest V3 para Chrome de computadora. Reutiliza la interfaz completa
-del CRM dentro de la misma página de WhatsApp Web: clientes, cuentas, perfiles, renovaciones,
-finanzas, mensajes, reportes, proveedores, marketing y configuración.
+Extensión Manifest V3 para Chrome de computadora. Presenta una interfaz compacta
+dentro de WhatsApp Web, conectada a la misma base del CRM. Tiene tres entradas:
+**Chat actual**, **Clientes** y **Cuentas**. Las herramientas avanzadas siguen
+disponibles desde **Abrir CRM**.
 Un botón **Nexo** muestra u oculta el panel integrado a la derecha. En pantallas
 amplias se reserva espacio para mantener la conversación visible; en ventanas
 estrechas el panel puede superponerse y cerrarse con el botón **×**.
@@ -36,32 +37,39 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.1.2. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.2.0. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
 instalación de Nexo activa. El CRM normal puede permanecer en segundo plano;
 la dirección antigua `/companion` ahora abre ese CRM.
 
-La versión 1.1.1 conserva la altura y el posicionamiento nativos de WhatsApp al
-reservar espacio horizontal. Evita que un cambio de altura del contenedor oculte
-el historial y desplace el editor debajo del encabezado. La navegación integrada
-incluye un selector de secciones para acceder a todas las herramientas en un
-panel estrecho.
-Los botones que requieren una ficha explican ese requisito y se habilitan al
-seleccionarla. Los errores de guardado aparecen dentro del formulario. La entrega
-verifica también los borradores multilínea sin confundir los saltos de línea del
-editor con un mensaje fallido.
-La versión 1.1.2 mantiene vacíos los precios sin indicar al editar, renovar y
-exportar, y distingue un precio pendiente de un cero introducido expresamente.
-También recupera automáticamente una tarjeta de conexión que estaba abierta
-antes de guardar la configuración o completar el ingreso. Copiar mensajes usa
-un documento interno de la extensión para funcionar desde el panel integrado.
+La versión 1.2.0 abre la ficha del chat cuyo teléfono está identificado, agrupa
+sus servicios y limpia la ficha al cambiar a otra conversación. Un número escrito
+sin confirmar no selecciona clientes. Si WhatsApp oculta el teléfono, busca una
+ficha o introduce el número y confirma la vinculación; los nombres no bastan para
+identificar un contacto. Si tampoco hay una identidad estable del chat, abre la
+información del contacto para mostrar su número antes de vincular.
+Si esa información ya estaba abierta antes de reconocer el chat, ciérrala y
+vuelve a abrirla. Un panel antiguo no acredita la identidad de otra conversación.
+
+Desde la ficha puedes editar los datos del contacto, añadir un servicio, renovar,
+editar o archivar cada servicio y preparar mensajes. Los perfiles libres y
+ocupados se muestran dentro de su cuenta. Crear una cuenta exige su capacidad
+real y vencimiento; no se inventa disponibilidad a partir de una hoja incompleta.
+
+Los formularios son cortos, conservan sus valores si un guardado falla y muestran
+el error dentro del formulario. Los precios desconocidos permanecen vacíos;
+registrar un cobro requiere una elección explícita. La extensión conserva la
+altura nativa de WhatsApp y los borradores existentes. Copiar mensajes usa un
+documento interno de la extensión para funcionar desde el panel integrado.
 
 No se introducen tokens administrativos de Cloudflare en la extensión. Se usa
 la misma sesión privada del propietario y el mismo control de revisiones del
 CRM. Dos operaciones concurrentes con datos antiguos se rechazan y requieren
-recargar; un perfil no se asigna silenciosamente dos veces.
+actualizar; un perfil no se asigna silenciosamente dos veces. La vista consulta
+cambios del CRM cada 20 segundos cuando está visible y no hay formularios ni
+ediciones activas; **Actualizar** permite pedirlos manualmente.
 
 ## Conversaciones, destinatarios y mensajes
 
@@ -96,9 +104,9 @@ de respaldo que solicites expresamente.
 ## Pruebas
 
 ```sh
-node --test tests/extension.test.mjs
+node --test tests/extension.test.mjs tests/companion-workspace.test.mjs tests/whatsapp-identity.test.mjs
 NODE_PATH=/ruta/a/node_modules node tests/extension-browser.cjs
-NODE_PATH=/ruta/a/node_modules node tests/embedded-extension-browser.cjs
+NODE_PATH=/ruta/a/node_modules node tests/compact-extension-browser.cjs
 ```
 
 Las pruebas usan documentos controlados, sin acceder a cuentas de WhatsApp.

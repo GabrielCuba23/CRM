@@ -240,6 +240,15 @@ async function execute(message, sender) {
       return { origin };
     }
     case "crm.connect": return connectCrm(sender, message.expectedOrigin);
+    case "crm.open": {
+      const { origin } = await configuration();
+      if (crmOrigin(message.expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Revisa la dirección guardada.");
+      // Opening the full CRM is an explicit working action, so completing its
+      // authenticated session must not return focus to WhatsApp automatically.
+      await storage.remove("pendingCrmConnection");
+      const { tab } = await crmTab({ create: true, active: true, expectedOrigin: origin });
+      return { opened: true, tabId: tab.id };
+    }
     case "crm.verify": {
       const { origin } = await configuration();
       if (crmOrigin(message.expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Revisa la dirección guardada.");

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Nexo CRM para WhatsApp Web",
-  "description": "Tu CRM integrado dentro de WhatsApp Web: clientes, disponibilidad, ventas, renovaciones y mensajes con tu confirmación.",
-  "version": "1.1.2",
+  "description": "Clientes, fichas y cuentas junto al chat de WhatsApp: servicios, perfiles, renovaciones y mensajes conectados con tu CRM.",
+  "version": "1.2.0",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "scripting", "clipboardWrite", "offscreen"],
   "host_permissions": ["https://web.whatsapp.com/*"],

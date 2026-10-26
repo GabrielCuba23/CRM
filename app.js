@@ -6,6 +6,7 @@ import {
 } from "./promotions.mjs";
 import { conversationEntries, manualMessage } from "./messaging.mjs";
 import { initializeCompanion } from "./companion-ui.mjs";
+import { applyWorkspaceCommand } from "./companions/workspace.mjs";
 import {
   defaultReports,
   validateReports,
@@ -79,7 +80,8 @@ let clients = [],
 let secureMode = false,
   csrf = "",
   serverRevision = 0,
-  saveInFlight = false;
+  saveInFlight = false,
+  workspaceLoadError = "";
 function redirectToLogin(destination) {
   if (globalThis.NexoCompanion?.showLogin) globalThis.NexoCompanion.showLogin();
   else location.replace(destination || globalThis.NexoCompanion?.loginUrl || "/login");
@@ -150,6 +152,16 @@ function snapshot(overrides = {}) {
     ...overrides,
   };
 }
+function adoptWorkspace(state) {
+  ({ clients, templates, accounts, combos, ledger, settings } = state);
+  promotions = state.promotions || emptyPromotions();
+  reports = state.reports || { ...defaultReports };
+  automation = state.automation || automation;
+  rules = state.rules || [];
+  taskReceipts = state.taskReceipts || [];
+  procurement = state.procurement || emptyProcurement();
+  growth = state.growth || emptyGrowth();
+}
 async function persistState(overrides = {}) {
   if (!available) {
     notify(
@@ -193,14 +205,7 @@ try {
   } else saved = localStorage.getItem(workspaceKey);
   if (saved) {
     const state = validateWorkspace(JSON.parse(saved));
-    ({ clients, templates, accounts, combos, ledger, settings } = state);
-    promotions = state.promotions || emptyPromotions();
-    reports = state.reports || { ...defaultReports };
-    automation = state.automation || automation;
-    rules = state.rules || [];
-    taskReceipts = state.taskReceipts || [];
-    procurement = state.procurement || emptyProcurement();
-    growth = state.growth || emptyGrowth();
+    adoptWorkspace(state);
   } else {
     const legacy = JSON.parse(localStorage.getItem(storageKey) || "[]");
     if (
@@ -235,6 +240,7 @@ try {
   }
 } catch (error) {
   available = false;
+  workspaceLoadError = `No se pudieron cargar los datos del CRM. ${error.message}`;
   clients = [];
   accounts = [];
   combos = [];
@@ -3184,25 +3190,57 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) renderSupplierOverview();
 });
 
+let companionRefresh = null;
+async function reloadCompanionWorkspace({ automatic = false } = {}) {
+  if (!globalThis.NexoCompanion || !secureMode) return snapshot();
+  if (saveInFlight || document.querySelector("dialog[open]") || (automatic && companionUI?.isBusy?.())) return snapshot();
+  if (companionRefresh) return companionRefresh;
+  const revisionBeforeRead = serverRevision;
+  companionRefresh = (async () => {
+    const result = await api("/api/workspace");
+    // A save or newly opened form owns its current revision. A background read
+    // must not overwrite that operation or replace the user's draft values.
+    if (saveInFlight || serverRevision !== revisionBeforeRead || document.querySelector("dialog[open]") || (automatic && companionUI?.isBusy?.())) return snapshot();
+    if (!Number.isInteger(result.revision)) throw Error("No se pudo verificar la actualización del CRM.");
+    if (available && result.revision === serverRevision) return snapshot();
+    const next = validateWorkspace(result.state);
+    adoptWorkspace(next);
+    serverRevision = result.revision;
+    available = true;
+    workspaceLoadError = "";
+    refreshAccountOptions();
+    refreshTemplates();
+    render();
+    return snapshot();
+  })();
+  try { return await companionRefresh; }
+  finally { companionRefresh = null; }
+}
 companionUI = initializeCompanion({
   companion: globalThis.NexoCompanion,
   getState: snapshot,
   isBusy: () => saveInFlight,
+  getLoadError: () => workspaceLoadError,
   notify,
-  openClient: editClient,
-  openRenew: (client) => {
-    if (!client.archived) return openRenew(client);
-    editClient({ ...client, accountId: "", profile: "", expires: "" });
-    $("#client-form").dataset.reactivate = "1";
-    $("#client-form").elements.paid.disabled = false;
-    $("#client-form").elements.paid.checked = true;
-  },
-  openMessage,
-  showClient: (client) => growthUI.showContact(client),
-  saveGrowth: async (next) => {
-    if (!(await persistState({ growth: next }))) return false;
-    growth = next;
-    renderInbox();
-    return true;
+  reloadWorkspace: reloadCompanionWorkspace,
+  openWebCRM: () => globalThis.NexoCompanion?.openWebCRM?.(),
+  commit: async (command, input) => {
+    if (saveInFlight) throw Error("Espera a que termine el cambio anterior.");
+    if (!available) throw Error(workspaceLoadError || "Carga los datos del CRM antes de guardar cambios.");
+    const next = applyWorkspaceCommand(snapshot(), command, input);
+    if (!(await persistState(next))) throw Error($("#status").textContent || "No se guardaron los cambios. Sincroniza el CRM y vuelve a intentarlo.");
+    adoptWorkspace(next);
+    refreshAccountOptions();
+    render();
+    return snapshot();
   },
 });
+if (globalThis.NexoCompanion) {
+  const timer = setInterval(() => {
+    if (document.hidden || globalThis.NexoCompanion.isVisible?.() === false ||
+        saveInFlight || document.querySelector("dialog[open]") ||
+        document.activeElement?.matches("input, textarea, select, [contenteditable=true]")) return;
+    void reloadCompanionWorkspace({ automatic: true }).catch(error => notify(error.message || "No se pudo sincronizar el CRM."));
+  }, 20000);
+  window.addEventListener("pagehide", () => clearInterval(timer), { once: true });
+}

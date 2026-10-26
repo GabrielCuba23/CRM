@@ -159,10 +159,26 @@ test("An embedded CRM targets its own WhatsApp tab even when another conversatio
   assert.equal(calls.filter(call => call.type === "send").length, sendCount);
 });
 
+test("Opening the full CRM preserves the chosen origin and stays in its authenticated working tab", async () => {
+  const { invoke, calls, session } = await backgroundFixture();
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  session.pendingCrmConnection = { tabId: 33, origin: "https://crm.example", waTabId: 11, startedAt: Date.now() };
+  const wrong = await invoke({ type: "crm.open", expectedOrigin: "https://other-crm.example" }, sender);
+  assert.equal(wrong.ok, false);
+  assert(!calls.some(call => call.type === "create" || call.type === "update"));
+  assert(session.pendingCrmConnection);
+  const opened = await invoke({ type: "crm.open", expectedOrigin: "https://crm.example" }, sender);
+  assert.equal(opened.ok, true);
+  assert.equal(opened.result.tabId, 33);
+  assert.equal(session.pendingCrmConnection, undefined);
+  assert(calls.some(call => call.type === "update" && call.tabId === 33 && call.update.url === "https://crm.example/" && call.update.active));
+  assert(!calls.some(call => call.type === "send" || call.type === "inject"));
+});
+
 test("The actual background denies CRM APIs to WhatsApp content and embedded configuration changes", async () => {
   const { invoke, calls } = await backgroundFixture();
   const content = { id, url: "https://web.whatsapp.com/", frameId: 0, tab: { id: 11, url: "https://web.whatsapp.com/" } };
-  for (const type of ["crm.request", "crm.connect", "configuration.get", "configuration.set", "wa.prepare"]) {
+  for (const type of ["crm.request", "crm.connect", "crm.open", "configuration.get", "configuration.set", "wa.prepare"]) {
     const denied = await invoke({ type, expectedOrigin: "https://crm.example", path: "/api/workspace", method: "PUT", body: "{}", origin: "https://other-crm.example" }, content);
     assert.equal(denied.ok, false, type);
     assert.match(denied.error, /no permitida/);
@@ -238,7 +254,7 @@ test("The WhatsApp adapter never guesses a phone from an opaque peer; manual lin
 
 test("Draft insertion refuses groups, different recipients and existing drafts; no send action runs", async () => {
   const { state, adapter } = await whatsappFixture();
-  assert.throws(() => adapter.prepare({ phone: "51888888888", text: "Acceso privado" }), /no coincide/);
+  assert.throws(() => adapter.prepare({ phone: "51988888888", text: "Acceso privado" }), /no coincide/);
   assert.equal(state.insertions, 0);
   state.draft = "Borrador personal";
   assert.equal(adapter.prepare({ phone: "51999999999", text: "Nuevo mensaje" }).clipboard, true);
@@ -304,7 +320,7 @@ test("The package contains the entire CRM and no server data or remote executabl
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "1.1.2");
+  assert.equal(manifest.version, "1.2.0");
   assert.deepEqual(manifest.host_permissions, ["https://web.whatsapp.com/*"]);
   assert.equal(manifest.externally_connectable, undefined);
   assert.equal(manifest.side_panel, undefined);

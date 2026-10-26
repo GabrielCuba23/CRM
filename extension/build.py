@@ -1,4 +1,4 @@
-"""Package the complete CRM inside WhatsApp Web. No user data."""
+"""Package the focused WhatsApp workspace and its shared CRM logic. No user data."""
 import argparse
 import ast
 import json

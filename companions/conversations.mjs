@@ -7,7 +7,7 @@ export const visibleMessageLimit = 100;
 export function normalizeCompanionPhone(value) {
   if (typeof value !== "string")
     throw Error("Indica el teléfono completo con código de país.");
-  const raw = value.trim();
+  const raw = value.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").trim();
   const digits = raw.replace(/\D/g, "");
   if (!raw.startsWith("+") && !raw.startsWith("00") && digits.length < 10)
     throw Error("Indica el teléfono completo con código de país.");
@@ -18,6 +18,8 @@ export function matchContact(clients, context = {}) {
   if (!Array.isArray(clients)) throw Error("La lista de clientes no es válida.");
   if (context?.isGroup)
     return { phone: "", matches: [], reason: "group" };
+  if (context?.ambiguous)
+    return { phone: "", matches: [], reason: "ambiguous-chat" };
   if (!context?.phone)
     return { phone: "", matches: [], reason: "missing-phone" };
   let phone;
@@ -26,6 +28,12 @@ export function matchContact(clients, context = {}) {
   } catch {
     return { phone: "", matches: [], reason: "invalid-phone" };
   }
+  // Only an identified chat context can select the customer's services. In
+  // particular, typing a number while another named chat is open is not a link.
+  if (!identity(context.chatId))
+    return { phone: "", matches: [], reason: "unidentified-chat" };
+  if (context.phoneSource !== undefined && !["visible", "manual"].includes(context.phoneSource))
+    return { phone: "", matches: [], reason: "unverified-phone" };
   const matches = clients.filter((client) => {
     try {
       return normalizeCompanionPhone(client?.phone) === phone;
@@ -70,8 +78,10 @@ export async function importVisibleMessages(
 ) {
   if (!client?.id || typeof client.id !== "string")
     throw Error("Selecciona una ficha antes de guardar la conversación.");
-  if (!context || context.isGroup)
+  if (!context || context.isGroup || context.ambiguous)
     throw Error("Selecciona una conversación individual de WhatsApp.");
+  if (context.phoneSource !== undefined && !["visible", "manual"].includes(context.phoneSource))
+    throw Error("Confirma el teléfono de esta conversación antes de guardar sus mensajes.");
   let phone;
   try {
     phone = normalizeCompanionPhone(context.phone);

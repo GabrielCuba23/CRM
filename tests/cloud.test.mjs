@@ -145,6 +145,24 @@ test("Access validates signatures, owner, audience, issuer and expiry", async ()
     503,
   );
 });
+test("Every static CRM module dependency is served to the owner and denied without authentication", async () => {
+  const applicationRoot = new URL("../", import.meta.url);
+  const pending = [new URL("app.js", applicationRoot)], visited = new Set();
+  while (pending.length) {
+    const module = pending.pop();
+    if (visited.has(module.href)) continue;
+    visited.add(module.href);
+    const source = await readFile(module, "utf8");
+    for (const match of source.matchAll(/(?:from\s*|import\s*\()\s*["'](\.[^"']+\.(?:mjs|js))["']/g))
+      pending.push(new URL(match[1], module));
+    assert(module.href.startsWith(applicationRoot.href));
+    const path = "/" + module.pathname.slice(applicationRoot.pathname.length);
+    assert.equal((await handleRequest(request(path), env, { fetcher })).status, 200, path);
+    assert.equal((await handleRequest(new Request("https://crm.example" + path), env, { fetcher })).status, 401, path);
+  }
+  assert(visited.has(new URL("../companions/workspace.mjs", import.meta.url).href));
+});
+
 test("Legacy companion URL preserves owner authentication and opens the normal CRM", async () => {
   const unauthenticated = await handleRequest(new Request("https://crm.example/companion"), env, { fetcher });
   assert.equal(unauthenticated.status, 401);

@@ -1,8 +1,137 @@
-.companion-box{border:1px solid var(--line,#dedbe8);border-radius:16px;padding:16px;margin:0 0 20px;background:var(--panel,#fff);color:var(--text,#242033)}
-.companion-box h2{font-size:1.15rem;margin:0 0 8px}.companion-box p{margin:8px 0}
-.companion-box label{display:flex;flex-direction:column;gap:5px;margin:10px 0;font-size:.9rem}
-.companion-box input[type=tel],.companion-box select{box-sizing:border-box;width:100%;min-width:0}
-.companion-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.companion-actions button{font-size:.83rem;white-space:normal;text-align:left}
-.companion-box .companion-toggle{display:block;line-height:1.5}.companion-toggle input{width:auto;display:inline;vertical-align:middle}
-.companion-box small{display:block;line-height:1.5}.companion-box #companion-status{font-size:.85rem;overflow-wrap:anywhere}
-@media(max-width:480px){.companion-box{padding:12px}.companion-actions button{flex:1 1 135px}}
+/* The compact CRM exists only in the extension's isolated document. */
+.nexo-compact { --compact-bg:#f4f7f7; --compact-card:#fff; --compact-text:#172b32; --compact-muted:#687b82; --compact-line:#e1e9e9; --compact-accent:#008069; --compact-soft:#e8f6f1; }
+.nexo-compact .compact-workspace { display:block; color:var(--compact-text); font:13px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; min-width:0; margin:0; padding:14px 13px 20px; }
+.nexo-compact .compact-workspace *, .nexo-compact .compact-dialog * { box-sizing:border-box; }
+.nexo-compact :is(.compact-workspace,.compact-dialog) [hidden] { display:none!important; }
+.nexo-compact .compact-workspace h2, .nexo-compact .compact-dialog h2 { font-size:19px; line-height:1.3; letter-spacing:-.35px; margin:0; }
+.nexo-compact .compact-workspace h3 { font-size:14px; margin:0; line-height:1.35; }
+.nexo-compact .compact-workspace h4 { font-size:12px; margin:16px 0 8px; }
+.nexo-compact .compact-workspace p { margin:0; }
+.nexo-compact .compact-toolbar { display:flex; align-items:center; gap:12px; padding:1px 0 12px; }
+.nexo-compact .compact-sync-label { font-size:10px; color:var(--compact-muted); flex:1; }
+.nexo-compact .compact-sync-label::before { content:""; display:inline-block; height:5px; width:5px; border-radius:50%; background:#20a67a; margin-right:5px; vertical-align:2px; }
+.nexo-compact .compact-tabs { display:grid; grid-template-columns:1fr 1fr 1fr; padding:4px; gap:3px; background:#e7edee; border-radius:10px; margin:0 0 17px; }
+.nexo-compact .compact-tab { border:0; background:transparent; box-shadow:none; border-radius:7px; padding:9px 4px; color:#60727a; font-size:12px; font-weight:650; }
+.nexo-compact .compact-tab.active { color:#066a59; background:var(--compact-card); box-shadow:0 1px 3px #172b3212; }
+.nexo-compact .compact-content { min-width:0; }
+.nexo-compact .compact-chat-heading { margin:0 0 14px; }
+.nexo-compact .compact-chat-heading h2 { overflow-wrap:anywhere; }
+.nexo-compact .compact-chat-heading p { font-size:12px; margin-top:3px; }
+.nexo-compact .compact-client-name { color:var(--compact-muted); font-size:12px; margin:-5px 0 15px!important; }
+.nexo-compact .compact-contact-tools { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:-2px 0 17px; font-size:11px; }
+.nexo-compact .compact-section-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 12px; }
+.nexo-compact .compact-section-heading h2, .nexo-compact .compact-section-heading h3 { min-width:0; overflow-wrap:anywhere; }
+.nexo-compact .compact-section-heading > button { flex-shrink:0; }
+.nexo-compact .compact-card { margin:0 0 12px; padding:15px; border:1px solid var(--compact-line); border-radius:12px; background:var(--compact-card); box-shadow:0 1px 2px #172b3203; }
+.nexo-compact .compact-service .compact-section-heading { margin-bottom:12px; }
+.nexo-compact .compact-service-data { display:grid; gap:3px; }
+.nexo-compact .compact-info-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:3px 0; font-size:12px; }
+.nexo-compact .compact-info-row > span { color:var(--compact-muted); flex-shrink:0; }
+.nexo-compact .compact-info-row > strong { font-size:12px; font-weight:550; text-align:right; overflow-wrap:anywhere; min-width:0; }
+.nexo-compact .compact-pill { display:inline-flex; padding:3px 8px; border-radius:20px; background:#edf2f2; color:#667a82; font-size:10px; font-weight:650; white-space:nowrap; flex-shrink:0; }
+.nexo-compact .compact-pill.active { background:#e3f5ed; color:#168269; }
+.nexo-compact .compact-pill.soon { background:#fff3d9; color:#92651b; }
+.nexo-compact .compact-pill.expired { background:#fff0f1; color:#b34b55; }
+.nexo-compact .compact-pill.archived { background:#eceff2; color:#708089; }
+.nexo-compact .compact-service-actions { display:flex; gap:7px; align-items:stretch; margin-top:13px; padding-top:12px; border-top:1px solid #edf1f1; }
+.nexo-compact .compact-service-actions > button { flex:1; }
+.nexo-compact :is(.compact-primary,.compact-secondary,.compact-text-button,.compact-danger,.compact-back,.compact-close,.compact-result-button,.compact-list-item) { cursor:pointer; border:0; box-shadow:none; font:600 12px/1.4 system-ui,sans-serif; text-decoration:none; transition:background-color .12s; }
+.nexo-compact .compact-primary { color:#fff; background:var(--compact-accent); border-radius:8px; padding:9px 12px; }
+.nexo-compact .compact-primary:hover { background:#006e5b; }
+.nexo-compact .compact-secondary { background:#edf3f4; color:#36565f; border-radius:8px; padding:9px 12px; }
+.nexo-compact .compact-secondary:hover { background:#e1eaed; }
+.nexo-compact .compact-text-button { color:#007b66; background:transparent; padding:3px 0; border-radius:4px; font-size:11px; }
+.nexo-compact .compact-danger { color:#b34b55; background:transparent; padding:8px 0; border-radius:5px; text-align:left; }
+.nexo-compact .compact-workspace :is(button,input,select,textarea,summary):focus-visible, .nexo-compact .compact-dialog :is(button,input,select,textarea,summary):focus-visible { outline:2px solid #008069; outline-offset:2px; }
+.nexo-compact .compact-workspace button:disabled, .nexo-compact .compact-dialog button:disabled { cursor:default; opacity:.5; }
+.nexo-compact .compact-service-more { position:relative; }
+.nexo-compact .compact-service-more > summary { list-style:none; display:grid; align-items:center; justify-items:center; background:#edf3f4; color:#48636c; font-size:21px; border-radius:8px; padding:1px 10px; cursor:pointer; min-height:35px; }
+.nexo-compact .compact-service-more > summary::-webkit-details-marker, .nexo-compact .compact-details > summary::-webkit-details-marker { display:none; }
+.nexo-compact .compact-more-menu { position:absolute; right:0; top:calc(100% + 5px); z-index:5; min-width:190px; padding:6px 12px; border:1px solid var(--compact-line); border-radius:9px; background:var(--compact-card); box-shadow:0 5px 18px #172b321c; }
+.nexo-compact .compact-more-menu > button { display:block; padding:9px 0; width:100%; text-align:left; }
+.nexo-compact .compact-details { border-top:1px solid var(--compact-line); margin:15px 0 0; padding:0; color:var(--compact-text); }
+.nexo-compact .compact-details > summary { list-style:none; cursor:pointer; padding:12px 0; font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.nexo-compact .compact-details > summary::after { content:"⌄"; color:#8a9a9f; font-size:15px; }
+.nexo-compact .compact-details[open] > summary::after { transform:rotate(180deg); }
+.nexo-compact .compact-note { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; color:var(--compact-muted); }
+.nexo-compact .compact-person-heading { display:flex; align-items:center; gap:11px; margin:8px 0 20px; }
+.nexo-compact .compact-person-heading h2 { font-size:19px; }
+.nexo-compact .compact-person-heading p { font-size:12px; margin-top:3px; }
+.nexo-compact .compact-person-heading > div { flex:1; min-width:0; }
+.nexo-compact .compact-person-heading > button { flex-shrink:0; }
+.nexo-compact .compact-avatar { width:38px; height:38px; flex:0 0 38px; border-radius:50%; display:grid; place-items:center; background:#dff2eb; color:#187b68; font-size:17px; font-weight:600; }
+.nexo-compact .compact-back { font-size:12px; color:var(--compact-muted); background:none; padding:0 0 12px; border-radius:0; }
+.nexo-compact .compact-list { margin-top:14px; display:grid; gap:8px; }
+.nexo-compact .compact-list-item { display:flex; align-items:center; gap:11px; width:100%; padding:13px 12px; border:1px solid var(--compact-line); border-radius:10px; background:var(--compact-card); text-align:left; color:var(--compact-text); }
+.nexo-compact .compact-list-item:hover { border-color:#bdd5cc; background:#fafffc; }
+.nexo-compact .compact-list-text { display:flex; flex:1; min-width:0; flex-direction:column; gap:2px; }
+.nexo-compact .compact-list-text strong { font-size:13px; overflow-wrap:anywhere; }
+.nexo-compact .compact-list-text small { font-size:11px; font-weight:400; color:var(--compact-muted); overflow-wrap:anywhere; }
+.nexo-compact .compact-chevron { font-size:22px; font-weight:400; color:#92a2a6; }
+.nexo-compact :is(.compact-workspace,.compact-dialog) :is(input:not([type=checkbox]),select,textarea) { display:block; width:100%; min-width:0; border:1px solid #dce5e7; border-radius:8px; padding:10px 11px; font:400 13px/1.4 system-ui,sans-serif; color:var(--compact-text); background:var(--compact-card); box-shadow:none; }
+.nexo-compact :is(.compact-workspace,.compact-dialog) input[type=search] { background:var(--compact-card); padding:11px 12px; }
+.nexo-compact :is(.compact-workspace,.compact-dialog) input::placeholder { color:#97a5ab; }
+.nexo-compact :is(.compact-workspace,.compact-dialog) textarea { resize:vertical; }
+.nexo-compact :is(.compact-workspace,.compact-dialog) input[readonly] { background:#f5f8f8; }
+.nexo-compact .compact-field { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:550; margin:0 0 13px; }
+.nexo-compact .compact-empty { text-align:center; background:var(--compact-card); border:1px dashed #ccd9dc; border-radius:12px; padding:29px 20px; margin-top:10px; }
+.nexo-compact .compact-empty h3 { margin-bottom:7px; }
+.nexo-compact .compact-empty p { color:var(--compact-muted); font-size:12px; max-width:270px; margin:0 auto; line-height:1.65; }
+.nexo-compact .compact-empty > button { margin-top:17px; }
+.nexo-compact .compact-muted { color:var(--compact-muted); font-weight:400; }
+.nexo-compact .compact-link-card > p { font-size:12px; margin:7px 0 16px; }
+.nexo-compact .compact-link-results { margin:7px 0 12px; display:grid; gap:5px; }
+.nexo-compact .compact-result-button { width:100%; text-align:left; color:#166d5f; padding:10px; background:#eef7f3; border-radius:6px; }
+.nexo-compact .compact-link-card > .compact-primary { width:100%; }
+.nexo-compact .compact-status { padding:10px 12px; border:1px solid #c9e5d8; border-radius:8px; background:#e7f5ed; color:#216f53; font-size:12px; margin:0 0 14px; overflow-wrap:anywhere; }
+.nexo-compact .compact-status.is-error { background:#fff1f0; border-color:#f1d6d5; color:#a3434a; }
+.nexo-compact .compact-compose { margin-top:15px; }
+.nexo-compact .compact-compose > h3 { margin-bottom:12px; }
+.nexo-compact .compact-compose > :is(select,textarea) { margin-bottom:9px; }
+.nexo-compact .compact-compose-actions { display:grid; grid-template-columns:1fr 1.5fr; gap:7px; margin:12px 0 7px; }
+.nexo-compact .compact-compose > small { display:block; font-size:10px; }
+.nexo-compact .compact-compose > p { font-size:11px; margin-top:8px; }
+.nexo-compact .compact-conversation-entry { background:#fff; border:1px solid var(--compact-line); border-radius:8px; padding:10px; margin-bottom:7px; }
+.nexo-compact .compact-conversation-entry small { color:var(--compact-muted); font-size:10px; }
+.nexo-compact .compact-conversation-entry p { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; margin-top:5px; }
+.nexo-compact .compact-capture-options { display:grid; gap:10px; margin:12px 0; }
+.nexo-compact .compact-capture-options > small { font-size:10px; line-height:1.5; }
+.nexo-compact .compact-check { display:flex; gap:6px; align-items:flex-start; font-size:11px; font-weight:400; line-height:1.6; }
+.nexo-compact .compact-check input { width:15px; height:15px; margin:2px 0 0; padding:0; accent-color:var(--compact-accent); flex:0 0 auto; }
+.nexo-compact .compact-account-email { overflow-wrap:anywhere; color:var(--compact-muted); font-size:12px; margin:2px 0 11px; }
+.nexo-compact .compact-account-detail > .compact-pill { margin:4px 0; }
+.nexo-compact .compact-account-detail > .compact-section-heading { margin-top:20px; }
+.nexo-compact .compact-profile { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border:1px solid var(--compact-line); background:#fff; margin:7px 0; border-radius:9px; }
+.nexo-compact .compact-profile > div { display:flex; flex-direction:column; min-width:0; }
+.nexo-compact .compact-profile strong { font-size:12px; }
+.nexo-compact .compact-profile small { font-size:11px; color:var(--compact-muted); overflow-wrap:anywhere; }
+.nexo-compact .compact-profile[data-status=free] > div > small { color:#168269; }
+.nexo-compact .compact-expired-hint, .nexo-compact .compact-list-text .compact-expired-hint, .nexo-compact .compact-profile.is-ineligible > div > small { color:#b34b55; font-size:11px; }
+.nexo-compact .compact-account-detail > .compact-expired-hint { margin:5px 0 0; }
+.nexo-compact .compact-account-detail > .compact-danger { display:block; margin:18px 0 0; font-size:11px; }
+.nexo-compact .compact-dialog { width:calc(100vw - 20px)!important; max-width:430px!important; max-height:calc(100vh - 20px)!important; padding:0!important; border:1px solid #dce5e7; background:var(--compact-card); color:var(--compact-text); border-radius:13px!important; box-shadow:0 15px 60px #142d3740; }
+.nexo-compact .compact-dialog::backdrop { background:#192d3366; }
+.nexo-compact .compact-form { padding:17px; }
+.nexo-compact .compact-form > .compact-section-heading { margin-bottom:19px; }
+.nexo-compact .compact-form h2 { font-size:17px; }
+.nexo-compact .compact-close { background:none; color:#7a8e95; font-size:25px; font-weight:400; padding:0 2px; line-height:1; }
+.nexo-compact .compact-form-body > p { font-size:12px; margin:0 0 14px; }
+.nexo-compact .compact-form-body .compact-details { margin-bottom:16px; }
+.nexo-compact .compact-form-footer { display:flex; justify-content:flex-end; gap:8px; padding-top:15px; border-top:1px solid var(--compact-line); margin-top:12px; }
+.nexo-compact .compact-form-error { color:#ae4350; font-size:12px; line-height:1.5; margin:12px 0 0; overflow-wrap:anywhere; }
+.nexo-compact .compact-form-error:empty { display:none; }
+.nexo-compact .compact-profile-field > select { margin-bottom:13px; }
+.nexo-compact.dark { --compact-bg:#111b21; --compact-card:#202c33; --compact-text:#e9edef; --compact-muted:#aebac1; --compact-line:#34454c; --compact-accent:#008069; --compact-soft:#1b3b35; }
+.nexo-compact.dark .compact-tabs { background:#202c33; }
+.nexo-compact.dark .compact-tab.active { background:#34454c; color:#bdf0d9; }
+.nexo-compact.dark .compact-secondary, .nexo-compact.dark .compact-service-more > summary { background:#34454c; color:#d2e4e9; }
+.nexo-compact.dark .compact-primary { background:#008069; }
+.nexo-compact.dark .compact-list-item:hover { background:#26383c; }
+.nexo-compact.dark .compact-conversation-entry, .nexo-compact.dark .compact-profile { background:var(--compact-card); }
+.nexo-compact.dark .compact-avatar { background:#1b3b35; color:#b8e9d3; }
+.nexo-compact.dark .compact-service-actions { border-color:#34454c; }
+.nexo-compact.dark :is(.compact-workspace,.compact-dialog) :is(input:not([type=checkbox]),select,textarea) { border-color:var(--compact-line); }
+.nexo-compact.dark .compact-text-button { color:#62d7b0; }
+.nexo-compact.dark .compact-status { background:#173e30; color:#b8e9d3; border-color:#315f4b; }
+.nexo-compact.dark .compact-status.is-error { background:#462c31; color:#f3c5c9; border-color:#6b4148; }
+@media(max-width:365px) { .nexo-compact .compact-toolbar { gap:8px; } .nexo-compact .compact-sync-label { font-size:9px; } .nexo-compact .compact-service-data .compact-info-row { font-size:11px; } .nexo-compact .compact-primary, .nexo-compact .compact-secondary { padding:8px 10px; font-size:11px; } }
