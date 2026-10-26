@@ -82,6 +82,13 @@
 .nexo-compact .compact-link-card > p { font-size:12px; margin:7px 0 16px; }
 .nexo-compact .compact-link-results { margin:7px 0 12px; display:grid; gap:5px; }
 .nexo-compact .compact-result-button { width:100%; text-align:left; color:#166d5f; padding:10px; background:#eef7f3; border-radius:6px; }
+.nexo-compact .compact-result-button :is(strong,small) { display:block; overflow-wrap:anywhere; }
+.nexo-compact .compact-result-button small { font-size:11px; font-weight:400; margin-top:2px; color:var(--compact-muted); }
+.nexo-compact .compact-link-tools { margin:-6px 0 15px; font-size:11px; }
+.nexo-compact .compact-link-tools > summary { font-size:11px; padding:7px 0; }
+.nexo-compact .compact-link-tools > p { font-size:11px; margin-bottom:8px; }
+.nexo-compact .compact-link-tools > button { margin-right:17px; margin-bottom:5px; }
+.nexo-compact .compact-empty > button + button { display:block; margin:10px auto 0; }
 .nexo-compact .compact-link-card > .compact-primary { width:100%; }
 .nexo-compact .compact-status { padding:10px 12px; border:1px solid #c9e5d8; border-radius:8px; background:#e7f5ed; color:#216f53; font-size:12px; margin:0 0 14px; overflow-wrap:anywhere; }
 .nexo-compact .compact-status.is-error { background:#fff1f0; border-color:#f1d6d5; color:#a3434a; }

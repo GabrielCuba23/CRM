@@ -74,20 +74,21 @@ globalThis.NexoCompanion = Object.freeze({
       result.body = JSON.stringify({ ok: true, logoutUrl: loginUrl });
     return new Response(result.body, { status: result.status, headers: result.headers });
   },
-  getContext: () => rpc("wa.context"),
-  bindConversation: input => rpc("wa.bind", { input }),
+  getContext: () => rpc("wa.context", { expectedOrigin: configuredOrigin }),
+  bindConversation: input => rpc("wa.bind", { input, expectedOrigin: configuredOrigin }),
+  unbindConversation: input => rpc("wa.unbind", { input, expectedOrigin: configuredOrigin }),
   captureVisibleMessages: () => {
     if (!visible()) throw Error("Abre el panel de Nexo en WhatsApp para registrar mensajes visibles.");
-    return rpc("wa.capture");
+    return rpc("wa.capture", { expectedOrigin: configuredOrigin });
   },
   async prepareMessage(input) {
-    const result = await rpc("wa.prepare", { input });
+    const result = await rpc("wa.prepare", { input, expectedOrigin: configuredOrigin });
     if (result.clipboard) await copyText(input.text);
     return result;
   },
   onContext(handler) {
     const listener = (message, sender) => {
-      if (sender.id !== chrome.runtime.id || sender.tab || message?.channel !== "nexo.context") return;
+      if (sender.id !== chrome.runtime.id || sender.tab || message?.channel !== "nexo.context" || message.origin !== configuredOrigin) return;
       // A dock belongs to its own WhatsApp tab. Other open conversations cannot
       // silently replace its recipient through a background identity broadcast.
       if (embedded && (!Number.isInteger(configuredWaTabId) || message.context?.tabId !== configuredWaTabId)) return;

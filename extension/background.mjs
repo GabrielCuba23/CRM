@@ -176,15 +176,75 @@ async function whatsappTab(pinnedTabId) {
   await storage.set({ waTabId: tab.id });
   return tab;
 }
-async function waRequest(action, input, sender) {
-  const tab = await whatsappTab(embeddedWhatsAppTab(sender, EXTENSION_ID));
-  let response;
-  try { response = await chrome.tabs.sendMessage(tab.id, { channel: "nexo.whatsapp", action, ...input }, { frameId: 0 }); }
-  catch { throw Error("Recarga WhatsApp Web después de instalar la extensión."); }
-  if (!response?.ok) throw Error(response?.error || "No se pudo leer la conversación actual.");
-  if (action === "context") return safeContext(response.result, tab.id);
-  if (action === "capture") return response.result;
-  return response.result;
+// Explicit links contain only an opaque WhatsApp peer, its displayed alias and
+// the confirmed CRM telephone. They never contain fichas, messages or credentials.
+// Session anchors are deliberately excluded: a display name is not a durable key.
+let chatLinkWrites = Promise.resolve();
+const validStoredLink = item => item && typeof item.origin === "string" && /^https:\/\//.test(item.origin) && typeof item.chatId === "string" && item.chatId.startsWith("wa:") && item.chatId.length <= 300 && typeof item.name === "string" && item.name.length <= 160 && /^\d{7,15}$/.test(item.phone);
+async function readChatLinks() {
+  await chatLinkWrites;
+  const { chatLinks } = await chrome.storage.local.get("chatLinks");
+  return Array.isArray(chatLinks) ? chatLinks.filter(validStoredLink).slice(-200) : [];
+}
+function changeChatLinks(change) {
+  const operation = chatLinkWrites.then(async () => {
+    const { chatLinks } = await chrome.storage.local.get("chatLinks");
+    const previous = Array.isArray(chatLinks) ? chatLinks.filter(validStoredLink) : [];
+    await chrome.storage.local.set({ chatLinks: change(previous).slice(-200) });
+  });
+  chatLinkWrites = operation.catch(() => {});
+  return operation;
+}
+let whatsappOperations = Promise.resolve();
+async function waRequest(action, input, sender, expectedOrigin, explicitTabId) {
+  const { origin } = await configuration();
+  if (crmOrigin(expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Recarga el panel antes de vincular o enviar mensajes.");
+  const tab = await whatsappTab(explicitTabId ?? embeddedWhatsAppTab(sender, EXTENSION_ID));
+  // Native DOM/storage operations are short and share persisted peer links.
+  // Serialize across tabs so polling cannot resurrect an unlink or interleave
+  // an older restore with another tab's changed recipient. No prompt or CRM
+  // network request runs inside this queue.
+  const operation = whatsappOperations.then(() => waRequestOnTab(action, input, origin, tab));
+  whatsappOperations = operation.catch(() => {});
+  return operation;
+}
+async function waRequestOnTab(action, input, origin, tab) {
+  const send = async (operation, payload) => {
+    if ((await configuration()).origin !== origin) throw Error("Cambió el CRM conectado. Recarga el panel.");
+    let response;
+    try { response = await chrome.tabs.sendMessage(tab.id, { channel: "nexo.whatsapp", scope: origin, action: operation, ...payload }, { frameId: 0 }); }
+    catch { throw Error("Recarga WhatsApp Web después de instalar la extensión."); }
+    if (!response?.ok) throw Error(response?.error || "No se pudo leer la conversación actual.");
+    if ((await configuration()).origin !== origin) throw Error("Cambió el CRM conectado. Recarga el panel.");
+    return response.result;
+  };
+  const restore = async () => {
+    let current = safeContext(await send("context"), tab.id);
+    if (!current.chatId.startsWith("wa:") || current.isGroup || current.ambiguous) return current;
+    const stored = (await readChatLinks()).find(item => item.origin === origin && item.chatId === current.chatId);
+    const forgetManual = () => send("unbind", { input: { chatId: current.chatId, name: current.name } }).then(value => safeContext(value, tab.id));
+    // Another WhatsApp tab can forget or change this peer's link. Its persisted
+    // mapping is authoritative; an old document's manual cache cannot recreate
+    // it or delete a newer mapping by pretending to be a visible phone conflict.
+    if (!stored) return current.phoneSource === "manual" ? forgetManual() : current;
+    if (stored.name !== current.name || current.phoneSource === "visible" && current.phone !== stored.phone) {
+      await changeChatLinks(items => items.filter(item => item.origin !== origin || item.chatId !== stored.chatId));
+      return current.phoneSource === "manual" ? forgetManual() : current;
+    }
+    if (current.phoneSource === "manual" && current.phone !== stored.phone) current = await forgetManual();
+    if (!current.phone) current = safeContext(await send("bind", { input: { chatId: current.chatId, name: stored.name, phone: stored.phone } }), tab.id);
+    return current;
+  };
+  if (action === "context") return restore();
+  if (action === "bind" || action === "unbind") {
+    const result = safeContext(await send(action, input), tab.id);
+    if (action === "bind" && result.chatId.startsWith("wa:") && result.chatId === input.input.chatId && result.phone === input.input.phone)
+      await changeChatLinks(items => [...items.filter(item => item.origin !== origin || item.chatId !== result.chatId), { origin, chatId: result.chatId, name: result.name, phone: result.phone }]);
+    if (action === "unbind") await changeChatLinks(items => items.filter(item => item.origin !== origin || item.chatId !== input.input.chatId));
+    return result;
+  }
+  await restore();
+  return send(action, input);
 }
 async function openWhatsAppDock(candidate, action = "open") {
   let tab = candidate;
@@ -210,8 +270,11 @@ async function execute(message, sender) {
     if (message?.type === "configuration.open") { await rememberWhatsAppReturn(sender.tab); await chrome.runtime.openOptionsPage(); return { opened: true }; }
     if (message?.type !== "wa.contextChanged") throw Error("Operación no permitida desde esta página.");
     await storage.set({ waTabId: sender.tab.id });
-    // Broadcast only public chat identity; never a response from the CRM.
-    chrome.runtime.sendMessage({ channel: "nexo.context", context: safeContext(message.context, sender.tab.id) }).catch(() => {});
+    // Re-read the current native identity in the configured scope instead of
+    // forwarding a stale manual binding from another CRM's content-script cache.
+    const { origin } = await configuration();
+    const current = await waRequest("context", undefined, sender, origin, sender.tab.id);
+    chrome.runtime.sendMessage({ channel: "nexo.context", origin, context: current }).catch(() => {});
     return { accepted: true };
   }
   if (!isExtensionPage(sender, EXTENSION_ID)) throw Error("Origen de extensión no autorizado.");
@@ -276,15 +339,22 @@ async function execute(message, sender) {
       await rememberWhatsAppReturn(await chrome.tabs.get(result.tabId));
       return result;
     }
-    case "wa.context": return waRequest("context", undefined, sender);
-    case "wa.capture": return waRequest("capture", undefined, sender);
+    case "wa.context": return waRequest("context", undefined, sender, message.expectedOrigin);
+    case "wa.capture": return waRequest("capture", undefined, sender, message.expectedOrigin);
     case "wa.bind": {
       const phone = String(message.input?.phone || "").replace(/[\s()+.-]/g, "");
       const chatId = message.input?.chatId;
-      if (!/^\d{7,15}$/.test(phone) || typeof chatId !== "string" || chatId.length > 300) throw Error("Confirma el teléfono y la conversación a vincular.");
-      return waRequest("bind", { input: { phone, chatId } }, sender);
+      const name = message.input?.name;
+      if (!/^\d{7,15}$/.test(phone) || typeof chatId !== "string" || chatId.length > 300 || typeof name !== "string" || !name || name.length > 160) throw Error("Confirma el teléfono y la conversación a vincular.");
+      return waRequest("bind", { input: { phone, chatId, name } }, sender, message.expectedOrigin);
     }
-    case "wa.prepare": return waRequest("prepare", { input: draftInput(message.input) }, sender);
+    case "wa.unbind": {
+      const chatId = message.input?.chatId;
+      const name = message.input?.name;
+      if (typeof chatId !== "string" || !chatId || chatId.length > 300 || typeof name !== "string" || !name || name.length > 160) throw Error("Revisa la conversación que deseas desvincular.");
+      return waRequest("unbind", { input: { chatId, name } }, sender, message.expectedOrigin);
+    }
+    case "wa.prepare": return waRequest("prepare", { input: draftInput(message.input) }, sender, message.expectedOrigin);
     default: throw Error("Operación desconocida.");
   }
 }

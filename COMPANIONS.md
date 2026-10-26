@@ -22,7 +22,7 @@ a la extensión ni a los archivos públicos.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión integrada 1.2.1](https://drive.google.com/file/d/1NeaFxEXPwMMrY8DBzu8I_cxyJw8CComE/view)
+1. Descarga la [extensión integrada 1.2.2](https://drive.google.com/file/d/1VBYpdR9224fVmHqNf8qXOMmYDWySVSw2/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -52,9 +52,12 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
 
 - **Chat actual** muestra automáticamente las fichas del teléfono identificado
   en WhatsApp. Al cambiar de conversación se descarta la selección anterior.
-  Si WhatsApp oculta el número, busca el cliente o escribe su teléfono y confirma
-  la vinculación. Si el chat no tiene una identidad estable, abre su información
-  de contacto para mostrar el número. El nombre por sí solo no identifica al cliente.
+  Si WhatsApp no lo detecta, pulsa **Vincular contacto existente**, busca por
+  nombre o número y confirma la ficha correcta. Esto abre sus servicios sin crear
+  un cliente ni modificar su teléfono. Los vínculos estables se recuerdan en este
+  navegador para ese CRM; si WhatsApp no ofrece una identidad estable, duran solo
+  mientras permanezcas en la conversación. Puedes cambiarlos o quitarlos sin
+  borrar al cliente. El nombre por sí solo no identifica al cliente.
 - **Clientes** busca por nombre, teléfono o servicio. Cada contacto reúne sus
   servicios; puedes editar sus datos y añadir otro servicio sin duplicar los anteriores.
 - Cada servicio tiene **Renovar**, **Mensaje** y un menú para editarlo,

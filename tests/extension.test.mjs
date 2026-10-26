@@ -69,7 +69,7 @@ test("Only the packaged CRM iframe inside a WhatsApp tab receives embedded privi
   assert.equal(embeddedWhatsAppTab({ id, url: `chrome-extension://${id}/options.html`, frameId: 0 }, id), undefined);
 });
 
-async function backgroundFixture() {
+async function backgroundFixture({ localState, waState, beforeWhatsAppSend } = {}) {
   const source = await readFile(join(root, "extension/background.mjs"), "utf8");
   const calls = [];
   const tabs = new Map([
@@ -78,7 +78,8 @@ async function backgroundFixture() {
     [33, { id: 33, url: "https://crm.example/companion", status: "complete", active: false }],
   ]);
   const session = { waTabId: 22, crmTabId: 33 };
-  const local = { crmOrigin: "https://crm.example" };
+  const local = localState || { crmOrigin: "https://crm.example" };
+  const whatsapp = waState || new Map();
   let messageListener, actionListener;
   const storage = values => ({
     async get(key) { return { [key]: values[key] }; },
@@ -109,8 +110,16 @@ async function backgroundFixture() {
       async sendMessage(tabId, message, options) {
         calls.push({ type: "send", tabId, message, options });
         if (message.channel === "nexo.whatsapp") {
-          const context = { name: `Chat ${tabId}`, phone: tabId === 11 ? "51999999999" : "51888888888", chatId: `wa:peer-${tabId}@lid` };
-          return { ok: true, result: message.action === "context" ? context : message.action === "capture" ? [{ ...context, body: `Message ${tabId}` }] : { ...context, prepared: true } };
+          await beforeWhatsAppSend?.({ tabId, message });
+          const value = whatsapp.get(tabId) || { name: `Chat ${tabId}`, phone: tabId === 11 ? "51999999999" : "51888888888", chatId: `wa:peer-${tabId}@lid`, phoneSource: "visible" };
+          if (value.scope !== message.scope) { value.scope = message.scope; value.manual = ""; }
+          if (message.action === "bind") {
+            if (value.chatId !== message.input.chatId || message.input.name !== value.name || value.phone && value.phone !== message.input.phone) return { ok: false, error: "La conversación cambió" };
+            value.manual = message.input.phone;
+          }
+          if (message.action === "unbind") value.manual = "";
+          const current = { name: value.name, chatId: value.chatId, phone: value.phone || value.manual || "", phoneSource: value.phone ? "visible" : value.manual ? "manual" : "", ambiguous: value.ambiguous || false };
+          return { ok: true, result: message.action === "capture" ? [{ ...current, body: `Message ${tabId}` }] : message.action === "prepare" ? { ...current, prepared: true } : current };
         }
         return { ok: true };
       },
@@ -123,9 +132,9 @@ async function backgroundFixture() {
   vm.runInContext(source.replace(/^import[^\n]+\n/, ""), context);
   assert.equal(typeof messageListener, "function");
   const invoke = (message, sender) => new Promise(resolve => {
-    assert.equal(messageListener({ channel: "nexo", ...message }, sender, resolve), true);
+    assert.equal(messageListener({ channel: "nexo", expectedOrigin: "https://crm.example", ...message }, sender, resolve), true);
   });
-  return { invoke, calls, tabs, session, action: tab => actionListener(tab) };
+  return { invoke, calls, tabs, session, local, whatsapp, action: tab => actionListener(tab) };
 }
 
 test("An embedded CRM targets its own WhatsApp tab even when another conversation tab is active", async () => {
@@ -141,13 +150,13 @@ test("An embedded CRM targets its own WhatsApp tab even when another conversatio
   const capture = await invoke({ type: "wa.capture", tabId: 22 }, sender);
   assert.equal(capture.ok, true);
   assert.equal(capture.result[0].body, "Message 11");
-  const bind = await invoke({ type: "wa.bind", tabId: 22, input: { phone: "51999999999", chatId: "wa:peer-11@lid" } }, sender);
+  const bind = await invoke({ type: "wa.bind", tabId: 22, input: { phone: "51999999999", chatId: "wa:peer-11@lid", name: "Chat 11" } }, sender);
   assert.equal(bind.ok, true);
   const prepare = await invoke({ type: "wa.prepare", tabId: 22, input: { phone: "51999999999", text: "Entrega revisada" } }, sender);
   assert.equal(prepare.ok, true);
   const sends = calls.filter(call => call.type === "send");
-  assert.deepEqual(sends.map(call => call.tabId), [11, 11, 11, 11]);
-  assert.deepEqual(sends.map(call => call.message.action), ["context", "capture", "bind", "prepare"]);
+  assert.deepEqual(sends.map(call => call.tabId), [11, 11, 11, 11, 11, 11]);
+  assert.deepEqual(sends.map(call => call.message.action), ["context", "context", "capture", "bind", "context", "prepare"]);
   assert(sends.every(call => call.options.frameId === 0));
   assert(!calls.some(call => call.type === "query"));
 
@@ -320,7 +329,7 @@ test("The package contains the entire CRM and no server data or remote executabl
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "1.2.1");
+  assert.equal(manifest.version, "1.2.2");
   assert.deepEqual(manifest.host_permissions, ["https://web.whatsapp.com/*"]);
   assert.equal(manifest.externally_connectable, undefined);
   assert.equal(manifest.side_panel, undefined);
@@ -349,4 +358,135 @@ test("The package contains the entire CRM and no server data or remote executabl
   const entries = spawnSync("python3", ["-c", "import zipfile,json,sys; print(json.dumps(zipfile.ZipFile(sys.argv[1]).namelist()))", zip], { encoding: "utf8" });
   assert.equal(entries.status, 0);
   assert(!JSON.parse(entries.stdout).some(name => /\.env|sqlite|token|wrangler/.test(name)));
+});
+
+
+test("Confirmed opaque peer links survive reload only within the same CRM origin and alias", async () => {
+  const local = { crmOrigin: "https://crm.example" };
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  const createState = (name = "Ana") => new Map([[11, { name, chatId: "wa:private-peer@lid", phone: "" }]]);
+  const first = await backgroundFixture({ localState: local, waState: createState() });
+  const linked = await first.invoke({ type: "wa.bind", input: { chatId: "wa:private-peer@lid", name: "Ana", phone: "51912345678" } }, sender);
+  assert.equal(linked.ok, true);
+  assert.equal(linked.result.phoneSource, "manual");
+  assert.equal(local.chatLinks.length, 1);
+  assert.deepEqual(Object.keys(local.chatLinks[0]).sort(), ["chatId", "name", "origin", "phone"]);
+  const reloaded = await backgroundFixture({ localState: local, waState: createState() });
+  const restored = await reloaded.invoke({ type: "wa.context" }, sender);
+  assert.equal(restored.result.phone, "51912345678");
+  assert.equal(restored.result.phoneSource, "manual");
+  local.crmOrigin = "https://another-crm.example";
+  const stale = await reloaded.invoke({ type: "wa.context" }, sender);
+  assert.equal(stale.ok, false, "An old CRM frame cannot use another CRM's links");
+  const differentOrigin = await reloaded.invoke({ type: "wa.context", expectedOrigin: local.crmOrigin }, sender);
+  assert.equal(differentOrigin.result.phone, "");
+  local.crmOrigin = "https://crm.example";
+  assert.equal((await reloaded.invoke({ type: "wa.context" }, sender)).result.phone, "51912345678");
+  const renamed = await backgroundFixture({ localState: local, waState: createState("Another contact") });
+  assert.equal((await renamed.invoke({ type: "wa.context" }, sender)).result.phone, "");
+  assert.equal(local.chatLinks.length, 0, "A changed alias requires a new explicit confirmation");
+});
+
+test("A visible contradictory telephone removes a persisted link, and unlinking cannot delete a CRM record", async () => {
+  const local = { crmOrigin: "https://crm.example", chatLinks: [{ origin: "https://crm.example", chatId: "wa:private-peer@lid", name: "Ana", phone: "51912345678" }] };
+  const whatsapp = new Map([[11, { name: "Ana", chatId: "wa:private-peer@lid", phone: "51987654321" }]]);
+  const { invoke, calls } = await backgroundFixture({ localState: local, waState: whatsapp });
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  const current = await invoke({ type: "wa.context" }, sender);
+  assert.equal(current.result.phone, "51987654321");
+  assert.equal(current.result.phoneSource, "visible");
+  assert.equal(local.chatLinks.length, 0);
+  whatsapp.get(11).phone = "";
+  await invoke({ type: "wa.bind", input: { chatId: "wa:private-peer@lid", name: "Ana", phone: "51912345678" } }, sender);
+  assert.equal(local.chatLinks.length, 1);
+  const unlinked = await invoke({ type: "wa.unbind", input: { chatId: "wa:private-peer@lid", name: "Ana" } }, sender);
+  assert.equal(unlinked.ok, true);
+  assert.equal(unlinked.result.phone, "");
+  assert.equal(local.chatLinks.length, 0);
+  assert(!calls.some(call => call.message?.channel === "nexo.crm.bridge"), "Link operations never write or delete CRM fichas");
+});
+
+test("Manual session anchors stay ephemeral and a stale CRM cannot bind them", async () => {
+  const whatsapp = new Map([[11, { name: "Ana", chatId: "session:document-1:3", phone: "" }]]);
+  const { invoke, local } = await backgroundFixture({ waState: whatsapp });
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  const wrong = await invoke({ type: "wa.bind", expectedOrigin: "https://another-crm.example", input: { chatId: "session:document-1:3", name: "Ana", phone: "51912345678" } }, sender);
+  assert.equal(wrong.ok, false);
+  assert.equal(whatsapp.get(11).manual, undefined);
+  const linked = await invoke({ type: "wa.bind", input: { chatId: "session:document-1:3", name: "Ana", phone: "51912345678" } }, sender);
+  assert.equal(linked.ok, true);
+  assert.equal(linked.result.phoneSource, "manual");
+  assert.equal(local.chatLinks, undefined);
+});
+
+
+test("A delayed restore cannot resurrect a link after the user forgets it", async () => {
+  const local = { crmOrigin: "https://crm.example", chatLinks: [{ origin: "https://crm.example", chatId: "wa:private-peer@lid", name: "Ana", phone: "51912345678" }] };
+  const whatsapp = new Map([[11, { name: "Ana", chatId: "wa:private-peer@lid", phone: "" }]]);
+  let releaseRestore, restoreStarted;
+  const started = new Promise(resolve => { restoreStarted = resolve; });
+  const gate = new Promise(resolve => { releaseRestore = resolve; });
+  let delayed = false;
+  const { invoke, calls } = await backgroundFixture({ localState: local, waState: whatsapp, beforeWhatsAppSend: async ({ message }) => {
+    if (message.action === "bind" && !delayed) { delayed = true; restoreStarted(); await gate; }
+  } });
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  const restoring = invoke({ type: "wa.context" }, sender);
+  await started;
+  const forgetting = invoke({ type: "wa.unbind", input: { chatId: "wa:private-peer@lid", name: "Ana" } }, sender);
+  await new Promise(setImmediate);
+  assert(!calls.some(call => call.message?.action === "unbind"), "Unlink waits for an older restoration before clearing it");
+  releaseRestore();
+  assert.equal((await restoring).ok, true);
+  assert.equal((await forgetting).result.phone, "");
+  assert.equal(local.chatLinks.length, 0);
+  assert.equal(whatsapp.get(11).manual, "");
+  assert.equal((await invoke({ type: "wa.context" }, sender)).result.phone, "");
+});
+
+
+test("Another tab's old manual cache cannot restore a forgotten peer or delete its newer link", async () => {
+  const whatsapp = new Map([
+    [11, { name: "Ana", chatId: "wa:shared-peer@lid", phone: "" }],
+    [22, { name: "Ana", chatId: "wa:shared-peer@lid", phone: "" }],
+  ]);
+  const { invoke, local } = await backgroundFixture({ waState: whatsapp });
+  const sender = tabId => ({ id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: tabId, url: "https://web.whatsapp.com/" } });
+  const link = phone => invoke({ type: "wa.bind", input: { chatId: "wa:shared-peer@lid", name: "Ana", phone } }, sender(11));
+  await link("51912345678");
+  assert.equal((await invoke({ type: "wa.context" }, sender(22))).result.phone, "51912345678");
+  await link("51987654321");
+  assert.equal((await invoke({ type: "wa.context" }, sender(22))).result.phone, "51987654321");
+  assert.equal(local.chatLinks[0].phone, "51987654321");
+  await invoke({ type: "wa.unbind", input: { chatId: "wa:shared-peer@lid", name: "Ana" } }, sender(11));
+  assert.equal(whatsapp.get(22).manual, "51987654321", "Other document's stale cache still exists until its next request");
+  assert.equal((await invoke({ type: "wa.context" }, sender(22))).result.phone, "");
+  assert.equal(whatsapp.get(22).manual, "");
+  assert.equal(local.chatLinks.length, 0);
+});
+
+
+test("A slow restore in one tab finishes before another tab changes the shared peer link", async () => {
+  const local = { crmOrigin: "https://crm.example", chatLinks: [{ origin: "https://crm.example", chatId: "wa:shared-peer@lid", name: "Ana", phone: "51912345678" }] };
+  const whatsapp = new Map([
+    [11, { name: "Ana", chatId: "wa:shared-peer@lid", phone: "" }],
+    [22, { name: "Ana", chatId: "wa:shared-peer@lid", phone: "" }],
+  ]);
+  let releaseRestore, startedRestore;
+  const started = new Promise(resolve => { startedRestore = resolve; });
+  const gate = new Promise(resolve => { releaseRestore = resolve; });
+  const { invoke, calls } = await backgroundFixture({ localState: local, waState: whatsapp, beforeWhatsAppSend: async ({ tabId, message }) => {
+    if (tabId === 11 && message.action === "bind" && message.input.phone === "51912345678") { startedRestore(); await gate; }
+  } });
+  const sender = tabId => ({ id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: tabId, url: "https://web.whatsapp.com/" } });
+  const restoring = invoke({ type: "wa.context" }, sender(11));
+  await started;
+  const relinking = invoke({ type: "wa.bind", input: { chatId: "wa:shared-peer@lid", name: "Ana", phone: "51987654321" } }, sender(22));
+  await new Promise(setImmediate);
+  assert(!calls.some(call => call.type === "send" && call.tabId === 22), "A shared-peer relink waits for the older restoration in another tab");
+  releaseRestore();
+  assert.equal((await restoring).result.phone, "51912345678");
+  assert.equal((await relinking).result.phone, "51987654321");
+  assert.equal(local.chatLinks[0].phone, "51987654321");
+  assert.equal((await invoke({ type: "wa.context" }, sender(11))).result.phone, "51987654321");
 });

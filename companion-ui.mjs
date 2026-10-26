@@ -35,7 +35,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
 
   let tab = "chat", currentContext = null, contextKey = "", contextVersion = 0;
   let openedGroupKey = "", openedAccountId = "", selectedServiceId = "";
-  let clientSearch = "", accountSearch = "", linkSearch = "", linkPhone = "";
+  let clientSearch = "", accountSearch = "", linkSearch = "", linkingContact = false;
   let composeClientId = "", localBusy = false, capturing = false, autoCapture = false;
   let visibilityVersion = 0, destroyed = false;
   const drafts = new Map(), openDetails = new Set();
@@ -181,24 +181,52 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       content.append(empty("Abre un chat individual", "Las fichas se muestran en conversaciones con una persona."));
       return;
     }
+    if (linkingContact && currentContext?.name && !currentContext.ambiguous) { renderLink(); return; }
     if (!chatIdentified()) {
-      content.append(empty("Identifica este contacto", currentContext?.name
-        ? "Abre la información del contacto en WhatsApp para mostrar su teléfono. Si ya está abierta, ciérrala y vuelve a abrirla. También puedes buscar su ficha en Clientes."
-        : "Abre una conversación en WhatsApp para consultar sus servicios."));
+      const box = empty(currentContext?.name ? "Conecta su ficha" : "Abre una conversación", currentContext?.name
+        ? currentContext.ambiguous ? "WhatsApp está cambiando de conversación. Espera un momento para vincular la ficha correcta."
+          : "Busca al cliente que ya tienes registrado y vincúlalo con este chat."
+        : "Selecciona un chat en WhatsApp para consultar sus servicios.");
+      if (currentContext?.name && !currentContext.ambiguous) box.append(linkContactButton());
+      content.append(box);
       return;
     }
-    if (!match.phone) { renderLink(); return; }
+    if (!match.phone) {
+      const box = empty("Conecta su ficha", "Elige un contacto del CRM para ver sus servicios en este chat.");
+      box.append(linkContactButton());
+      content.append(box);
+      return;
+    }
     if (!match.matches.length) {
-      const box = empty("Cliente nuevo", "Este teléfono todavía no tiene una ficha en el CRM.");
+      const box = empty("Sin ficha para este número", "Si ya registraste a esta persona, busca su contacto antes de crear otro.");
+      box.append(linkContactButton());
       box.append(button("Crear cliente", () => openClientForm({ name: currentContext.name || "", phone: match.phone }), "compact-primary", "compact-new-client"));
       content.append(box);
       return;
     }
+    if (currentContext.phoneSource === "manual") {
+      const linked = details("Chat vinculado", "manual-link");
+      linked.classList.add("compact-link-tools");
+      linked.append(node("p", "Este chat usa la ficha que elegiste. Sus datos y servicios siguen guardados en el CRM.", "compact-muted"),
+        button("Cambiar vínculo", () => { linkingContact = true; linkSearch = ""; render(); }, "compact-text-button", "compact-change-link"),
+        button("Desvincular chat", () => unbindPhone(), "compact-text-button", "compact-unbind"));
+      content.append(linked);
+    }
     renderClientDetail({ key: "phone:" + match.phone, phone: match.phone, clients: match.matches }, true);
+  }
+  function linkContactButton() {
+    return button("Vincular contacto existente", () => {
+      linkingContact = true;
+      linkSearch = "";
+      render();
+      document.querySelector("#compact-link-search")?.focus();
+    }, "compact-secondary", "compact-open-link");
   }
   function renderLink() {
     const section = node("section", "", "compact-card compact-link-card");
-    section.append(node("h3", "Vincular contacto"), node("p", "WhatsApp oculta el número. Elige su ficha o confirma su teléfono una vez.", "compact-muted"));
+    section.append(button("← Chat actual", () => { linkingContact = false; linkSearch = ""; render(); }, "compact-back", "compact-cancel-link"),
+      node("h3", "Vincular contacto existente"), node("p", "Busca y elige su ficha. Se mostrarán sus servicios sin crear otro cliente.", "compact-muted"));
+    if (!chatIdentified()) section.append(node("p", "Todavía no se puede fijar este chat. Espera un momento o pulsa Actualizar antes de confirmar el vínculo.", "compact-form-error"));
     const search = node("input");
     search.type = "search";
     search.placeholder = "Buscar cliente por nombre o teléfono";
@@ -210,44 +238,57 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     function showResults() {
       results.replaceChildren();
       if (!linkSearch.trim()) return;
-      const query = linkSearch.toLocaleLowerCase("es");
-      for (const group of groups().filter(item => item.phone && item.clients.some(client => `${client.name} ${client.phone}`.toLocaleLowerCase("es").includes(query))).slice(0, 8)) {
+      const query = linkSearch.trim().toLocaleLowerCase("es");
+      const queryDigits = /^[+\d\s().-]+$/.test(query) ? query.replace(/\D/g, "") : "";
+      for (const group of groups().filter(item => item.clients.some(client => `${client.name} ${client.phone}`.toLocaleLowerCase("es").includes(query)) || queryDigits && item.phone.includes(queryDigits)).slice(0, 8)) {
         const client = group.clients[0];
-        const item = button(`${client.name} · +${group.phone}`, async () => bindPhone(group.phone), "compact-result-button");
+        const item = button("", async () => bindPhone(group.phone), "compact-result-button");
         item.dataset.clientId = client.id;
+        item.append(node("strong", client.name), node("small", group.phone ? "+" + group.phone : "Sin teléfono: complétalo en Clientes"),
+          node("small", [...new Set(group.clients.map(service => service.service || "Sin servicio"))].join(" · ")));
+        item.disabled = !group.phone || !chatIdentified();
         results.append(item);
       }
       if (!results.childNodes.length) results.append(node("p", "No hay coincidencias.", "compact-muted"));
     }
     search.addEventListener("input", () => { linkSearch = search.value; showResults(); });
-    const label = node("label", "O escribe el teléfono", "compact-field");
-    const input = node("input");
-    input.type = "tel";
-    input.id = "compact-link-phone";
-    input.placeholder = "+51 987 654 321";
-    input.value = linkPhone;
-    input.addEventListener("input", () => { linkPhone = input.value; });
-    label.append(input);
-    const bind = button("Vincular este chat", async () => bindPhone(input.value), "compact-primary", "compact-bind");
-    section.append(search, results, label, bind);
+    section.append(search, results);
     content.append(section);
     showResults();
   }
   async function bindPhone(value) {
     const number = normalizePhone(value), expectedVersion = contextVersion;
+    const group = groups().find(item => item.phone === number);
+    if (!group) throw Error("La ficha cambió. Actualiza los datos y vuelve a buscar el contacto.");
     const before = await companion.getContext();
-    if (expectedVersion !== contextVersion || !before?.chatId || before.chatId !== currentContext?.chatId || before.isGroup || before.ambiguous)
+    if (expectedVersion !== contextVersion || !before?.chatId || before.chatId !== currentContext?.chatId || before.name !== currentContext?.name || before.isGroup || before.ambiguous)
       throw Error("El chat cambió. Revisa el contacto antes de vincularlo.");
-    if (!confirm(`¿Este chat «${before.name || "Contacto"}» corresponde al teléfono +${number}?`)) return;
-    await companion.bindConversation({ chatId: before.chatId, phone: number });
+    if (!confirm(`¿Vincular el chat «${before.name || "Contacto"}» con ${group.clients[0].name} (+${number})?\n\nSe usarán sus ${group.clients.length === 1 ? "datos y servicio existentes" : "datos y " + group.clients.length + " servicios existentes"}. No se creará otro cliente.`)) return;
+    await companion.bindConversation({ chatId: before.chatId, phone: number, name: before.name });
     // Binding itself may broadcast a new phone before its RPC returns. Verify
     // the peer and confirmed phone again, rather than treating that as a switch.
     const linked = await companion.getContext();
     if (linked?.chatId !== before.chatId || linked.name !== before.name || linked.isGroup || linked.ambiguous || contactPhone(linked.phone) !== number)
       throw Error("El chat cambió. Revisa la nueva conversación.");
     updateContext(linked);
+    linkingContact = false;
     render();
     setStatus("Contacto vinculado.");
+  }
+  async function unbindPhone() {
+    const expectedVersion = contextVersion, expected = currentContext;
+    const before = await companion.getContext();
+    if (expectedVersion !== contextVersion || !before?.chatId || before.chatId !== expected?.chatId || before.name !== expected?.name || before.phone !== expected?.phone || before.phoneSource !== "manual" || before.isGroup || before.ambiguous)
+      throw Error("El chat cambió. Revisa el contacto antes de desvincularlo.");
+    if (!confirm("¿Desvincular este chat? La ficha, sus servicios y su historial seguirán guardados en el CRM.")) return;
+    await companion.unbindConversation({ chatId: before.chatId, name: before.name });
+    const after = await companion.getContext();
+    if (after?.chatId !== before.chatId || after.name !== before.name || after.isGroup || after.ambiguous)
+      throw Error("El chat cambió. Revisa la nueva conversación.");
+    updateContext(after);
+    linkingContact = false;
+    render();
+    setStatus("Chat desvinculado. La ficha sigue guardada en el CRM.");
   }
   function renderClients() {
     if (openedGroupKey) {
@@ -828,7 +869,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     contextVersion++;
     autoCapture = false;
     selectedServiceId = "";
-    linkPhone = "";
+    linkingContact = false;
     linkSearch = "";
     composeClientId = "";
     if (tab === "chat") setStatus("");

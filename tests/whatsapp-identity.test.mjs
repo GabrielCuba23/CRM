@@ -90,11 +90,11 @@ function fixture({ name = "Ana", peer = "ana@lid", number = "", group = false, o
 test("A stale manually entered number cannot select another customer's records in an unidentified chat", () => {
   const { adapter } = fixture({ name: "Bea", peer: "" });
   const current = adapter.context();
-  assert.equal(current.chatId, "");
+  assert.match(current.chatId, /^session:/);
   assert.equal(current.phone, "");
   const staleInput = { ...current, phone: "51912345678" };
   assert.deepEqual(matchContact(clients, staleInput).matches, []);
-  assert.equal(matchContact(clients, staleInput).reason, "unidentified-chat");
+  assert.equal(matchContact(clients, staleInput).reason, "unverified-phone");
   assert.throws(() => adapter.bind({ phone: "51912345678", chatId: "" }), /cambió|segura/);
 });
 
@@ -232,7 +232,7 @@ test("Continuous DOM mutations cannot postpone the clearing broadcast, and quiet
 
 test("Revealing the matching native contact drawer identifies a named chat with no message IDs and all its services", () => {
   const { state, adapter } = fixture({ peer: "" });
-  assert.equal(adapter.context().chatId, "");
+  assert.match(adapter.context().chatId, /^session:/);
   state.drawers = [{ name: "Ana", phones: ["+51 912 345 678"] }];
   const revealed = adapter.context();
   assert.equal(revealed.chatId, "phone:51912345678");
@@ -415,4 +415,53 @@ test("A selected native row can retain a verified no-peer phone but navigation i
   assert.equal(adapter.context().phone, "");
   state.selected = {};
   assert.equal(adapter.context().phone, "");
+});
+
+
+test("An explicit no-peer session link identifies the current native generation without creating a guessed identity", () => {
+  const { state, adapter, navigate } = fixture({ name: "Ana", peer: "" });
+  const unlinked = adapter.context();
+  assert.match(unlinked.chatId, /^session:/);
+  assert.equal(unlinked.phone, "");
+  assert.equal(matchContact(clients, unlinked).matches.length, 0);
+  const linked = adapter.bind({ chatId: unlinked.chatId, phone: "51912345678" });
+  assert.equal(linked.phoneSource, "manual");
+  assert.deepEqual(matchContact(clients, linked).matches.map(client => client.id), ["ana-prime", "ana-netflix"]);
+  assert.equal(adapter.context().phone, "51912345678");
+  navigate();
+  const sameAliasOtherChat = adapter.context();
+  assert.notEqual(sameAliasOtherChat.chatId, unlinked.chatId);
+  assert.equal(sameAliasOtherChat.phone, "");
+  assert.throws(() => adapter.bind({ chatId: unlinked.chatId, phone: "51912345678" }), /cambió/);
+  state.name = "Bea";
+  assert.notEqual(adapter.context().chatId, sameAliasOtherChat.chatId);
+  assert.equal(adapter.context().phone, "");
+});
+
+test("Unlink and CRM scope changes forget manual links while leaving visible identity authoritative", () => {
+  const { state, adapter } = fixture();
+  adapter.setScope("https://crm.example");
+  adapter.bind({ chatId: "wa:ana@lid", phone: "51912345678" });
+  assert.equal(adapter.unbind({ chatId: "wa:ana@lid" }).phone, "");
+  adapter.bind({ chatId: "wa:ana@lid", phone: "51912345678" });
+  adapter.setScope("https://other-crm.example");
+  assert.equal(adapter.context().phone, "");
+  state.number = "+51 912 345 678";
+  assert.equal(adapter.context().phoneSource, "visible");
+  assert.equal(adapter.unbind({ chatId: "wa:ana@lid" }).phone, "51912345678");
+  assert.throws(() => adapter.unbind({ chatId: "wa:wrong@lid" }), /cambió/);
+});
+
+
+test("A link confirmation for an old name cannot mutate the same peer after a rename", () => {
+  const { state, adapter, advance } = fixture();
+  adapter.context();
+  state.name = "Bea";
+  adapter.context();
+  advance(251);
+  assert.throws(() => adapter.bind({ chatId: "wa:ana@lid", phone: "51912345678", name: "Ana" }), /cambió/);
+  assert.equal(adapter.context().phone, "");
+  adapter.bind({ chatId: "wa:ana@lid", phone: "51987654321", name: "Bea" });
+  assert.throws(() => adapter.unbind({ chatId: "wa:ana@lid", name: "Ana" }), /cambió/);
+  assert.equal(adapter.context().phone, "51987654321");
 });

@@ -37,7 +37,7 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.2.1. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.2.2. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
@@ -48,14 +48,18 @@ La versión 1.2.1 reconoce también el panel nativo «Info. del contacto» cuand
 WhatsApp muestra su nombre y teléfono como texto normal. Conserva la ficha
 al cerrar ese panel si el chat tiene una identidad estable comprobada.
 
+La versión 1.2.2 añade **Vincular contacto existente** en **Chat actual**. Busca
+por nombre o número, revisa la ficha y confirma que corresponde al chat abierto.
+Se muestran los servicios y registros que ya existen: vincular no crea clientes,
+no cambia sus teléfonos ni fusiona fichas. Puedes cambiar o quitar el vínculo
+sin borrar al cliente.
+
 La interfaz abre la ficha del chat cuyo teléfono está identificado, agrupa
 sus servicios y limpia la ficha al cambiar a otra conversación. Un número escrito
-sin confirmar no selecciona clientes. Si WhatsApp oculta el teléfono, busca una
-ficha o introduce el número y confirma la vinculación; los nombres no bastan para
-identificar un contacto. Si tampoco hay una identidad estable del chat, abre la
-información del contacto para mostrar su número antes de vincular.
-Si esa información ya estaba abierta antes de reconocer el chat, ciérrala y
-vuelve a abrirla. Un panel antiguo no acredita la identidad de otra conversación.
+sin confirmar no selecciona clientes. Si WhatsApp oculta el teléfono, usa
+**Vincular contacto existente**. Los nombres sirven para buscar y nunca asignan
+una ficha automáticamente. Si WhatsApp todavía está cambiando de conversación,
+espera a que termine antes de confirmar el vínculo.
 
 Desde la ficha puedes editar los datos del contacto, añadir un servicio, renovar,
 editar o archivar cada servicio y preparar mensajes. Los perfiles libres y
@@ -78,9 +82,12 @@ ediciones activas; **Actualizar** permite pedirlos manualmente.
 ## Conversaciones, destinatarios y mensajes
 
 El panel permite vincular el chat individual actual con un cliente. Cuando
-WhatsApp muestra un nombre y oculta el número, confirma el teléfono al vincular;
-el nombre por sí solo no identifica a un cliente. La vinculación manual es
-efímera y se invalida cuando cambia la identidad del chat.
+WhatsApp muestra un nombre y oculta el número, elige y confirma una ficha existente;
+el nombre por sí solo no identifica a un cliente. Si WhatsApp expone un
+identificador estable de conversación, la extensión recuerda el vínculo para ese
+CRM en este navegador. Si solo puede reconocer la conversación abierta, el
+vínculo dura mientras permanezcas en ella y requiere confirmarlo de nuevo al
+cambiar de chat o recargar. Un teléfono visible contradictorio impide reutilizarlo.
 Si tienes varias pestañas de WhatsApp, cada panel usa la conversación de su propia
 pestaña. Ocultar el panel detiene el registro periódico de textos; al volver a
 mostrarlo debes activarlo otra vez si lo necesitas.
@@ -100,8 +107,10 @@ La ficha elegida y el chat abierto deben corresponder a la misma persona antes
 de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destinatario.
 
 Los registros se guardan en el CRM mediante su API privada. El almacenamiento
-local de Chrome contiene únicamente la URL de configuración; la sesión del
-service worker conserva identificadores de pestañas. Los datos del CRM solo
+local de Chrome contiene la URL de configuración y los vínculos confirmados de
+conversaciones estables, separados por CRM; la sesión del service worker conserva
+identificadores de pestañas. No se guardan contraseñas ni conversaciones en esos
+vínculos. Los datos del CRM solo
 permanecen en memoria mientras su interfaz está abierta, salvo una exportación
 de respaldo que solicites expresamente.
 

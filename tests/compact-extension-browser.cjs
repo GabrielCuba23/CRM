@@ -180,7 +180,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       { ...state.clients[0], id: "maria-disney", service: "Disney+", profile: "Infantil", email: "disney@example.test", accountId: "", expires: "2031-12-01", price: 0, pricePending: true },
       { ...state.clients[0], id: "jose-demo", name: "José · ejemplo", phone: "51988888888", service: "Max", profile: "Perfil 1", email: "jose@example.test", accountId: "", expires: "2031-12-01", price: 1800 },
     );
-    if (process.env.NATIVE_CONTACT_ONLY === '1') {
+    if (process.env.NATIVE_CONTACT_ONLY === '1' || process.env.MANUAL_LINK_ONLY === '1') {
       const { emptyGrowth } = await import(path.join(root, 'growth.mjs'));
       state.clients[0].serviceHistory = [{ id: 'history-native', service: 'Max anterior', accountId: '', profile: 'Perfil anterior', expires: '2026-09-01', price: 1000, endedAt: '2026-09-01T12:00:00.000Z' }];
       state.ledger = [{ id: 'payment-native', kind: 'sale', date: '2026-10-01', description: 'Pago histórico de ejemplo', clientId: 'maria-demo', service: 'Netflix', amount: 2500 }];
@@ -402,6 +402,127 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await service("maria-disney").waitFor({ state: "visible" });
     assert.equal(await service("jose-demo").count(), 0, "El chat actual solo debe mostrar las fichas de ese teléfono.");
     assert.match(await embedded.locator('#compact-chat-phone').innerText(), /51.*999/);
+
+    if (process.env.MANUAL_LINK_ONLY === '1') {
+      // Regression for the reported contact whose ficha exists in Clientes but
+      // whose open native chat exposes neither a readable phone nor peer ID.
+      // Linking selects existing services; it must never write another ficha.
+      const beforeWorkspace = structuredClone(state);
+      const beforeWrites = writes;
+      let activeEmbedded = embedded, activeFrame = appFrame;
+      const linkedService = id => activeEmbedded.locator(`.compact-service[data-client-id="${id}"]`);
+      const manualContext = () => activeFrame.evaluate(() => globalThis.NexoCompanion.getContext());
+      async function manualChat({ name, peer = '', selected = 0 }) {
+        await whatsapp.evaluate(({ name, peer, selected }) => {
+          const list = document.querySelector('.contacts'); list.id = 'pane-side';
+          const rows = [...list.querySelectorAll('.contact')];
+          for (const [index, row] of rows.entries()) {
+            row.setAttribute('aria-selected', String(index === selected));
+            row.classList.toggle('selected', index === selected);
+          }
+          const title = document.querySelector('#main header span[title]');
+          title.title = name; title.textContent = name;
+          for (const [index, item] of [...document.querySelectorAll('#main .history > div')].filter(node => node.querySelector('.message-in,.message-out')).entries()) {
+            if (peer) item.dataset.id = `false_${peer}_${index}`;
+            else item.removeAttribute('data-id');
+          }
+        }, { name, peer, selected });
+        await until(async () => {
+          const value = await manualContext();
+          return value.name === name && !value.ambiguous && (peer ? value.chatId === `wa:${peer}` : value.chatId.startsWith('session:'));
+        }, 'El chat individual debe tener un ancla temporal para confirmar el vínculo aunque WhatsApp oculte su teléfono.');
+        // Let the actual context broadcast/poll reach the embedded UI before
+        // clicking a control rendered for the preceding conversation.
+        await activeFrame.waitForTimeout(1400);
+      }
+      async function openSearch(query) {
+        await activeEmbedded.locator('#compact-open-link').click();
+        await activeEmbedded.locator('#compact-link-search').fill(query);
+      }
+      async function chooseMaria(query = 'María') {
+        await openSearch(query);
+        assert.equal(await activeEmbedded.locator('#compact-link-results button[data-client-id="maria-demo"]').count(), 1, 'La búsqueda reúne las fichas del mismo teléfono en un solo contacto.');
+        assert.equal(await activeEmbedded.locator('#compact-link-results button[data-client-id="maria-disney"]').count(), 0);
+        if (query.startsWith('+51')) {
+          fs.mkdirSync('/workspace/work/deliverables', { recursive: true });
+          await whatsapp.screenshot({ path: '/workspace/work/deliverables/manual-link-search-example.png', fullPage: true });
+        }
+        await activeEmbedded.locator('#compact-link-results button[data-client-id="maria-demo"]').click();
+        await linkedService('maria-demo').waitFor({ state: 'visible' });
+        await linkedService('maria-disney').waitFor({ state: 'visible' });
+        if (query.startsWith('+51')) await whatsapp.screenshot({ path: '/workspace/work/deliverables/manual-link-connected-example.png', fullPage: true });
+      }
+      async function unlink() {
+        await activeEmbedded.getByText('Chat vinculado', { exact: true }).click();
+        await activeEmbedded.locator('#compact-unbind').click();
+        await until(async () => !(await manualContext()).phone && await linkedService('maria-demo').count() === 0, 'Desvincular debe retirar la ficha del chat sin borrarla del CRM.');
+      }
+      const alias = 'Anto · contacto sintético';
+      await manualChat({ name: alias });
+      await until(async () => await linkedService('maria-demo').count() === 0, 'No se debe adivinar un cliente por su alias.');
+      const originalSession = (await manualContext()).chatId;
+      assert.equal((await manualContext()).phone, '');
+      await chooseMaria('+51 999 999 999');
+      assert.equal((await manualContext()).phone, '51999999999');
+      assert.equal((await manualContext()).phoneSource, 'manual');
+      assert.match(await activeEmbedded.locator('#compact-chat-name').innerText(), /María/);
+      await activeEmbedded.getByText('Información e historial', { exact: true }).click();
+      await activeEmbedded.getByText('Max anterior', { exact: true }).waitFor({ state: 'visible' });
+      await activeEmbedded.locator('#compact-content').getByText('01/10/2026', { exact: true }).waitFor({ state: 'visible' });
+      await activeEmbedded.getByText('Conversación guardada', { exact: true }).click();
+      await activeEmbedded.locator('.compact-conversation-entry').filter({ hasText: 'Registro histórico de prueba conservado' }).waitFor({ state: 'visible' });
+      assert.deepEqual(state, beforeWorkspace, 'Un vínculo no crea fichas ni modifica pagos, servicios o conversaciones.');
+      assert.equal(writes, beforeWrites);
+
+      // A different native selected row with the identical alias is another
+      // chat. A previous explicit session confirmation cannot follow its name.
+      await manualChat({ name: alias, selected: 1 });
+      await until(async () => !(await manualContext()).phone && await linkedService('maria-demo').count() === 0, 'Otro chat con el mismo alias no puede heredar el vínculo temporal.');
+      assert.notEqual((await manualContext()).chatId, originalSession);
+      const stale = await activeFrame.evaluate(async chatId => {
+        try { await globalThis.NexoCompanion.bindConversation({ chatId, name: 'Anto · contacto sintético', phone: '51999999999' }); return 'unexpected'; }
+        catch (error) { return error.message; }
+      }, originalSession);
+      assert.match(stale, /cambió|segura|revisa/i, 'Una selección guardada antes de navegar debe rechazarse.');
+      assert.equal((await manualContext()).phone, '');
+      await chooseMaria('María');
+      await unlink();
+      assert.deepEqual(state, beforeWorkspace);
+      assert.equal(writes, beforeWrites);
+
+      // A proven opaque peer can be recognized after page reload. Persistence
+      // is exact-peer plus configured CRM, never an alias-only association.
+      await manualChat({ name: alias, peer: 'persistent-manual@lid' });
+      await chooseMaria('999999999');
+      assert.equal((await manualContext()).phoneSource, 'manual');
+      await whatsapp.reload();
+      await whatsapp.evaluate(({ name }) => {
+        const title = document.querySelector('#main header span[title]'); title.title = name; title.textContent = name;
+        for (const [index, item] of [...document.querySelectorAll('#main .history > [data-id]')].entries()) item.dataset.id = `false_persistent-manual@lid_${index}`;
+      }, { name: alias });
+      await whatsapp.evaluate(fs.readFileSync(path.join(unpacked, 'whatsapp.js'), 'utf8'));
+      await whatsapp.evaluate(fs.readFileSync(path.join(unpacked, 'dock.js'), 'utf8'));
+      const reloadedElement = whatsapp.locator('#nexo-whatsapp-dock').locator('iframe#nexo-crm-frame');
+      await reloadedElement.waitFor({ state: 'visible' });
+      activeEmbedded = await reloadedElement.contentFrame();
+      activeFrame = await (await reloadedElement.elementHandle()).contentFrame();
+      await activeEmbedded.locator('#companion-workspace').waitFor({ state: 'visible', timeout: 20000 });
+      await linkedService('maria-demo').waitFor({ state: 'visible' });
+      await linkedService('maria-disney').waitFor({ state: 'visible' });
+      assert.equal((await manualContext()).phoneSource, 'manual');
+      await unlink();
+      await manualChat({ name: 'Otro chat de ejemplo', peer: 'other-manual@lid', selected: 1 });
+      await manualChat({ name: alias, peer: 'persistent-manual@lid', selected: 0 });
+      assert.equal((await manualContext()).phone, '', 'Un vínculo eliminado no puede restaurarse al volver a su peer.');
+      assert.equal(await linkedService('maria-demo').count(), 0);
+      assert.deepEqual(state, beforeWorkspace);
+      assert.equal(writes, beforeWrites);
+      assert.equal(pages.size, 2, 'Todo el vínculo se realiza dentro de WhatsApp, sin pestañas de trabajo adicionales.');
+      assert.deepEqual(errors, []);
+      console.log('Manual existing-contact link: unrecognized native chat, name/spaced-phone search, grouped services and prior history restored without CRM writes, same-alias navigation/stale selection rejected, exact-peer reload restored, unlink leaves CRM intact.');
+      console.log('This exercises the packaged extension in a synthetic native-chat fixture, not the owner\'s Chrome session.');
+      return;
+    }
 
     if (process.env.NATIVE_CONTACT_ONLY === '1') {
       // The reported real pane exposes ordinary text, not the data-testid,
@@ -731,10 +852,12 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await switchChat({ name: "Valeria · ejemplo", peer: "valeria-fixture@lid" });
     await until(async () => (await service("maria-demo").count()) === 0, "Se conservó la ficha de María en otro chat.");
     assert.doesNotMatch(await embedded.locator('#compact-chat-phone').innerText(), /51999999999/);
-    await embedded.locator('#compact-link-phone').fill("51999999999");
-    assert.equal(await service("maria-demo").count(), 0, "Escribir un teléfono sin confirmar no debe seleccionar una ficha.");
+    await embedded.locator('#compact-open-link').click();
+    await embedded.locator('#compact-link-search').fill("María");
+    assert.equal(await service("maria-demo").count(), 0, "Buscar un cliente sin confirmar no debe seleccionar su ficha.");
     await switchChat({ name: "Nicol · ejemplo", peer: "nicol-fixture@lid" });
-    assert.equal(await embedded.locator('#compact-link-phone').inputValue(), "", "El número escrito sin vincular debe borrarse al cambiar de chat.");
+    await embedded.locator('#compact-open-link').click();
+    assert.equal(await embedded.locator('#compact-link-search').inputValue(), "", "La búsqueda sin vincular debe borrarse al cambiar de chat.");
     assert.equal(await service("maria-demo").count(), 0);
     await embedded.locator('#compact-link-search').fill("José");
     await embedded.locator('#compact-link-results button[data-client-id="jose-demo"]').click();
@@ -764,7 +887,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       drawer.innerHTML = '<h2 data-testid="contact-info-name" title="Otro contacto">Otro contacto</h2><p data-testid="contact-info-phone">+51 988 888 888</p>';
       document.body.append(drawer);
     });
-    await until(async () => !(await appFrame.evaluate(() => globalThis.NexoCompanion.getContext())).chatId, 'Sin teléfono visible ni mensajes cargados, el contacto no debe vincularse por nombre.');
+    await until(async () => !(await appFrame.evaluate(() => globalThis.NexoCompanion.getContext())).phone, 'Sin teléfono visible ni mensajes cargados, el contacto no debe vincularse por nombre.');
     assert.equal(await service('jose-demo').count(), 0);
     await whatsapp.locator('#fixture-contact-drawer').evaluate(node => {
       const replacement = node.cloneNode(true);

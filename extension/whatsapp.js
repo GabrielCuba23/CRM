@@ -3,6 +3,8 @@
   // Bindings are local to this WhatsApp document and the exact peer that was
   // confirmed. A draft telephone field in the CRM never changes this context.
   const manualBindings = new Map();
+  const sessionNonce = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36);
+  let bindingScope = "";
   const observedPhones = new Map();
   const observedDrawers = new WeakMap();
   const plainContactPanes = new Set();
@@ -193,7 +195,7 @@
     const isGroup = /@g\.us$|@newsletter$|@broadcast$/.test(peer) || !!header.querySelector('[data-icon="default-group"], [data-testid="default-group"]') || /\b(participantes|participants|members)\b/i.test(groupDescription);
     const revealed = !isGroup && peers.size <= 1 && candidates.size === 0 ? drawerPhone(name, knownHeader) : { phone: "", ambiguous: false };
     const number = candidates.size === 1 ? [...candidates][0] : revealed.phone;
-    return { name, phone: number, chatId: peer ? "wa:" + peer : number ? "phone:" + number : "", isGroup, phoneSource: number ? "visible" : "", ambiguous: peers.size > 1 || candidates.size > 1 || revealed.ambiguous };
+    return { name, phone: number, chatId: peer ? "wa:" + peer : number ? "phone:" + number : name && !isGroup ? "session:" + sessionNonce + ":" + nativeGeneration : "", isGroup, phoneSource: number ? "visible" : "", ambiguous: peers.size > 1 || candidates.size > 1 || revealed.ambiguous };
   }
   function identifiedContext() {
     const value = rawContext();
@@ -217,9 +219,9 @@
     const value = identifiedContext();
     if (selectedPhone && (selectedPhone.name !== value.name || selectedPhone.generation !== nativeGeneration || selectedPhone.selected !== nativeHeader?.selected)) selectedPhone = null;
     if (value.isGroup || value.ambiguous) return value;
-    if (!value.chatId) {
+    if (!value.chatId || value.chatId.startsWith("session:")) {
       if (selectedPhone && nativeHeader?.selected) return { ...value, phone: selectedPhone.phone, chatId: 'phone:' + selectedPhone.phone, phoneSource: 'visible' };
-      return value;
+      if (!value.chatId) return value;
     }
     if (value.phone && value.phoneSource === 'visible' && nativeHeader?.selected) selectedPhone = { name: value.name, phone: value.phone, generation: nativeGeneration, selected: nativeHeader.selected };
     const binding = manualBindings.get(value.chatId);
@@ -249,15 +251,27 @@
   function bind(input) {
     const value = identifiedContext();
     const number = phone(input?.phone);
-    if (!number || !value.chatId || value.chatId !== input?.chatId || value.isGroup || value.ambiguous) throw Error("La conversación cambió o no se puede vincular de forma segura.");
+    if (!number || !value.chatId || value.chatId !== input?.chatId || input?.name !== undefined && value.name !== input.name || value.isGroup || value.ambiguous) throw Error("La conversación cambió o no se puede vincular de forma segura.");
     if (value.phone && value.phone !== number) throw Error("El teléfono indicado no coincide con el teléfono visible de WhatsApp.");
-    // Only an opaque peer identity can be manually linked. Names alone are not unique.
-    if (!value.phone && !value.chatId.startsWith("wa:")) throw Error("Carga un mensaje del chat para identificar la conversación antes de vincularla.");
+    // A session anchor represents this exact native header generation, never a
+    // reusable alias. Only exact wa: peers are eligible for background persistence.
+    if (!value.phone && !/^(wa:|session:)/.test(value.chatId)) throw Error("Selecciona otra vez la conversación antes de vincularla.");
     manualBindings.delete(value.chatId);
     manualBindings.set(value.chatId, { phone: number, name: value.name });
     // This is a bounded, ephemeral cache, never an exported customer database.
     if (manualBindings.size > 100) manualBindings.delete(manualBindings.keys().next().value);
     return context();
+  }
+  function unbind(input) {
+    const value = identifiedContext();
+    if (!value.chatId || value.chatId !== input?.chatId || input?.name !== undefined && value.name !== input.name || value.isGroup || value.ambiguous)
+      throw Error("El chat cambió. Revisa el contacto antes de desvincularlo.");
+    manualBindings.delete(value.chatId);
+    return context();
+  }
+  function setScope(scope) {
+    if (typeof scope !== "string" || !/^https:\/\//.test(scope)) throw Error("El CRM conectado no es válido.");
+    if (scope !== bindingScope) { manualBindings.clear(); bindingScope = scope; }
   }
   function visible(node) {
     if (node.hidden || node.getAttribute?.("aria-hidden") === "true" || node.closest?.('[hidden], [aria-hidden="true"]')) return false;
@@ -333,7 +347,7 @@
     };
     return normalized(plain(composer)) === normalized(expected);
   }
-  globalThis.__nexoWhatsAppAdapter = { context, bind, capture, prepare, phone };
+  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone };
   const invalidateNativeNavigation = () => { navigationRevision++; openIntent = null; requestContextUpdate(); };
   document.addEventListener?.("pointerdown", event => {
     const target = event.target;
@@ -358,7 +372,8 @@
       sendResponse({ ok: false, error: "Origen de extensión no autorizado." }); return false;
     }
     try {
-      const actions = { context, capture, prepare, bind };
+      setScope(message.scope);
+      const actions = { context, capture, prepare, bind, unbind };
       if (!Object.hasOwn(actions, message.action)) throw Error("Operación no permitida.");
       sendResponse({ ok: true, result: actions[message.action](message.input) });
     } catch (error) { sendResponse({ ok: false, error: error.message }); }
