@@ -90,7 +90,7 @@
       // drawer appearance is needed after navigation, even for equal aliases.
       const fresh = (!previous && knownHeader) || reopened || (previous?.singlePhone && singlePhone && previous.singlePhone !== singlePhone);
       const authorized = Boolean(matching && knownHeader && (previous?.generation === nativeGeneration && previous.authorized || fresh));
-      observedDrawers.set(drawer, { generation: nativeGeneration, authorized, visible: true, numbers, singlePhone: singlePhone || previous?.singlePhone, openIntentRevision: authorized && currentIntent ? openIntent.revision : previous?.openIntentRevision });
+      observedDrawers.set(drawer, { generation: nativeGeneration, authorized, visible: true, numbers, singlePhone: authorized && singlePhone ? singlePhone : previous?.singlePhone || singlePhone, openIntentRevision: authorized && currentIntent ? openIntent.revision : previous?.openIntentRevision });
       if (authorized) for (const number of drawerNumbers) candidates.add(number);
     }
     return { phone: candidates.size === 1 ? [...candidates][0] : "", ambiguous: candidates.size > 1 };

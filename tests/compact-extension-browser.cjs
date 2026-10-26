@@ -355,7 +355,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       assert.equal(state.clients.length, 3);
       assert.equal(state.accounts.length, 1);
       assert.deepEqual(errors, []);
-      console.log('Compact initial-load failure:503is visible across all tabs without fakeemptyclient/account lists or create actions; Actualizar reads same revision and restores both clientservices in the same frame without writes or setup.');
+      console.log('Compact initial-load failure: 503 is visible across all tabs without false empty lists or create actions; Actualizar reads the same revision and restores both services in the same frame without writes or setup.');
       return;
     }
     await service("maria-demo").waitFor({ state: "visible" });
@@ -420,7 +420,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       assert.ok(state.growth.interactions.some(item => item.id === 'external-during-held-read'));
       assert.equal(state.growth.interactions.some(item => item.body.includes('Nuevo texto visible después')), false);
       assert.deepEqual(errors, []);
-      console.log('Compact sync/capture race: automatic reads skip busy capture, in-flight reads do not adopt revisions after capture starts, stale captures get409, external interactions retained, manual refresh and retry work.');
+      console.log('Compact sync/capture race: automatic reads skip busy capture, in-flight reads do not adopt revisions after capture starts, stale captures get 409, external interactions retained, manual refresh and retry work.');
       return;
     }
 

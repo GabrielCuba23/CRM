@@ -375,3 +375,15 @@ test("An ignored stale drawer cannot replace the new peer's previously confirmed
   assert.equal(adapter.context().phone, "51987654321");
   assert.equal(adapter.context().phoneSource, "manual");
 });
+
+test("An actual in-place drawer phone update remains fresh after its new conversation generation settles", () => {
+  const { state, adapter } = fixture({ name: "Same name", peer: "a@lid" });
+  adapter.context();
+  const drawer = { name: "Same name", phones: ["+51 912 345 678"] };
+  state.drawers = [drawer];
+  assert.equal(adapter.context().phone, "51912345678");
+  state.peer = "b@lid";
+  drawer.phones = ["+51 987 654 321"];
+  assert.equal(adapter.context().phone, "");
+  assert.equal(adapter.context().phone, "51987654321");
+});
