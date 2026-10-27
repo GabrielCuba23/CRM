@@ -783,12 +783,15 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     (name.value ? expires : name).focus();
   }
   function openRenewForm(client) {
-    const { dialog, body } = modal("renew", `Renovar ${client.service || "servicio"}`, "Confirmar renovación", async form => {
+    const service = client.service || "Servicio";
+    const { dialog, body } = modal("renew", `Renovar ${service}`, `Renovar ${service}`, async form => {
       const values = formData(form);
       await commit("renewClient", { id: client.id, expires: values.expires, amount: values.amount.trim() ? cents(values.amount) : null, paid: values.paid === "on" });
-      setStatus("Servicio renovado.");
+      setStatus(`${service} renovado hasta el ${formatDate(values.expires)}.`);
     });
     body.append(node("p", client.name, "compact-muted"));
+    body.append(infoRow("Perfil", client.profile || "Sin asignar"), infoRow("Vencimiento actual", formatDate(client.expires)),
+      node("p", "Solo se renovará este servicio. Los demás conservarán sus fechas.", "compact-muted"));
     const base = client.expires && client.expires > todayLima() ? client.expires : todayLima();
     const next = new Date(base + "T00:00:00Z");
     next.setUTCDate(next.getUTCDate() + 30);

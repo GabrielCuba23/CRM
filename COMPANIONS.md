@@ -22,7 +22,7 @@ a la extensión ni a los archivos públicos.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión integrada 1.2.2](https://drive.google.com/file/d/1VBYpdR9224fVmHqNf8qXOMmYDWySVSw2/view)
+1. Descarga la [extensión integrada 1.2.3](https://drive.google.com/file/d/1CErc70IhBvYPtCpAwtTUnMoAbxdwu8SN/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -73,7 +73,10 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
   copia y se indica que debes pegarlo manualmente; el borrador existente se conserva.
 - **Renovar** propone una nueva fecha según la regla existente de 30 días desde
   el vencimiento vigente o desde hoy. Puedes corregirla antes de confirmar el pago
-  y la renovación. La suscripción del proveedor externo no se modifica automáticamente.
+  y la renovación. La confirmación identifica el producto, perfil y fecha actual;
+  renovar una ficha conserva las fechas y cobros de los demás productos y perfiles,
+  así como el vencimiento de la cuenta madre. La suscripción del proveedor externo
+  no se modifica automáticamente.
 - **Abrir CRM** abre la web para finanzas, proveedores, reportes, automatización
   y otras tareas extensas. Ambas interfaces usan la misma base y sus revisiones.
 

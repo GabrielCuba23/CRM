@@ -51,7 +51,8 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
   const fixtureExtension = "https://extension.test/";
   const pages = new Map(), backgroundListeners = [], tabUpdatedListeners = [], errors = [];
   const local = { crmOrigin: "https://crm.test" }, session = {};
-  let whatsapp, nextTabId = 1, writes = 0, embeddedMessages = 0, sessionExpired = false, rejectNextWrite = false;
+  let whatsapp, nextTabId = 1, writes = 0, writeAttempts = 0, embeddedMessages = 0, sessionExpired = false, rejectNextWrite = false;
+  const submittedWorkspaces = [];
   let clipboardDocumentReady = false;
   let holdCapture = false, capturePending = false, releaseCapture;
   let workspaceReads = 0, holdWorkspaceRead = false, workspaceReadPending = false, releaseWorkspaceRead;
@@ -180,6 +181,13 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       { ...state.clients[0], id: "maria-disney", service: "Disney+", profile: "Infantil", email: "disney@example.test", accountId: "", expires: "2031-12-01", price: 0, pricePending: true },
       { ...state.clients[0], id: "jose-demo", name: "José · ejemplo", phone: "51988888888", service: "Max", profile: "Perfil 1", email: "jose@example.test", accountId: "", expires: "2031-12-01", price: 1800 },
     );
+    if (process.env.RENEWAL_ISOLATION_ONLY === '1') {
+      Object.assign(state.clients[0], { name: 'Ernesto · cliente sintético', service: 'MAX', profile: 'Ernesto', accountId: '', email: 'max@example.test', notes: 'Solo el perfil MAX principal.', expires: '2030-12-31', price: 0, pricePending: true });
+      Object.assign(state.clients[1], { name: 'Ernesto · cliente sintético', service: 'PARAMOUNT', profile: 'Ernesto', accountId: '', email: 'paramount@example.test', notes: 'Solo el perfil PARAMOUNT.', expires: '2030-12-20', price: 0, pricePending: true,
+        serviceHistory: [{ id: 'paramount-previous', service: 'PARAMOUNT anterior', accountId: '', profile: 'Perfil anterior', expires: '2026-09-01', price: 500, endedAt: '2026-09-01T12:00:00.000Z' }] });
+      state.clients.push({ ...state.clients[0], id: 'ernesto-second-max', service: 'MAX', profile: 'Ernesto segundo perfil', email: 'max-second@example.test', notes: 'Otra ficha independiente de la misma plataforma.', expires: '2031-09-15', price: 1250, pricePending: false, serviceHistory: [] });
+      state.ledger = [{ id: 'paramount-previous-payment', kind: 'sale', date: '2026-10-01', description: 'Pago anterior sintético', clientId: 'maria-disney', service: 'PARAMOUNT', amount: 500 }];
+    }
     if (process.env.NATIVE_CONTACT_ONLY === '1' || process.env.MANUAL_LINK_ONLY === '1') {
       const { emptyGrowth } = await import(path.join(root, 'growth.mjs'));
       state.clients[0].serviceHistory = [{ id: 'history-native', service: 'Max anterior', accountId: '', profile: 'Perfil anterior', expires: '2026-09-01', price: 1000, endedAt: '2026-09-01T12:00:00.000Z' }];
@@ -212,11 +220,13 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       }
       else if (url.pathname === "/api/workspace" && request.method() === "PUT") {
         assert.equal(request.headers()["x-csrf-token"], "csrf-de-prueba");
+        writeAttempts++;
+        const input = request.postDataJSON();
+        if (process.env.RENEWAL_ISOLATION_ONLY === '1') submittedWorkspaces.push(structuredClone(input));
         if (rejectNextWrite) {
           rejectNextWrite = false;
           return route.fulfill({ status: 503, json: { error: "Conexión de prueba interrumpida. Vuelve a intentar guardar." } });
         }
-        const input = request.postDataJSON();
         if (input.revision !== revision) return route.fulfill({ status: 409, json: { error: "Los datos cambiaron en otra sesión." } });
         state = input.state; writes++; json = { revision: ++revision };
       } else if (url.pathname === "/api/automation-status") json = { configured: false, reminders: [], worker: null };
@@ -402,6 +412,100 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await service("maria-disney").waitFor({ state: "visible" });
     assert.equal(await service("jose-demo").count(), 0, "El chat actual solo debe mostrar las fichas de ese teléfono.");
     assert.match(await embedded.locator('#compact-chat-phone').innerText(), /51.*999/);
+
+    if (process.env.RENEWAL_ISOLATION_ONLY === '1') {
+      const maxId = 'maria-demo', paramountId = 'maria-disney', otherMaxId = 'ernesto-second-max';
+      const renewDialog = embedded.locator('#compact-renew-dialog');
+      const renewForm = embedded.locator('#compact-renew-form');
+      const getClient = id => state.clients.find(item => item.id === id);
+      const displayDate = value => value.split('-').reverse().join('/');
+      const beforeAll = structuredClone(state);
+      async function beginRenew(id, expires, { amount = '', paid = false } = {}) {
+        const before = structuredClone(getClient(id));
+        await clickServiceAction(id, 'renew');
+        await renewDialog.waitFor({ state: 'visible' });
+        assert.match(await renewDialog.locator('h2').innerText(), new RegExp(before.service));
+        assert.match(await renewDialog.innerText(), /Ernesto/);
+        assert.equal(await renewDialog.getByText(before.profile, { exact: true }).count(), 1, 'El formulario debe identificar el perfil concreto antes de confirmar.');
+        assert.equal(await renewDialog.getByText(displayDate(before.expires), { exact: true }).count(), 1, 'El vencimiento anterior identifica qué fecha cambiará.');
+        assert.equal(await renewForm.locator('button[type="submit"]').innerText(), 'Renovar ' + before.service);
+        assert.match(await renewDialog.innerText(), /Solo se renovará este servicio/);
+        await renewForm.locator('[name="expires"]').fill(expires);
+        await renewForm.locator('[name="amount"]').fill(amount);
+        await renewForm.locator('[name="paid"]').setChecked(paid);
+      }
+      async function assertSingleRenew(id, expires, operation, { paid = false, amount = 0 } = {}) {
+        const before = structuredClone(state), savedWrites = writes;
+        await operation();
+        await until(() => writes === savedWrites + 1, 'La renovación debe confirmar exactamente una escritura del servicio seleccionado.');
+        await until(() => appFrame.evaluate(() => !document.querySelector('#compact-renew-dialog')?.open), 'La renovación confirmada debe cerrar su propio formulario.');
+        const expectedClients = before.clients.map(client => client.id === id ? { ...client, expires } : client);
+        assert.deepEqual(state.clients, expectedClients, 'Renovar un servicio debe conservar byte por byte los otros productos, incluso los del mismo teléfono y perfil.');
+        assert.equal(await embedded.locator('#companion-status').innerText(), `${getClient(id).service} renovado hasta el ${displayDate(expires)}.`, 'La confirmación identifica la plataforma y la fecha guardadas.');
+        for (const key of Object.keys(before).filter(key => !['clients', 'ledger'].includes(key))) assert.deepEqual(state[key], before[key], 'La renovación no debe alterar el módulo ' + key);
+        assert.deepEqual(state.ledger.slice(0, before.ledger.length), before.ledger, 'Los cobros anteriores deben conservarse exactamente.');
+        const newPayments = state.ledger.slice(before.ledger.length);
+        assert.equal(newPayments.length, paid ? 1 : 0);
+        if (paid) assert.deepEqual({ clientId: newPayments[0].clientId, service: newPayments[0].service, amount: newPayments[0].amount, kind: newPayments[0].kind }, { clientId: id, service: getClient(id).service, amount, kind: 'renewal' });
+        assert.equal(new Set(state.clients.map(client => client.id)).size, state.clients.length);
+        assert.equal(state.clients.length, beforeAll.clients.length);
+      }
+      // Opening, editing and cancelling another product must neither queue a
+      // renewal nor leave its old handler attached to the next product's form.
+      await beginRenew(paramountId, '2031-02-20', { amount: '5.00', paid: true });
+      await renewDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await until(() => appFrame.evaluate(() => document.querySelectorAll('#compact-renew-dialog').length === 0), 'Cancelar debe retirar el formulario anterior.');
+      assert.deepEqual(state, beforeAll);
+      assert.equal(writeAttempts, 0);
+      await beginRenew(maxId, '2031-01-30');
+      await assertSingleRenew(maxId, '2031-01-30', () => submit('#compact-renew-form', '#compact-renew-dialog'));
+      assert.equal(getClient(paramountId).expires, '2030-12-20');
+      assert.equal(getClient(otherMaxId).expires, '2031-09-15');
+
+      await beginRenew(paramountId, '2031-02-20', { amount: '5.00', paid: true });
+      await assertSingleRenew(paramountId, '2031-02-20', () => submit('#compact-renew-form', '#compact-renew-dialog'), { paid: true, amount: 500 });
+
+      // Exercise the actual context broadcast and automatic workspace poll while
+      // a MAX renewal is open. Its fixed product identity must not change.
+      await beginRenew(maxId, '2031-03-01', { amount: '11.00', paid: true });
+      await until(() => appFrame.evaluate(() => typeof window.__nexoWorkspacePoll === 'function'), 'La prueba necesita el sondeo real del CRM.');
+      await appFrame.evaluate(async () => { window.__nexoWorkspacePoll(); await globalThis.NexoCompanion.getContext(); });
+      const beforeFailure = structuredClone(state), beforeFailureWrites = writes;
+      rejectNextWrite = true;
+      await renewForm.locator('button[type="submit"]').click();
+      await until(async () => /interrumpida|no se guard/i.test(await embedded.locator('#compact-renew-error').innerText()), 'El fallo de conexión debe quedar en el mismo formulario de MAX.');
+      assert.equal(writes, beforeFailureWrites);
+      assert.deepEqual(state, beforeFailure);
+      assert.equal(await renewForm.locator('[name="expires"]').inputValue(), '2031-03-01');
+      assert.match(await renewDialog.locator('h2').innerText(), /MAX/);
+      await assertSingleRenew(maxId, '2031-03-01', () => submit('#compact-renew-form', '#compact-renew-dialog'), { paid: true, amount: 1100 });
+
+      // An external edit of PARAMOUNT while MAX is being renewed must survive
+      // the failed stale write and the later refresh/retry.
+      await beginRenew(maxId, '2031-04-01');
+      state = structuredClone(state);
+      state.clients.find(client => client.id === paramountId).notes = 'Cambio externo de PARAMOUNT que MAX debe conservar.';
+      revision++;
+      const externalWorkspace = structuredClone(state), beforeConflictWrites = writes;
+      await renewForm.locator('button[type="submit"]').click();
+      await until(async () => /cambiaron en otra sesión/i.test(await embedded.locator('#compact-renew-error').innerText()), 'Una revisión antigua no puede sobrescribir PARAMOUNT.');
+      assert.equal(writes, beforeConflictWrites);
+      assert.deepEqual(state, externalWorkspace);
+      await renewDialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await embedded.locator('#compact-refresh').click();
+      await beginRenew(maxId, '2031-04-01');
+      await assertSingleRenew(maxId, '2031-04-01', () => submit('#compact-renew-form', '#compact-renew-dialog'));
+      assert.equal(getClient(paramountId).expires, '2031-02-20');
+      assert.equal(getClient(paramountId).notes, 'Cambio externo de PARAMOUNT que MAX debe conservar.');
+      assert.equal(getClient(otherMaxId).expires, '2031-09-15');
+      assert.equal(writes, 4);
+      assert.equal(writeAttempts, 6, 'Cuatro renovaciones confirmadas más un fallo 503 y un rechazo 409, sin envíos ocultos.');
+      assert.equal(submittedWorkspaces.length, writeAttempts);
+      assert.deepEqual(errors, []);
+      console.log('Renewal isolation: cancelled/reopened PARAMOUNT, repeated MAX renewals, same-customer same-profile and second-MAX records, paid/unpaid ledger entries, context/poll while dialog open, 503 retry and 409 external-edit preservation all passed with exact non-target state equality.');
+      console.log('This exercises synthetic records through the packaged UI/background/CRM bridge, not the owner\'s browser or production database.');
+      return;
+    }
 
     if (process.env.MANUAL_LINK_ONLY === '1') {
       // Regression for the reported contact whose ficha exists in Clientes but

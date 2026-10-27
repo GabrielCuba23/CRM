@@ -37,7 +37,7 @@ La distribución en Chrome Web Store requiere su publicación por el propietario
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.2.2. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.2.3. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
@@ -53,6 +53,11 @@ por nombre o número, revisa la ficha y confirma que corresponde al chat abierto
 Se muestran los servicios y registros que ya existen: vincular no crea clientes,
 no cambia sus teléfonos ni fusiona fichas. Puedes cambiar o quitar el vínculo
 sin borrar al cliente.
+
+La versión 1.2.3 hace explícito el servicio renovado: muestra la plataforma,
+el perfil y el vencimiento actual antes de confirmar, y nombra el producto y
+la nueva fecha al terminar. Cada ficha mantiene su vencimiento y sus cobros
+independientes, aunque el cliente tenga varios productos o perfiles.
 
 La interfaz abre la ficha del chat cuyo teléfono está identificado, agrupa
 sus servicios y limpia la ficha al cambiar a otra conversación. Un número escrito

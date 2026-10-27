@@ -70,6 +70,55 @@ test("renewal updates only the chosen service, validates dates and adds a paymen
     assert.throws(() => run("renewClient", { id: "client", expires, paid: false }), /vencimiento/);
 });
 
+function multiProductRenewalFixture() {
+  const base = fixture();
+  base.state.accounts = [
+    { ...base.state.accounts[0], id: "max-account", service: "MAX", capacity: 2 },
+    { ...base.state.accounts[0], id: "paramount-account", service: "PARAMOUNT", email: "paramount@example.test", capacity: 1 },
+  ];
+  const shared = base.state.clients[0];
+  base.state.clients = [
+    { ...structuredClone(shared), id: "max-first", service: "MAX", accountId: "max-account", profile: "Perfil 1", expires: "2026-10-27", price: 1100 },
+    { ...structuredClone(shared), id: "paramount-first", service: "PARAMOUNT", accountId: "paramount-account", profile: "Perfil 1", expires: "2026-11-20", price: 700, serviceHistory: [{ id: "old-paramount", service: "PARAMOUNT", profile: "Perfil 3", accountId: "", endedAt: "2026-09-01T00:00:00Z", expires: "2026-09-01", price: 700 }] },
+    { ...structuredClone(shared), id: "max-second", service: "MAX", accountId: "max-account", profile: "Perfil 2", expires: "2026-11-04", price: 900, notes: "Segundo perfil del mismo producto y cliente" },
+  ];
+  base.state.ledger = base.state.clients.map(client => ({ id: "payment-" + client.id, kind: "sale", date: "2026-09-01", description: "Pago anterior", clientId: client.id, service: client.service, amount: client.price }));
+  return base;
+}
+
+test("renewing MAX leaves the same customer's Paramount and second MAX profile entirely unchanged", () => {
+  const { state, run } = multiProductRenewalFixture();
+  const before = structuredClone(state);
+  const next = run("renewClient", { id: "max-first", expires: "2026-11-26", amount: 1200, paid: true });
+  assert.deepEqual(next.clients[0], { ...before.clients[0], expires: "2026-11-26" });
+  assert.deepEqual(next.clients.slice(1), before.clients.slice(1), "El teléfono, nombre o perfil compartidos no deben extender otros servicios.");
+  assert.deepEqual(next.accounts, before.accounts, "Renovar un perfil no renueva su cuenta madre ni otra cuenta.");
+  assert.deepEqual(next.ledger.slice(0, -1), before.ledger);
+  assert.equal(next.ledger.length, before.ledger.length + 1);
+  assert.deepEqual(next.ledger.at(-1), { id: "new-1", kind: "renewal", date: "2026-10-26", description: "Renovación · Persona de prueba", clientId: "max-first", service: "MAX", amount: 1200 });
+  assert.deepEqual(state, before, "La operación no debe alterar el estado que se usó como entrada.");
+  assert.throws(() => run("renewClient", { id: "max-first", expires: "2026-11-26", amount: 1200, paid: true }, next), /posterior/);
+  assert.equal(next.ledger.length, before.ledger.length + 1, "Reintentar la misma renovación no debe repetir un cobro.");
+  assert.deepEqual(next.clients.slice(1), before.clients.slice(1));
+});
+
+test("sequential renewals of separate products and profiles keep independent dates without phantom charges", () => {
+  const { state, run } = multiProductRenewalFixture();
+  const maxRenewed = run("renewClient", { id: "max-first", expires: "2026-11-26", amount: null, paid: false });
+  const paramountRenewed = run("renewClient", { id: "paramount-first", expires: "2026-12-20", amount: null, paid: false }, maxRenewed);
+  const secondProfileRenewed = run("renewClient", { id: "max-second", expires: "2026-12-04", amount: null, paid: false }, paramountRenewed);
+  assert.deepEqual(secondProfileRenewed.clients.map(({ id, expires }) => ({ id, expires })), [
+    { id: "max-first", expires: "2026-11-26" },
+    { id: "paramount-first", expires: "2026-12-20" },
+    { id: "max-second", expires: "2026-12-04" },
+  ]);
+  assert.deepEqual(paramountRenewed.clients[0], maxRenewed.clients[0]);
+  assert.deepEqual(paramountRenewed.clients[2], state.clients[2]);
+  assert.deepEqual(secondProfileRenewed.clients.slice(0, 2), paramountRenewed.clients.slice(0, 2));
+  assert.deepEqual(secondProfileRenewed.accounts, state.accounts);
+  assert.deepEqual(secondProfileRenewed.ledger, state.ledger);
+});
+
 test("unpaid renewal permits unknown amount without a phantom payment and paid renewal requires an amount", () => {
   const { state, run } = fixture();
   state.clients[0].price = 0;
