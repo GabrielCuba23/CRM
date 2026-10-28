@@ -48,3 +48,28 @@ queda en estado incierto, revisa los recursos antes de repetir una creación.
 Después de publicar, verifica en las URLs reales el acceso del propietario, el
 rechazo de otros correos, la persistencia y la separación de las instancias. La
 compilación y sus pruebas locales no sustituyen esta comprobación.
+
+## Contraseña del CRM principal
+
+`AUTH_MODE=password` activa el acceso propio del Worker. Requiere las tablas
+`auth_owner`, `auth_setup`, `auth_sessions` y `auth_attempts`, y un secreto
+`AUTH_PASSWORD_PEPPER` de al menos 32 caracteres aleatorios. Conserva ese secreto
+al actualizar: reemplazarlo impediría verificar las contraseñas existentes.
+Sin `AUTH_MODE=password`, las instancias mantienen la verificación de Access.
+
+El primer ingreso usa una invitación aleatoria de 32 bytes, cuyo SHA-256 se
+guarda en `auth_setup` con el correo propietario, caducidad y `used_at=NULL`.
+El enlace privado `/login#setup=...` permite que el propietario elija su contraseña;
+el token nunca se añade al repositorio ni a la extensión. La creación es atómica,
+de un solo uso y no permite reemplazar una cuenta existente. La implementación
+usa PBKDF2-SHA256 con 100.000 iteraciones, sal aleatoria y HMAC con el secreto del
+Worker. Una prueba del runtime de producción confirmó que el límite es 100.000;
+600.000 funciona localmente pero se rechaza en ese runtime de Cloudflare.
+
+Publica el Worker y verifica sus bindings y pruebas de bloqueo anónimo antes de
+retirar la pantalla de Access de ese CRM. La publicación principal conserva su
+aplicación y política de propietario originales y añade una política Bypass solo
+en esa aplicación: el Worker exige ahora su propia sesión. El panel de instancias
+y las copias no cambian con esta operación. Comprueba después la página de
+contraseña y que las API y los módulos privados sigan rechazando solicitudes sin
+sesión. Cambiar la contraseña revoca todas las sesiones.

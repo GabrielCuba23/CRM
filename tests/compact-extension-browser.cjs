@@ -1106,15 +1106,18 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await service('maria-demo').waitFor({ state: 'visible' });
     assert.equal(await embedded.locator('body.nexo-setup').count(), 0);
 
-    // A prefilled options field on a fresh install must actually save the CRM
-    // origin and revive the existing dock, without a verification-only tab.
+    // Other legacy CRM instances are configured explicitly under the advanced
+    // section; saving and connecting must revive the existing dock.
     delete local.crmOrigin;
     delete session.crmTabId;
     await appFrame.goto(fixtureExtension + 'app/index.html?embedded=1');
     await embedded.getByRole('heading', { name: 'Tu CRM dentro de WhatsApp', exact: true }).waitFor();
     const options = await context.newPage(); pages.set(options, nextTabId++);
     await options.goto(fixtureExtension + 'options.html');
+    await options.locator('#advanced > summary').click();
     await options.locator('#origin').fill('https://crm.test');
+    await options.locator('#configuration button[type="submit"]').click();
+    await options.locator('#connect').click();
     await options.locator('#workspace').click();
     await embedded.locator('#compact-tab-chat').waitFor({ state: 'visible', timeout: 20000 });
     assert.equal(local.crmOrigin, 'https://crm.test');

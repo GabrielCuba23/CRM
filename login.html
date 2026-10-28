@@ -11,11 +11,13 @@
     <main class="login-shell">
       <a class="brand" href="/login">◈ Nexo<span>CRM</span></a>
       <p class="eyebrow">TU NEGOCIO, EN PRIVADO</p>
-      <h1>Bienvenido de nuevo</h1>
-      <p class="muted">Accede a tus clientes, mensajes y suscripciones.</p>
-      <form id="login-form">
+      <h1 id="login-title">Iniciar sesión</h1>
+      <p id="login-description" class="muted">
+        Entra con tu correo y contraseña para gestionar tu negocio.
+      </p>
+      <form id="login-form" method="post" action="/api/login">
         <label
-          >Correo del administrador<input
+          >Correo<input
             name="email"
             type="email"
             required
@@ -29,12 +31,24 @@
             autocomplete="current-password"
             maxlength="1024"
         /></label>
+        <label id="login-confirmation" hidden
+          >Repite tu contraseña<input
+            name="confirmation"
+            type="password"
+            autocomplete="new-password"
+            maxlength="1024"
+            disabled
+        /></label>
         <p id="login-error" class="error" role="alert"></p>
-        <button type="submit">Iniciar sesión →</button>
+        <button id="login-submit" type="submit">Iniciar sesión →</button>
       </form>
+      <p id="login-status" class="muted" role="status" aria-live="polite"></p>
+      <p id="login-activation-note" class="login-activation-note" hidden>
+        Para crear tu contraseña necesitas el enlace privado de activación del
+        administrador. Una vez creada, podrás entrar con ella desde la web o WhatsApp.
+      </p>
       <p class="muted">
-        Solo la cuenta del administrador tiene acceso. La sesión caduca después
-        de 8 horas.
+        Tu sesión dura 8 horas. Solo la cuenta autorizada puede consultar tus datos.
       </p>
     </main>
   </body>

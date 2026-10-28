@@ -21,28 +21,30 @@ Descomprime el ZIP en una carpeta privada. En `chrome://extensions` activa
 carpeta. En una instalación local, conserva la carpeta para futuras aperturas.
 La distribución en Chrome Web Store requiere su publicación por el propietario.
 
-## Conectar el CRM
+## Entrar con correo y contraseña
 
-1. Abre las opciones de la extensión. Introduce el origen HTTPS real de tu CRM,
-   por ejemplo `https://nexo-crm.acxelcubaaraoz.workers.dev` una vez publicado.
-2. Pulsa **Conectar CRM** o **Abrir WhatsApp con Nexo**. Ambos botones guardan
-   la dirección y solicitan acceso exclusivamente a ese dominio.
-3. Completa el inicio de sesión con tu correo si se solicita. Se abre el CRM
-   normal; puedes conservarlo en segundo plano mientras trabajas en WhatsApp.
-4. El panel reconoce la sesión y se conecta automáticamente. La dirección
-   sugerida en las opciones se guarda al pulsar cualquiera de los botones de conexión.
-5. Recarga WhatsApp Web si ya estaba abierta al instalar. Nexo
-   aparece dentro de la página. Su botón o el icono de la extensión muestran y
-   ocultan las herramientas, sin abrir el CRM en otra pestaña.
+1. Crea tu contraseña una vez mediante el enlace privado de activación del CRM.
+   El enlace es personal, se utiliza una sola vez y caduca a las 24 horas.
+2. Abre o recarga WhatsApp Web. Nexo aparece junto a la conversación.
+3. Escribe tu correo y contraseña en **Iniciar sesión**, dentro del panel.
+   Usa las mismas credenciales que en la web del CRM.
+4. La extensión se comunica directamente con el servidor. Puedes cerrar la web
+   del CRM y continuar trabajando en WhatsApp.
+
+El CRM principal está configurado en la extensión. **Usar otro CRM** permite
+cambiar el dominio y autorizar esa instancia expresamente. Las instancias que
+todavía usan el acceso anterior conservan su conexión mediante una pestaña del
+CRM; este requisito no se aplica al CRM principal con contraseña.
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.2.3. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.3.0. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
-instalación de Nexo activa. El CRM normal puede permanecer en segundo plano;
-la dirección antigua `/companion` ahora abre ese CRM.
+instalación de Nexo activa. La versión 1.3.0 añade correo y contraseña dentro
+del panel y elimina la necesidad de conservar abierta la web del CRM principal.
+La dirección antigua `/companion` abre el CRM completo.
 
 La versión 1.2.1 reconoce también el panel nativo «Info. del contacto» cuando
 WhatsApp muestra su nombre y teléfono como texto normal. Conserva la ficha
@@ -77,9 +79,9 @@ registrar un cobro requiere una elección explícita. La extensión conserva la
 altura nativa de WhatsApp y los borradores existentes. Copiar mensajes usa un
 documento interno de la extensión para funcionar desde el panel integrado.
 
-No se introducen tokens administrativos de Cloudflare en la extensión. Se usa
-la misma sesión privada del propietario y el mismo control de revisiones del
-CRM. Dos operaciones concurrentes con datos antiguos se rechazan y requieren
+No se introducen tokens administrativos de Cloudflare en la extensión. Las dos
+interfaces usan las mismas credenciales y el mismo control de revisiones del
+CRM, con sesiones privadas independientes. Dos operaciones concurrentes con datos antiguos se rechazan y requieren
 actualizar; un perfil no se asigna silenciosamente dos veces. La vista consulta
 cambios del CRM cada 20 segundos cuando está visible y no hay formularios ni
 ediciones activas; **Actualizar** permite pedirlos manualmente.
@@ -113,16 +115,19 @@ de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destin
 
 Los registros se guardan en el CRM mediante su API privada. El almacenamiento
 local de Chrome contiene la URL de configuración y los vínculos confirmados de
-conversaciones estables, separados por CRM; la sesión del service worker conserva
-identificadores de pestañas. No se guardan contraseñas ni conversaciones en esos
-vínculos. Los datos del CRM solo
+conversaciones estables, separados por CRM. El almacenamiento de sesión confiable
+de la extensión conserva su credencial temporal y los identificadores de pestañas;
+la contraseña no se almacena. La sesión vence después de ocho horas y se cierra
+al cerrar sesión o al cambiar la contraseña; cerrar el navegador elimina la
+credencial temporal de la extensión. Los datos del CRM solo
 permanecen en memoria mientras su interfaz está abierta, salvo una exportación
 de respaldo que solicites expresamente.
 
 ## Pruebas
 
 ```sh
-node --test tests/extension.test.mjs tests/companion-workspace.test.mjs tests/whatsapp-identity.test.mjs
+node --test tests/extension.test.mjs tests/extension-password.test.mjs tests/native-auth.test.mjs tests/companion-workspace.test.mjs tests/whatsapp-identity.test.mjs
+NODE_PATH=/ruta/a/node_modules node tests/password-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/extension-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/compact-extension-browser.cjs
 ```
@@ -131,5 +136,6 @@ Las pruebas usan documentos controlados, sin acceder a cuentas de WhatsApp.
 La prueba de navegador ejecuta la interfaz empaquetada y el enrutador real de
 mensajes con límites de Chrome simulados. El Chromium administrado del entorno
 bloquea extensiones de terceros; esa política no se modifica ni se evita.
-La compatibilidad final con tu sesión real y el inicio de sesión de Access
-deben verificarse tras publicar el CRM e instalar la extensión.
+La prueba de contraseña ejecuta el Worker y D1 reales en Miniflare, con la web y
+la extensión empaquetada; solo los límites de Chrome y el chat son simulados.
+La compatibilidad final con tu sesión real debe comprobarse en tu Chrome.

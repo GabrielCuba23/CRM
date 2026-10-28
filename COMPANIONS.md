@@ -20,19 +20,24 @@ independiente y la política de acceso exclusiva de su correo. El secreto
 esa creación real; nunca se incorpora ese token a la APK,
 a la extensión ni a los archivos públicos.
 
+El 28 de octubre de 2026 el CRM principal pasó a correo y contraseña, con sesiones
+propias. La web muestra su formulario directamente y la extensión puede entrar
+desde WhatsApp sin una pestaña auxiliar del CRM. El propietario elige la contraseña
+mediante un enlace privado de activación de un solo uso. El panel de instancias y
+las copias existentes conservan su acceso anterior hasta migrarlas por separado.
+
 ## Instalar la extensión
 
-1. Descarga la [extensión integrada 1.2.3](https://drive.google.com/file/d/1CErc70IhBvYPtCpAwtTUnMoAbxdwu8SN/view)
+1. Descarga la [extensión integrada 1.3.0](https://drive.google.com/file/d/1urtxPhfjs5mWTL0yvKUdqGQ2QPYo5BRP/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
-3. En las opciones de Nexo, introduce la dirección HTTPS del CRM y autoriza
-   exclusivamente ese dominio. Pulsa **Conectar CRM** o **Abrir WhatsApp con Nexo**.
-4. Inicia sesión con el código enviado al correo propietario si se solicita.
-   El CRM normal puede permanecer abierto en segundo plano; el panel de WhatsApp
-   reconoce la conexión automáticamente. No hay una pantalla auxiliar de verificación.
-5. Abre o recarga WhatsApp Web. Nexo aparece integrado junto a la conversación.
-   Pulsa su botón o el icono de la extensión para mostrarlo u ocultarlo.
+3. Crea tu contraseña una vez mediante el enlace privado de activación recibido.
+   El CRM principal ya está configurado en la extensión.
+4. Abre o recarga WhatsApp Web e inicia sesión con tu correo y contraseña dentro
+   de Nexo. La web usa las mismas credenciales; puedes cerrarla mientras trabajas.
+5. Pulsa el botón Nexo o el icono de la extensión para mostrar u ocultar el panel.
+   **Usar otro CRM** permite configurar otra instancia cuando la necesites.
 
 Si ya instalaste una versión anterior, reemplaza los archivos en la misma carpeta,
 pulsa **Recargar** en la tarjeta de Nexo en `chrome://extensions` y recarga
@@ -40,7 +45,8 @@ WhatsApp Web. Así conservas la dirección del CRM configurada.
 Conserva una sola instalación de Nexo activa para que no compitan varios paneles.
 
 El ZIP sirve para instalación local. Esta entrega no es una publicación en
-Chrome Web Store. Una sesión de Access vencida requiere volver a identificarse.
+Chrome Web Store. La sesión con contraseña caduca a las ocho horas y requiere
+volver a escribir tus credenciales. Cambiar la contraseña revoca todas las sesiones.
 Si cambias de CRM en las opciones, recarga el panel: las solicitudes de un panel
 anterior se rechazan para evitar mezclar datos entre negocios. Cada panel
 integrado trabaja con el chat de su propia pestaña de WhatsApp. Al ocultarlo se
@@ -108,9 +114,9 @@ grande. Un error de almacenamiento detiene la captura; no se anuncia como guarda
    e instálala en Android 8 o posterior.
    Autoriza esa fuente de instalación cuando Android lo solicite.
 2. Abre Nexo e introduce la dirección HTTPS del CRM principal o de tu instancia.
-3. Cuando solicite autorización del equipo Access, comprueba su dominio exacto;
-   para esta publicación es `green-waterfall-3b33.cloudflareaccess.com`.
-4. Inicia sesión con el código por correo y comprueba clientes, cuentas, pagos,
+3. En el CRM principal entra con correo y contraseña. Las otras instancias que
+   siguen usando Access solicitan el código por correo y su equipo autorizado.
+4. Comprueba clientes, cuentas, pagos,
    renovaciones, importación, exportación y persistencia después de cerrar la app.
 
 La APK requiere Internet. Abre WhatsApp como aplicación externa para revisar y

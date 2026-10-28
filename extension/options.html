@@ -1,9 +1,38 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectar Nexo CRM</title><link rel="stylesheet" href="options.css"><script type="module" src="options.mjs"></script></head>
-<body><main><img src="app/app-icon-192.png" width="64" height="64" alt=""><h1>Tu CRM, dentro de WhatsApp Web</h1><p>Conecta tu CRM una vez. Si tu sesión caducó, ingresa con tu correo y código. Al terminar, Nexo se conecta dentro de WhatsApp Web para que sigas trabajando junto a la conversación.</p>
-<form id="configuration"><label>Dirección HTTPS del CRM<input id="origin" name="origin" type="url" required placeholder="https://tu-crm.workers.dev" autocomplete="url"></label><button type="submit">Conectar CRM y abrir WhatsApp</button></form>
-<p id="status" role="status" aria-live="polite"></p><div class="actions"><button id="connect" type="button">Conectar sesión</button><button id="check" type="button">Comprobar sesión</button><button id="workspace" type="button">Abrir WhatsApp con Nexo</button></div>
-<p class="note">La extensión guarda la dirección del CRM y los vínculos de chats que confirmes. Los clientes, cuentas y movimientos permanecen en su servidor. No necesitas introducir ningún token de Cloudflare aquí.</p>
-<p class="note">La lectura de mensajes se activa desde el panel para el chat que vincules. Solo se leen textos visibles cargados en WhatsApp Web. El envío final lo confirmas tú en WhatsApp.</p>
-<p class="note">Después del ingreso, la pestaña normal del CRM puede quedar en segundo plano para conservar la conexión. Tus herramientas de trabajo permanecen dentro de WhatsApp.</p>
-</main></body></html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Nexo CRM · Iniciar sesión</title>
+  <link rel="stylesheet" href="options.css">
+  <script type="module" src="options.mjs"></script>
+</head>
+<body>
+  <main>
+    <img src="app/app-icon-192.png" width="56" height="56" alt="">
+    <p class="eyebrow">NEXO CRM</p>
+    <h1>Inicia sesión</h1>
+    <p class="intro">Entra con el mismo correo y contraseña que usas en la web. Tus clientes y servicios estarán disponibles dentro de WhatsApp.</p>
+    <form id="login-form" method="post">
+      <label>Correo<input id="email" name="email" type="email" required maxlength="254" autocomplete="username" placeholder="tu@correo.com"></label>
+      <label>Contraseña<input id="password" name="password" type="password" required maxlength="1024" autocomplete="current-password"></label>
+      <button id="login-submit" type="submit">Iniciar sesión</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <div class="actions">
+      <button id="workspace" type="button">Abrir WhatsApp con Nexo</button>
+      <button id="connect" type="button" hidden>Acceder a este CRM</button>
+    </div>
+    <details id="advanced">
+      <summary>Usar otro CRM</summary>
+      <p class="note">Cambia esta dirección solo si trabajas con otra instancia de Nexo.</p>
+      <form id="configuration">
+        <label>Dirección HTTPS del CRM<input id="origin" name="origin" type="url" required placeholder="https://tu-crm.workers.dev" autocomplete="url"></label>
+        <button type="submit">Guardar dirección</button>
+      </form>
+      <button id="check" class="text-button" type="button">Comprobar sesión</button>
+    </details>
+    <p class="note">La contraseña se utiliza solo para iniciar sesión. Tus clientes, cuentas y movimientos permanecen en el CRM.</p>
+  </main>
+</body>
+</html>

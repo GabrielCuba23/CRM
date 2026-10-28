@@ -867,6 +867,14 @@ button,
 .login-shell button {
   width: 100%;
 }
+.login-shell .login-activation-note {
+  padding: 14px;
+  border-radius: 12px;
+  background: #f3f0ff;
+  color: #5b5378;
+  font-size: 14px;
+  line-height: 1.5;
+}
 .dark .mode-banner {
   background: #342e4c;
   border-color: #504576;

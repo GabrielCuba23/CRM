@@ -98,6 +98,11 @@ body.nexo-setup { background: #f0f2f5; color: #111b21; font-size: 14px; }
 .nexo-setup-actions :is(button, .button) { box-sizing: border-box; text-align: center; padding: 12px; font-size: 13px; white-space: normal; }
 .nexo-setup-status { font-size: 12px; color: #075e54; }
 .nexo-setup-note { margin-top: 24px; color: #667781; font-size: 12px; }
+.nexo-setup-card form { display:grid; gap:14px; margin-top:22px; }
+.nexo-setup-card form label { display:grid; gap:7px; font-size:13px; font-weight:600; }
+.nexo-setup-card form input { width:100%; box-sizing:border-box; padding:12px; border:1px solid #cad6da; border-radius:9px; background:#fff; color:#111b21; font:inherit; }
+.nexo-setup-card form button { width:100%; padding:12px; border:0; border-radius:9px; background:#008069; color:#fff; font:inherit; cursor:pointer; }
+.nexo-setup-card form :disabled { opacity:.65; cursor:wait; }
 body.nexo-embedded.dark { --accent: #00a884; --muted: #aebac1; color: #e9edef; background: #111b21; }
 .nexo-embedded.dark .crm-sidebar,
 .nexo-embedded.dark .companion-box { background: #202c33; color: #e9edef; border-color: #34434b; }

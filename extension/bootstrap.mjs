@@ -1,3 +1,5 @@
+import { DEFAULT_ORIGIN } from "./policy.mjs";
+
 async function rpc(type, input = {}) {
   const reply = await chrome.runtime.sendMessage({ channel: "nexo", type, ...input });
   if (!reply?.ok) throw Error(reply?.error || "La extensión no pudo completar la operación.");
@@ -24,11 +26,12 @@ if (embedded) workspaceUrl.searchParams.set("embedded", "1");
 const login = new URL(workspaceUrl);
 login.searchParams.set("setup", "1");
 const loginUrl = login.href;
-let configuredOrigin = "", configuredWaTabId;
+let configuredOrigin = "", configuredWaTabId, authenticationProvider = "", passwordConfigured = true;
 let embeddedVisible = !embedded;
 let phase = "booting", bootComplete = false, connectionCheckRunning = false;
 let connectionCheckPending = false, pendingReadyOrigin = "", connectionTimer;
 let recoveryStarted = false, lastConnectionProbe = 0, applicationStarted = false, manualConnectionCheck = false, verifyingOrigin = "";
+let nativeSubmitting = false;
 const recoveryKey = "nexo.connection-recovery";
 
 document.documentElement.classList.toggle("nexo-embedded", embedded);
@@ -69,7 +72,8 @@ globalThis.NexoCompanion = Object.freeze({
   async fetch(path, options = {}) {
     const result = await rpc("crm.request", { expectedOrigin: configuredOrigin, path, method: options.method || "GET", ...(options.body === undefined ? {} : { body: options.body }) });
     // Login and logout stay in a local setup card, including inside the dock.
-    // Authentication itself always opens in the CRM's separate trusted tab.
+    // Native authentication stays in this same dock. Legacy instances retain
+    // their explicit Access compatibility flow.
     if (path === "/api/logout" && result.status === 200)
       result.body = JSON.stringify({ ok: true, logoutUrl: loginUrl });
     return new Response(result.body, { status: result.status, headers: result.headers });
@@ -97,11 +101,15 @@ globalThis.NexoCompanion = Object.freeze({
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
   },
-  async openLogin() { return rpc("crm.connect", { expectedOrigin: configuredOrigin }); },
+  async openLogin() {
+    if (authenticationProvider === "password") { setupCard(); return; }
+    return rpc("crm.connect", { expectedOrigin: configuredOrigin });
+  },
   async openWebCRM() { return rpc("crm.open", { expectedOrigin: configuredOrigin }); },
 });
 
 function setupCard(message) {
+  if (authenticationProvider === "password") return nativeSetupCard(message);
   phase = "setup";
   embeddedVisible = false;
   announceVisibility();
@@ -172,6 +180,80 @@ function setupCard(message) {
   document.body.hidden = false;
 }
 
+function nativeSetupCard(message) {
+  const existing = document.querySelector("#nexo-login-form");
+  if (phase === "setup" && existing?.dataset.origin === configuredOrigin) {
+    if (message && !nativeSubmitting) setupStatus(message);
+    return;
+  }
+  phase = "setup";
+  embeddedVisible = false;
+  announceVisibility();
+  window.dispatchEvent(new Event("pagehide"));
+  document.body.replaceChildren();
+  document.body.classList.remove("nexo-compact");
+  document.body.classList.add("nexo-setup");
+  document.title = "Nexo · Iniciar sesión";
+  const main = document.createElement("main");
+  main.className = "nexo-setup-card";
+  const logo = document.createElement("img");
+  logo.src = chrome.runtime.getURL("app/app-icon-192.png");
+  logo.alt = ""; logo.width = 48; logo.height = 48;
+  const label = document.createElement("p");
+  label.className = "nexo-setup-label"; label.textContent = "NEXO CRM";
+  const title = document.createElement("h1"); title.textContent = "Inicia sesión";
+  const description = document.createElement("p");
+  description.textContent = message || "Entra con tu correo y contraseña para gestionar tus clientes aquí.";
+  const form = document.createElement("form");
+  form.id = "nexo-login-form";
+  form.method = "post";
+  form.dataset.origin = configuredOrigin;
+  function inputField(text, name, type, autocomplete, maximum) {
+    const wrapper = document.createElement("label");
+    wrapper.textContent = text;
+    const input = document.createElement("input");
+    Object.assign(input, { name, type, autocomplete, maxLength: maximum, required: true });
+    wrapper.append(input); form.append(wrapper); return input;
+  }
+  const email = inputField("Correo", "email", "email", "username", 254);
+  const password = inputField("Contraseña", "password", "password", "current-password", 1024);
+  const submit = document.createElement("button");
+  submit.type = "submit"; submit.id = "nexo-login-submit"; submit.textContent = "Iniciar sesión";
+  form.append(submit);
+  const status = document.createElement("p");
+  status.id = "status"; status.className = "nexo-setup-status"; status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
+  if (!passwordConfigured) status.textContent = "Crea primero tu contraseña desde el enlace privado de activación. Después podrás entrar aquí.";
+  const advanced = document.createElement("a");
+  advanced.href = optionsUrl; advanced.target = "_blank"; advanced.rel = "noopener noreferrer";
+  advanced.textContent = "Usar otro CRM"; advanced.className = "nexo-setup-note";
+  const note = document.createElement("p");
+  note.className = "nexo-setup-note"; note.textContent = "Usa las mismas credenciales que en la web.";
+  main.append(logo, label, title, description, form, status, advanced, note);
+  document.body.append(main); document.body.hidden = false;
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (nativeSubmitting) return;
+    const expectedOrigin = configuredOrigin, submittedEmail = email.value.trim();
+    let secret = password.value;
+    password.value = "";
+    nativeSubmitting = true; submit.disabled = true; email.disabled = true; password.disabled = true;
+    status.textContent = "Iniciando sesión…";
+    try {
+      await rpc("crm.login", { expectedOrigin, input: { email: submittedEmail, password: secret } });
+      const fresh = await rpc("configuration.get");
+      if (fresh.origin !== expectedOrigin) throw Error("Cambió el CRM. Vuelve a iniciar sesión.");
+      recoveryStarted = true;
+      location.replace(workspaceUrl.href);
+    } catch (error) {
+      status.textContent = error.message || "No se pudo iniciar sesión.";
+    } finally {
+      secret = ""; password.value = ""; nativeSubmitting = false;
+      if (submit.isConnected) { submit.disabled = false; email.disabled = false; password.disabled = false; }
+    }
+  });
+  email.focus({ preventScroll: true });
+}
+
 
 function trustedBackground(sender) {
   if (sender.id !== chrome.runtime.id || sender.tab) return false;
@@ -211,7 +293,7 @@ function rememberRecovery(origin, force = false) {
   return true;
 }
 async function refreshConnection() {
-  if (!bootComplete || recoveryStarted || connectionCheckRunning) return;
+  if (!bootComplete || recoveryStarted || connectionCheckRunning || nativeSubmitting) return;
   connectionCheckRunning = true;
   connectionCheckPending = false;
   const readyOrigin = pendingReadyOrigin;
@@ -236,8 +318,17 @@ async function refreshConnection() {
       if (!applicationStarted) {
         configuredOrigin = origin;
         configuredWaTabId = fresh.waTabId;
+      } else {
+        showConnectionNotice();
+        setupStatus("Cambió el CRM conectado. Recarga el panel antes de iniciar sesión.");
+        return;
       }
-      setupCard(origin ? "Dirección guardada. Completa el ingreso en la pestaña del CRM; este panel se conectará cuando la sesión esté lista." : undefined);
+      if (origin) {
+        const auth = await rpc("crm.authStatus", { expectedOrigin: origin });
+        authenticationProvider = auth.authProvider || "";
+        passwordConfigured = auth.configured !== false;
+      }
+      setupCard(authenticationProvider === "password" ? undefined : origin ? "Dirección guardada. Completa el ingreso en la pestaña del CRM; este panel se conectará cuando la sesión esté lista." : undefined);
     }
     if (!origin) {
       setupStatus("Guarda la dirección de tu CRM en Configurar CRM. No necesitas volver a introducirla aquí.");
@@ -249,7 +340,7 @@ async function refreshConnection() {
     const response = await rpc("crm.request", { expectedOrigin: origin, path: "/api/session", method: "GET" });
     const session = JSON.parse(response.body);
     if (response.status !== 200 || session.mode !== "server")
-      throw Error(session.error || "Completa el inicio de sesión en la pestaña del CRM. Este panel se conectará cuando esté listo.");
+      throw Error(authenticationProvider === "password" ? "Introduce tu correo y contraseña para entrar." : session.error || "Completa el inicio de sesión en la pestaña del CRM. Este panel se conectará cuando esté listo.");
     const current = await rpc("configuration.get");
     if (current.origin !== origin) {
       connectionCheckPending = true;
@@ -307,9 +398,16 @@ try {
   const configuration = await rpc("configuration.get");
   configuredOrigin = configuration.origin || "";
   configuredWaTabId = configuration.waTabId;
-  if (!configuredOrigin || parameters.get("setup") === "1") {
+  authenticationProvider = configuredOrigin === DEFAULT_ORIGIN ? "password" : "";
+  if (configuredOrigin) {
+    const auth = await rpc("crm.authStatus", { expectedOrigin: configuredOrigin });
+    authenticationProvider = auth.authProvider || "";
+    passwordConfigured = auth.configured !== false;
+  }
+  const nativeReady = authenticationProvider === "password" && (await rpc("crm.verify", { expectedOrigin: configuredOrigin })).ready;
+  if (!configuredOrigin || (authenticationProvider === "password" ? !nativeReady : parameters.get("setup") === "1")) {
     setupCard(configuredOrigin
-      ? "Inicia sesión en tu CRM para volver a consultar y guardar tus operaciones."
+      ? authenticationProvider === "password" ? "Entra con tu correo y contraseña para gestionar tus clientes aquí." : "Inicia sesión en tu CRM para volver a consultar y guardar tus operaciones."
       : undefined);
   } else {
     applicationStarted = true;

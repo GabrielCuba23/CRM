@@ -1,4 +1,4 @@
-import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN } from "./policy.mjs";
+import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN, DEFAULT_ORIGIN } from "./policy.mjs";
 
 const EXTENSION_ID = chrome.runtime.id;
 const storage = chrome.storage.session;
@@ -7,6 +7,9 @@ const connectionProbes = new Map();
 let creatingClipboardDocument = null;
 let clipboardQueue = Promise.resolve();
 chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
+chrome.storage.session.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
+const authModes = new Map();
+let authenticationEpoch = 0;
 
 function tabOrigin(tab) {
   try { return new URL(tab?.url || "").origin; } catch { return ""; }
@@ -51,11 +54,152 @@ function copyText(text) {
 }
 
 async function configuration() {
-  const { crmOrigin: value } = await chrome.storage.local.get("crmOrigin");
+  let { crmOrigin: value } = await chrome.storage.local.get("crmOrigin");
+  // The distributed main CRM has one exact, pre-granted host. Other CRM hosts
+  // still require the user's explicit grant in the advanced options.
+  if (!value && typeof DEFAULT_ORIGIN === "string" && await chrome.permissions.contains({ origins: [DEFAULT_ORIGIN + "/*"] })) {
+    value = DEFAULT_ORIGIN;
+    await chrome.storage.local.set({ crmOrigin: value });
+  }
   if (!value) throw Error("Conecta tu CRM desde Configuración de la extensión.");
   const origin = crmOrigin(value);
   if (!(await chrome.permissions.contains({ origins: [origin + "/*"] }))) throw Error("Autoriza el acceso al sitio de tu CRM desde Configuración.");
   return { origin };
+}
+
+const sessionKey = origin => "nativeSession:" + origin;
+let nativeSessionOperations = Promise.resolve();
+function withNativeSessions(action) {
+  const operation = nativeSessionOperations.then(action);
+  nativeSessionOperations = operation.catch(() => {});
+  return operation;
+}
+async function assertOrigin(expectedOrigin) {
+  const { origin } = await configuration();
+  if (crmOrigin(expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Recarga el panel antes de continuar.");
+  return origin;
+}
+async function forgetNativeSession(origin, expectedToken) {
+  return withNativeSessions(async () => {
+    const key = sessionKey(origin), values = await storage.get(key);
+    if (expectedToken && values[key]?.token !== expectedToken) return false;
+    await storage.remove(key);
+    return true;
+  });
+}
+async function nativeSession(origin) {
+  return withNativeSessions(async () => {
+    const key = sessionKey(origin), values = await storage.get(key), value = values[key];
+    if (value?.origin === origin && typeof value.token === "string" && /^[A-Za-z0-9_-]{32,256}$/.test(value.token) && Number.isFinite(value.expiresAt) && value.expiresAt > Date.now() / 1000)
+      return value;
+    if (value) await storage.remove(key);
+    return null;
+  });
+}
+async function boundedReply(response, limit = 1500000) {
+  const declared = Number(response.headers?.get("content-length"));
+  if (declared > limit) throw Error("La respuesta del CRM supera el tamaño permitido.");
+  const reader = response.body?.getReader();
+  if (!reader) {
+    if (response.body === null) return "";
+    throw Error("No se pudo leer la respuesta del CRM.");
+  }
+  const decoder = new TextDecoder();
+  let bytes = 0, text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > limit) { await reader.cancel(); throw Error("La respuesta del CRM supera el tamaño permitido."); }
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally { reader.releaseLock(); }
+}
+async function nativeHttp(origin, path, { method = "GET", body, token, limit } = {}) {
+  await assertOrigin(origin);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(origin + path, {
+      method, credentials: "omit", redirect: "error", cache: "no-store", signal: controller.signal,
+      headers: { "Accept": "application/json", "Content-Type": "application/json", "X-Nexo-Client": "extension", ...(token ? { "Authorization": "Bearer " + token } : {}) },
+      ...(body === undefined ? {} : { body }),
+    });
+    const text = await boundedReply(response, limit);
+    await assertOrigin(origin);
+    if (!response.headers.get("content-type")?.includes("application/json")) throw Error("El CRM no respondió con una sesión válida.");
+    return { status: response.status, body: text, headers: { "Content-Type": "application/json" } };
+  } catch (error) {
+    if (error?.message?.startsWith("Cambió el CRM") || error?.message?.includes("tamaño permitido")) throw error;
+    throw Error("No se pudo conectar con el CRM. Revisa tu conexión y vuelve a intentarlo.");
+  } finally { clearTimeout(timer); }
+}
+function replyData(reply) {
+  try { return JSON.parse(reply.body); } catch { throw Error("El CRM no respondió con datos válidos."); }
+}
+async function authStatus(origin, fresh = false) {
+  await assertOrigin(origin);
+  const previous = authModes.get(origin);
+  if (!fresh && previous && Date.now() - previous.checkedAt < 30000) return previous.value;
+  // Legacy instances may still be protected by Access and cannot answer this
+  // public endpoint. Keep that compatibility path separate from native sessions.
+  let value;
+  if (typeof fetch === "function") {
+    try {
+      const reply = await nativeHttp(origin, "/api/auth/status", { limit: 4096 });
+      const result = replyData(reply);
+      if (reply.status === 200 && result.authProvider === "password") value = { authProvider: "password", configured: result.configured === true };
+    } catch (error) { if (previous?.value.authProvider === "password") throw error; }
+  }
+  value ||= { authProvider: typeof DEFAULT_ORIGIN === "string" && origin === DEFAULT_ORIGIN ? "password" : "cloudflare-access", configured: true };
+  await assertOrigin(origin);
+  authModes.set(origin, { checkedAt: Date.now(), value });
+  return value;
+}
+async function nativeRequest(origin, request) {
+  if (request.path === "/api/logout" || request.path === "/api/password") authenticationEpoch++;
+  const session = await nativeSession(origin);
+  if (!session) return { status: 401, body: JSON.stringify({ error: "Inicia sesión con tu correo y contraseña." }), headers: { "Content-Type": "application/json" } };
+  const reply = await nativeHttp(origin, request.path, { ...request, token: session.token });
+  if (reply.status === 401 || ((request.path === "/api/logout" || request.path === "/api/password") && reply.status === 200)) {
+    if (await forgetNativeSession(origin, session.token)) await notifyConnection(origin, false, "session-ended");
+  }
+  return reply;
+}
+async function nativeVerify(origin) {
+  const reply = await nativeRequest(origin, { path: "/api/session", method: "GET" });
+  const data = replyData(reply);
+  const ready = reply.status === 200 && data.mode === "server" && data.authProvider === "password";
+  return { origin, ready, authProvider: "password" };
+}
+async function nativeLogin(origin, input) {
+  if (typeof input?.email !== "string" || input.email.length > 254 || typeof input?.password !== "string" || !input.password || input.password.length > 1024)
+    throw Error("Introduce tu correo y contraseña.");
+  const epoch = ++authenticationEpoch;
+  const status = await authStatus(origin, true);
+  if (status.authProvider !== "password") throw Error("Este CRM conserva el acceso anterior. Abre su sesión desde las opciones avanzadas.");
+  if (!status.configured) throw Error("Crea primero tu contraseña desde el enlace privado de activación.");
+  const reply = await nativeHttp(origin, "/api/login", { method: "POST", limit: 8192, body: JSON.stringify({ email: input.email.trim(), password: input.password, client: "extension" }) });
+  const data = replyData(reply);
+  if (reply.status !== 200) {
+    if (reply.status === 401) throw Error("Correo o contraseña incorrectos.");
+    if (reply.status === 429) throw Error("Demasiados intentos. Espera unos minutos antes de volver a entrar.");
+    throw Error("No se pudo iniciar sesión. Revisa tu correo y contraseña o inténtalo nuevamente.");
+  }
+  if (epoch !== authenticationEpoch) throw Error("La sesión cambió mientras ingresabas. Inténtalo nuevamente.");
+  if (typeof data.token !== "string" || !/^[A-Za-z0-9_-]{32,256}$/.test(data.token) || data.authProvider !== "password" || data.mode !== "server" || !Number.isFinite(data.expiresAt) || data.expiresAt <= Date.now() / 1000 || typeof data.email !== "string")
+    throw Error("No se pudo verificar la sesión del CRM.");
+  await assertOrigin(origin);
+  await withNativeSessions(async () => {
+    if (epoch !== authenticationEpoch) throw Error("La sesión cambió mientras ingresabas. Inténtalo nuevamente.");
+    await storage.set({ [sessionKey(origin)]: { origin, token: data.token, expiresAt: data.expiresAt, email: data.email } });
+  });
+  if (epoch !== authenticationEpoch) { await forgetNativeSession(origin, data.token); throw Error("La sesión cambió. Inicia sesión nuevamente."); }
+  await assertOrigin(origin);
+  await notifyConnection(origin, true);
+  return { origin, ready: true, email: data.email, authProvider: "password" };
 }
 async function crmTab({ create = false, active = false, expectedOrigin } = {}) {
   const { origin } = await configuration();
@@ -139,6 +283,7 @@ async function probeConnection(tabId, origin) {
 async function connectCrm(sender, expectedOrigin) {
   const { origin } = await configuration();
   if (expectedOrigin && expectedOrigin !== origin) throw Error("Cambió el CRM conectado. Revisa la dirección e inténtalo nuevamente.");
+  if ((await authStatus(origin)).authProvider === "password") return nativeVerify(origin);
   const pinnedWa = embeddedWhatsAppTab(sender, EXTENSION_ID);
   if (Number.isInteger(pinnedWa)) {
     const tab = await chrome.tabs.get(pinnedWa);
@@ -281,7 +426,9 @@ async function execute(message, sender) {
   switch (message?.type) {
     case "configuration.get": {
       const values = await chrome.storage.local.get("crmOrigin");
-      return { origin: values.crmOrigin || "", waTabId: embeddedWhatsAppTab(sender, EXTENSION_ID) };
+      let origin = values.crmOrigin || "";
+      if (!origin) try { origin = (await configuration()).origin; } catch { /* Other hosts need a one-time grant in advanced options. */ }
+      return { origin, waTabId: embeddedWhatsAppTab(sender, EXTENSION_ID) };
     }
     case "clipboard.copy": return copyText(message.text);
     case "configuration.open": {
@@ -296,11 +443,23 @@ async function execute(message, sender) {
       const previous = await chrome.storage.local.get("crmOrigin");
       await chrome.storage.local.set({ crmOrigin: origin });
       if (previous.crmOrigin !== origin) {
+        authenticationEpoch++;
+        if (previous.crmOrigin) await forgetNativeSession(previous.crmOrigin);
+        await forgetNativeSession(origin);
+        authModes.clear();
         await storage.remove("crmTabId");
         await storage.remove("pendingCrmConnection");
         await notifyConnection(origin, false, "configuration-changed");
       }
       return { origin };
+    }
+    case "crm.authStatus": {
+      const origin = await assertOrigin(message.expectedOrigin);
+      return { origin, ...(await authStatus(origin, true)) };
+    }
+    case "crm.login": {
+      const origin = await assertOrigin(message.expectedOrigin);
+      return nativeLogin(origin, message.input);
     }
     case "crm.connect": return connectCrm(sender, message.expectedOrigin);
     case "crm.open": {
@@ -316,6 +475,7 @@ async function execute(message, sender) {
       const { origin } = await configuration();
       if (crmOrigin(message.expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Revisa la dirección guardada.");
       try {
+        if ((await authStatus(origin)).authProvider === "password") return nativeVerify(origin);
         const { tab } = await crmTab({ expectedOrigin: origin });
         return probeConnection(tab.id, origin);
       } catch { return { origin, ready: false }; }
@@ -323,6 +483,8 @@ async function execute(message, sender) {
     case "crm.request": {
       const request = allowedApi(message.path, message.method || "GET", message.body);
       const expectedOrigin = crmOrigin(message.expectedOrigin);
+      await assertOrigin(expectedOrigin);
+      if ((await authStatus(expectedOrigin)).authProvider === "password") return nativeRequest(expectedOrigin, request);
       const reply = await bridge({ type: "request", request }, expectedOrigin);
       if (!reply?.ok) throw Error(reply?.error || "No se pudo consultar el CRM.");
       if (request.path === "/api/logout" && reply.response?.status === 200) {
@@ -370,8 +532,8 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
 });
 chrome.tabs.onUpdated?.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== "complete") return;
-  configuration().then(({ origin }) => {
-    if (tabOrigin(tab) === origin) return probeConnection(tabId, origin);
+  configuration().then(async ({ origin }) => {
+    if (tabOrigin(tab) === origin && (await authStatus(origin)).authProvider !== "password") return probeConnection(tabId, origin);
   }).catch(() => {});
 });
 chrome.tabs.onRemoved?.addListener(tabId => {

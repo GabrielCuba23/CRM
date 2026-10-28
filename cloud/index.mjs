@@ -8,6 +8,15 @@ import {
   ownerTaskStatus,
 } from "./tasks.mjs";
 import { authenticate, configured } from "./auth.mjs";
+import {
+  authenticateNative,
+  nativeConfigured,
+  nativeLogout,
+  nativeMutationAllowed,
+  nativePassword,
+  nativePublicRequest,
+  publicNativeSession,
+} from "./native-auth.mjs";
 import { emptyState, cleanState } from "./state.mjs";
 import { normalizePhone, formatDate, todayLima } from "../crm.mjs";
 
@@ -82,19 +91,35 @@ async function body(request) {
 
 export async function handleRequest(request, env, options = {}) {
   const url = new URL(request.url),
-    path = url.pathname;
+    path = url.pathname,
+    passwordMode = env.AUTH_MODE === "password",
+    authConfigured = passwordMode ? nativeConfigured(env) : configured(env);
   if (path === "/healthz")
-    return json({ status: "ok", configured: configured(env) });
+    return json({ status: "ok", configured: authConfigured });
   if (publicAssets.has(path) && request.method === "GET")
     return headers(await env.ASSETS.fetch(request));
-  if (!configured(env))
+  if (!authConfigured)
     return json(
       {
-        error:
-          "El administrador debe conectar Cloudflare Access antes de usar este sitio.",
+        error: passwordMode
+          ? "El administrador debe configurar el acceso antes de usar este sitio."
+          : "El administrador debe conectar Cloudflare Access antes de usar este sitio.",
       },
       503,
     );
+  if (passwordMode) {
+    const response = await nativePublicRequest(request, env, options);
+    if (response) return headers(response);
+    if (["/login", "/login.html"].includes(path) && ["GET", "HEAD"].includes(request.method)) {
+      try {
+        await authenticateNative(request, env, options);
+        return new Response(null, { status: 302, headers: { ...securityHeaders, Location: url.origin + "/" } });
+      } catch { /* A public login page does not reveal any private application data. */ }
+      return headers(await env.ASSETS.fetch(new Request(url.origin + "/login.html")));
+    }
+    if (["/login.js", "/app-icon.svg", "/app-icon-192.png", "/app-icon-512.png"].includes(path) && ["GET", "HEAD"].includes(request.method))
+      return headers(await env.ASSETS.fetch(request));
+  }
   if (path.startsWith("/api/integration/")) {
     if (!(await integrationAuthenticated(request, env)))
       return json(
@@ -129,25 +154,29 @@ export async function handleRequest(request, env, options = {}) {
   }
   let user;
   try {
-    user = await authenticate(request, env, options);
-  } catch {
+    user = passwordMode ? await authenticateNative(request, env, options) : await authenticate(request, env, options);
+  } catch (error) {
+    if (passwordMode && !path.startsWith("/api/") && ["/", "/index.html", "/companion"].includes(path) && ["GET", "HEAD"].includes(request.method))
+      return new Response(null, { status: 302, headers: { ...securityHeaders, Location: url.origin + "/login" } });
     return json(
       {
-        error:
-          "Acceso exclusivo del administrador. Inicia sesión mediante Cloudflare Access.",
+        error: passwordMode
+          ? "Inicia sesión con tu correo y contraseña."
+          : "Acceso exclusivo del administrador. Inicia sesión mediante Cloudflare Access.",
       },
-      401,
+      passwordMode && error.status !== 401 ? 503 : 401,
     );
   }
   if (!["GET", "HEAD"].includes(request.method)) {
     if (
-      request.headers.get("Origin") !== url.origin ||
-      request.headers.get("X-CSRF-Token") !== user.csrf
+      passwordMode ? !nativeMutationAllowed(request, user) :
+        request.headers.get("Origin") !== url.origin ||
+        request.headers.get("X-CSRF-Token") !== user.csrf
     )
       return json({ error: "Origen o sesión no válidos." }, 403);
   }
   if (path === "/api/session" && request.method === "GET")
-    return json({ ...user, mode: "server", authProvider: "cloudflare-access" });
+    return json(passwordMode ? publicNativeSession(user) : { ...user, mode: "server", authProvider: "cloudflare-access" });
   if (path === "/companion" && ["GET", "HEAD"].includes(request.method))
     return new Response(null, {
       status: 302,
@@ -208,7 +237,9 @@ export async function handleRequest(request, env, options = {}) {
     return json(await ownerTaskStatus(env));
   }
   if (path === "/api/logout" && request.method === "POST")
-    return json({ ok: true, logoutUrl: url.origin + "/cdn-cgi/access/logout" });
+    return passwordMode ? headers(await nativeLogout(request, env, user)) : json({ ok: true, logoutUrl: url.origin + "/cdn-cgi/access/logout" });
+  if (passwordMode && path === "/api/password")
+    return request.method === "POST" ? headers(await nativePassword(request, env, user, options)) : json({ error: "Usa POST." }, 405);
   if (path === "/api/password")
     return json(
       {

@@ -8,6 +8,7 @@ export const API_METHODS = Object.freeze({
   "/api/message-tasks/refresh": ["POST"],
   "/api/report-status": ["GET"],
   "/api/logout": ["POST"],
+  "/api/password": ["POST"],
 });
 export function crmOrigin(value) {
   let parsed;

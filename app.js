@@ -1686,6 +1686,12 @@ async function initializeSecurity() {
         "Acceso exclusivo de tu correo mediante Cloudflare Access. El inicio de sesión se verifica antes de consultar tus datos.";
       $("#server-auth-description").textContent =
         "Cloudflare gestiona el inicio de sesión de la única cuenta autorizada. El CRM no almacena contraseñas de acceso al gestor.";
+    } else if (session.authProvider === "password") {
+      $("#password-form").hidden = false;
+      $("#security-description").textContent =
+        "Entra con tu correo y contraseña desde la web o desde Nexo en WhatsApp. Solo tu cuenta puede consultar los datos.";
+      $("#server-auth-description").textContent =
+        "Puedes cambiar tu contraseña aquí. Las sesiones duran 8 horas; al cambiar la contraseña se cerrarán todas.";
     }
   }
   fillAutomationForm();
@@ -1730,15 +1736,21 @@ $("#logout").addEventListener("click", async () => {
 });
 $("#password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submit = event.target.querySelector("button");
+  if (submit.disabled) return;
+  submit.disabled = true;
+  $("#password-status").textContent = "";
   try {
-    await api("/api/password", {
+    const result = await api("/api/password", {
       method: "POST",
       body: JSON.stringify(Object.fromEntries(new FormData(event.target))),
     });
     event.target.reset();
-    location.replace("/login");
+    redirectToLogin(result.logoutUrl || "/login");
   } catch (error) {
     $("#password-status").textContent = error.message;
+  } finally {
+    submit.disabled = false;
   }
 });
 
@@ -2002,7 +2014,7 @@ $("#confirm-task").addEventListener("click", async () => {
 });
 $("#task-search").addEventListener("input", renderRules);
 async function refreshIntegrations(generate = false) {
-  if (!secureMode || authProvider !== "cloudflare-access") {
+  if (!secureMode || !["cloudflare-access", "password"].includes(authProvider)) {
     $("#integration-status").textContent =
       "Preparada, sin conectar. La API de tareas se activa en la versión privada de Cloudflare; el modo actual permite enviar por wa.me con tu confirmación.";
     return;
