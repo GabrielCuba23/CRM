@@ -38,13 +38,26 @@ CRM; este requisito no se aplica al CRM principal con contraseña.
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.3.0. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.3.1. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
 instalación de Nexo activa. La versión 1.3.0 añade correo y contraseña dentro
 del panel y elimina la necesidad de conservar abierta la web del CRM principal.
 La dirección antigua `/companion` abre el CRM completo.
+
+La versión 1.3.1 permite **Crear ficha nueva** desde **Chat actual**, junto a
+**Vincular contacto existente**. Completa los datos de la conversación, comprueba
+si el teléfono ya pertenece a un contacto y conecta la ficha guardada con ese chat.
+
+### Actualizaciones automáticas
+
+La instalación descomprimida requiere reemplazar sus archivos y pulsar Recargar.
+Para distribuir actualizaciones automáticas debe publicarse la extensión en
+Chrome Web Store e instalarse una vez desde su ficha. Chrome distribuye las
+versiones posteriores publicadas y aprobadas; las mejoras del servidor y los
+datos compartidos siguen actualizándose desde la web. El paquete actual no está
+publicado en la tienda. Consulta [la preparación de la publicación](STORE.md).
 
 La versión 1.2.1 reconoce también el panel nativo «Info. del contacto» cuando
 WhatsApp muestra su nombre y teléfono como texto normal. Conserva la ficha

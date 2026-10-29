@@ -56,6 +56,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
   let clipboardDocumentReady = false;
   let holdCapture = false, capturePending = false, releaseCapture;
   let workspaceReads = 0, holdWorkspaceRead = false, workspaceReadPending = false, releaseWorkspaceRead;
+  let holdWorkspaceWrite = false, workspaceWritePending = false, releaseWorkspaceWrite, rejectNextBind = false;
   let initialWorkspaceFailures = process.env.INITIAL_LOAD_FAILURE_ONLY === '1' ? 1 : 0;
   const clipboardWrites = [];
   const tab = page => ({ id: pages.get(page), url: page.url(), status: "complete" });
@@ -115,6 +116,10 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
         async create({ url }) { const page = await context.newPage(); pages.set(page, nextTabId++); await page.goto(url); return tab(page); },
         async update(id, update) { const page = pageFor(id); if (update.url) await page.goto(update.url); return tab(page); },
         async sendMessage(id, message) {
+          if (message.channel === "nexo.whatsapp" && message.action === "bind" && rejectNextBind) {
+            rejectNextBind = false;
+            throw Error("No se pudo vincular el chat de prueba.");
+          }
           const result = await pageFor(id).evaluate(({ message, extensionId }) => new Promise(resolve => {
             let accepted = false;
             for (const listener of globalThis.__chromeListeners) {
@@ -229,6 +234,12 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
         }
         if (input.revision !== revision) return route.fulfill({ status: 409, json: { error: "Los datos cambiaron en otra sesión." } });
         state = input.state; writes++; json = { revision: ++revision };
+        if (holdWorkspaceWrite) {
+          workspaceWritePending = true;
+          await new Promise(resolve => { releaseWorkspaceWrite = resolve; });
+          holdWorkspaceWrite = false;
+          workspaceWritePending = false;
+        }
       } else if (url.pathname === "/api/automation-status") json = { configured: false, reminders: [], worker: null };
       else if (url.pathname === "/api/report-status") json = { configured: false, recipient: "operador@example.test", recent: [] };
       else if (url.pathname.startsWith("/api/message-tasks")) json = { configured: false, tasks: [] };
@@ -412,6 +423,169 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     await service("maria-disney").waitFor({ state: "visible" });
     assert.equal(await service("jose-demo").count(), 0, "El chat actual solo debe mostrar las fichas de ese teléfono.");
     assert.match(await embedded.locator('#compact-chat-phone').innerText(), /51.*999/);
+
+    if (process.env.NEW_CHAT_CONTACT_ONLY === '1') {
+      const create = embedded.locator('#compact-new-chat-client');
+      const dialog = embedded.locator('#compact-client-dialog');
+      const form = embedded.locator('#compact-client-form');
+      const current = () => appFrame.evaluate(() => globalThis.NexoCompanion.getContext());
+      const initialClients = structuredClone(state.clients), initialAccounts = structuredClone(state.accounts);
+      async function newChat(name, peer, phone = '') {
+        await switchChat({ name, peer, phone });
+        await create.waitFor({ state: 'visible' });
+      }
+      async function openNew() {
+        await create.click();
+        await dialog.waitFor({ state: 'visible' });
+        assert.equal(await dialog.locator('h2').innerText(), 'Crear ficha nueva');
+        assert.equal(await form.locator('button[type="submit"]').innerText(), 'Crear y vincular');
+      }
+      async function complete(phone, serviceName = 'Netflix') {
+        await form.locator('[name="phone"]').fill(phone);
+        await form.locator('[name="service"]').fill(serviceName);
+        await form.locator('[name="expires"]').fill('2031-12-31');
+      }
+      const waitClosed = () => until(() => appFrame.evaluate(() => !document.querySelector('#compact-client-dialog')?.open), 'La ficha guardada debe cerrar el formulario.');
+      const createdFor = phone => state.clients.filter(item => item.phone === phone);
+
+      // A known contact has its services, while an unrecognized named chat has
+      // both explicit alternatives without leaving the conversation.
+      assert.equal(await create.count(), 0);
+      const storeScreenshots = '/workspace/work/deliverables/store-v1.3.1';
+      fs.mkdirSync(storeScreenshots, { recursive: true });
+      await whatsapp.setViewportSize({ width: 1280, height: 800 });
+      await whatsapp.screenshot({ path: path.join(storeScreenshots, 'client-services.png'), fullPage: false });
+      await newChat('Nuevo contacto de prueba', 'create-hidden@lid');
+      await embedded.locator('#compact-open-link').waitFor({ state: 'visible' });
+      await whatsapp.screenshot({ path: path.join(storeScreenshots, 'chat-new-contact.png'), fullPage: false });
+      await whatsapp.setViewportSize({ width: 1440, height: 760 });
+      await openNew();
+      assert.equal(await form.locator('[name="name"]').inputValue(), 'Nuevo contacto de prueba');
+      assert.equal(await form.locator('[name="phone"]').inputValue(), '');
+      assert.equal(await form.locator('[name="phone"]').getAttribute('required'), '');
+      await form.locator('button[type="submit"]').click();
+      assert.equal(writes, 0, 'Un chat sin teléfono debe pedirlo antes de crear una ficha.');
+      await complete('987 654 321');
+      await form.locator('button[type="submit"]').click();
+      await waitClosed();
+      assert.equal(writes, 1);
+      assert.equal(createdFor('51987654321').length, 1, 'El teléfono peruano se normaliza y solo se crea una ficha.');
+      const first = createdFor('51987654321')[0];
+      await service(first.id).waitFor({ state: 'visible' });
+      assert.equal((await current()).phone, '51987654321');
+      assert.equal((await current()).phoneSource, 'manual');
+      assert.equal(await embedded.locator('#compact-tab-chat').getAttribute('aria-current'), 'page');
+      assert.equal(pages.size, 2, 'Crear y vincular se completa en WhatsApp sin pestañas nuevas.');
+
+      // Reusing an existing normalized phone presents the existing contact and
+      // routes through explicit binding; it cannot append another service.
+      const beforeExisting = structuredClone(state), beforeExistingWrites = writes;
+      await newChat('Alias del cliente existente', 'create-existing@lid');
+      await openNew();
+      await form.locator('[name="phone"]').fill('+51 (999) 999-999');
+      await embedded.locator('#compact-existing-contact').waitFor({ state: 'visible' });
+      assert.match(await embedded.locator('#compact-existing-contact').innerText(), /María/);
+      assert.equal(await form.locator('button[type="submit"]').isDisabled(), true);
+      await embedded.locator('#compact-use-existing-contact').click();
+      await waitClosed();
+      await service('maria-demo').waitFor({ state: 'visible' });
+      await service('maria-disney').waitFor({ state: 'visible' });
+      assert.deepEqual(state, beforeExisting);
+      assert.equal(writes, beforeExistingWrites, 'Vincular el número existente no crea un duplicado ni otro servicio.');
+
+      // A phone already exposed by WhatsApp is prefilled into the same form.
+      await newChat('Otro contacto sintético', 'create-visible@lid', '+51 976 543 210');
+      await openNew();
+      assert.equal((await form.locator('[name="phone"]').inputValue()).replace(/\D/g, ''), '51976543210');
+      await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+
+      // A failed server write keeps the entered values and retries once.
+      await newChat('Cliente con fallo de conexión', 'create-write-retry@lid');
+      await openNew();
+      await complete('+51 965 432 109', 'Max');
+      rejectNextWrite = true;
+      const writesBeforeRetry = writes;
+      await form.locator('button[type="submit"]').click();
+      await until(async () => /interrumpida/.test(await embedded.locator('#compact-client-error').innerText()), 'Un error de conexión debe quedar en el formulario.');
+      assert.equal(writes, writesBeforeRetry);
+      assert.equal(await form.locator('[name="name"]').inputValue(), 'Cliente con fallo de conexión');
+      assert.equal(await form.locator('[name="phone"]').inputValue(), '+51 965 432 109');
+      assert.equal(await form.locator('[name="service"]').inputValue(), 'Max');
+      await form.locator('button[type="submit"]').click();
+      await waitClosed();
+      assert.equal(writes, writesBeforeRetry + 1);
+      assert.equal(createdFor('51965432109').length, 1);
+      await service(createdFor('51965432109')[0].id).waitFor({ state: 'visible' });
+
+      // Navigating before submitting cannot save an old form for a new chat.
+      await newChat('Cliente anterior al cambio', 'create-stale@lid');
+      await openNew();
+      await complete('954 321 098');
+      await switchChat({ name: 'Chat distinto antes de guardar', peer: 'create-changed-before@lid' });
+      const beforeStale = writes;
+      await form.locator('button[type="submit"]').click();
+      await until(async () => /cambió|conversación/i.test(await embedded.locator('#compact-client-error').innerText()), 'Un formulario de otro chat debe rechazar el guardado.');
+      assert.equal(writes, beforeStale);
+      assert.equal(createdFor('51954321098').length, 0);
+      assert.equal((await current()).phone, '');
+      await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+
+      // A confirmed server save whose response arrives after navigation still
+      // leaves one ficha in Clientes, but never binds the new conversation.
+      await newChat('Cliente con respuesta demorada', 'create-delayed@lid');
+      await openNew();
+      await complete('943 210 987');
+      holdWorkspaceWrite = true;
+      const beforeDelayed = writes;
+      await form.locator('button[type="submit"]').click();
+      await until(() => workspaceWritePending, 'La respuesta de guardado debe quedar retenida para la prueba.');
+      await switchChat({ name: 'Otro chat mientras guarda', peer: 'create-changed-during@lid' });
+      releaseWorkspaceWrite();
+      await waitClosed();
+      assert.equal(writes, beforeDelayed + 1);
+      assert.equal(createdFor('51943210987').length, 1);
+      assert.equal((await current()).phone, '', 'La respuesta tardía no puede vincular un destinatario distinto.');
+      assert.equal(await service(createdFor('51943210987')[0].id).count(), 0);
+      assert.match(await embedded.locator('#companion-status').innerText(), /guardada/i);
+
+      // If saving succeeds but binding fails, the UI closes the creation form
+      // and exposes the existing record for a link retry without a second PUT.
+      await newChat('Cliente con vínculo interrumpido', 'create-bind-retry@lid');
+      await openNew();
+      await complete('932 109 876');
+      rejectNextBind = true;
+      const beforeBindFailure = writes;
+      await form.locator('button[type="submit"]').click();
+      await waitClosed();
+      assert.equal(writes, beforeBindFailure + 1);
+      assert.equal(createdFor('51932109876').length, 1);
+      assert.equal((await current()).phone, '');
+      assert.match(await embedded.locator('#companion-status').innerText(), /guardada/i);
+      await openNew();
+      await form.locator('[name="phone"]').fill('932109876');
+      await embedded.locator('#compact-use-existing-contact').click();
+      await waitClosed();
+      await service(createdFor('51932109876')[0].id).waitFor({ state: 'visible' });
+      assert.equal(writes, beforeBindFailure + 1, 'Reintentar el vínculo utiliza la ficha creada y no vuelve a guardarla.');
+
+      // Groups, identity transitions and an empty main header cannot offer a
+      // create shortcut that would attach a record to an unproven conversation.
+      await switchChat({ name: 'Grupo de ejemplo', peer: 'group-create@g.us' });
+      await until(async () => (await current()).isGroup && await create.count() === 0, 'No se debe crear una ficha desde un grupo.');
+      await switchChat({ name: 'Chat ambiguo', peer: 'ambiguous-create@lid' });
+      await whatsapp.evaluate(() => { document.querySelector('#main .history > [data-id]').dataset.id = 'false_other-peer@lid_1'; });
+      await until(async () => (await current()).ambiguous && await create.count() === 0, 'Una identidad ambigua no debe ofrecer crear una ficha.');
+      await whatsapp.evaluate(() => document.querySelector('#main header').remove());
+      await until(async () => !(await current()).chatId && await create.count() === 0, 'Sin conversación abierta no debe ofrecer crear una ficha.');
+      assert.deepEqual(state.clients.slice(0, initialClients.length), initialClients, 'Las fichas previas mantienen sus datos y sus productos.');
+      assert.deepEqual(state.accounts, initialAccounts);
+      assert.equal(state.ledger.length, 0, 'Crear una ficha sin cobro explícito no genera movimientos financieros.');
+      assert.equal(pages.size, 2);
+      assert.deepEqual(errors, []);
+      console.log('Create ficha from current chat: hidden/visible phone prefills, normalized new contact save+bind, existing contact reuse without duplicates, failed-write retry, stale chat rejection, delayed-save navigation and bind-failure recovery, no unsafe group/ambiguous/empty-chat creation.');
+      console.log('Packaged extension and real router exercised in synthetic WhatsApp documents; this does not install MV3 in the owner Chrome.');
+      return;
+    }
 
     if (process.env.RENEWAL_ISOLATION_ONLY === '1') {
       const maxId = 'maria-demo', paramountId = 'maria-disney', otherMaxId = 'ernesto-second-max';

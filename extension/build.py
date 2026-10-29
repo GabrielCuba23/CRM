@@ -8,7 +8,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "extension"
-EXTENSION_FILES = ["manifest.json", "policy.mjs", "background.mjs", "crm-bridge.js", "whatsapp.js", "dock.js", "bootstrap.mjs", "options.html", "options.css", "options.mjs", "companion.css", "clipboard.html", "clipboard.js", "README.md"]
+EXTENSION_FILES = ["manifest.json", "policy.mjs", "background.mjs", "crm-bridge.js", "whatsapp.js", "dock.js", "bootstrap.mjs", "options.html", "options.css", "options.mjs", "companion.css", "clipboard.html", "clipboard.js", "README.md", "STORE.md", "PRIVACY.md", "icon-128.png"]
 
 
 def public_files():

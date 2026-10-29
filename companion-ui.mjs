@@ -192,15 +192,15 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       return;
     }
     if (!match.phone) {
-      const box = empty("Conecta su ficha", "Elige un contacto del CRM para ver sus servicios en este chat.");
-      box.append(linkContactButton());
+      const box = empty("Conecta su ficha", "Vincula un contacto del CRM o crea su primera ficha desde este chat.");
+      box.append(linkContactButton(), newChatClientButton());
       content.append(box);
       return;
     }
     if (!match.matches.length) {
       const box = empty("Sin ficha para este número", "Si ya registraste a esta persona, busca su contacto antes de crear otro.");
       box.append(linkContactButton());
-      box.append(button("Crear cliente", () => openClientForm({ name: currentContext.name || "", phone: match.phone }), "compact-primary", "compact-new-client"));
+      box.append(newChatClientButton());
       content.append(box);
       return;
     }
@@ -221,6 +221,24 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       render();
       document.querySelector("#compact-link-search")?.focus();
     }, "compact-secondary", "compact-open-link");
+  }
+  function newChatClientButton() {
+    return button("Crear ficha nueva", async () => {
+      const version = contextVersion, expected = identityKey(currentContext);
+      const before = await companion.getContext();
+      if (version !== contextVersion || identityKey(before) !== expected || !before?.chatId || before.isGroup || before.ambiguous)
+        throw Error("El chat cambió. Revisa la conversación antes de crear su ficha.");
+      openClientForm({ name: before.name || "", phone: contactPhone(before.phone), chatDraft: { context: { ...before }, version } });
+    }, "compact-primary", "compact-new-chat-client");
+  }
+  async function requireDraftChat(draft, phone) {
+    const before = await companion.getContext();
+    if (draft.version !== contextVersion || identityKey(before) !== identityKey(draft.context) || !before?.chatId || before.isGroup || before.ambiguous)
+      throw Error("El chat cambió. Cierra este formulario y crea la ficha desde la conversación correcta.");
+    const visiblePhone = contactPhone(before.phone);
+    if (visiblePhone && visiblePhone !== phone)
+      throw Error("El teléfono no coincide con este chat. Revisa el número antes de guardar.");
+    return before;
   }
   function renderLink() {
     const section = node("section", "", "compact-card compact-link-card");
@@ -263,7 +281,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     const before = await companion.getContext();
     if (expectedVersion !== contextVersion || !before?.chatId || before.chatId !== currentContext?.chatId || before.name !== currentContext?.name || before.isGroup || before.ambiguous)
       throw Error("El chat cambió. Revisa el contacto antes de vincularlo.");
-    if (!confirm(`¿Vincular el chat «${before.name || "Contacto"}» con ${group.clients[0].name} (+${number})?\n\nSe usarán sus ${group.clients.length === 1 ? "datos y servicio existentes" : "datos y " + group.clients.length + " servicios existentes"}. No se creará otro cliente.`)) return;
+    if (!confirm(`¿Vincular el chat «${before.name || "Contacto"}» con ${group.clients[0].name} (+${number})?\n\nSe usarán sus ${group.clients.length === 1 ? "datos y servicio existentes" : "datos y " + group.clients.length + " servicios existentes"}. No se creará otro cliente.`)) return false;
     await companion.bindConversation({ chatId: before.chatId, phone: number, name: before.name });
     // Binding itself may broadcast a new phone before its RPC returns. Verify
     // the peer and confirmed phone again, rather than treating that as a switch.
@@ -274,6 +292,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     linkingContact = false;
     render();
     setStatus("Contacto vinculado.");
+    return true;
   }
   async function unbindPhone() {
     const expectedVersion = contextVersion, expected = currentContext;
@@ -673,7 +692,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       } catch (cause) {
         error.textContent = cause?.message || "No se guardaron los cambios.";
         error.scrollIntoView({ block: "nearest" });
-      } finally { localBusy = false; submit.disabled = false; }
+      } finally { localBusy = false; submit.disabled = submit.dataset.blocked === "true"; }
     });
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     dialog.addEventListener("cancel", () => {});
@@ -708,21 +727,71 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   }
   function openClientForm(initial = {}) {
     const editing = Boolean(initial.id), reactivating = Boolean(initial.reactivate);
-    const { dialog, form, body } = modal("client", reactivating ? "Reactivar servicio" : editing ? "Editar servicio" : initial.lockContact ? "Añadir servicio" : "Nuevo cliente", "Guardar", async inputForm => {
+    const chatDraft = initial.chatDraft;
+    const { dialog, form, body } = modal("client", chatDraft ? "Crear ficha nueva" : reactivating ? "Reactivar servicio" : editing ? "Editar servicio" : initial.lockContact ? "Añadir servicio" : "Nuevo cliente", chatDraft ? "Crear y vincular" : "Guardar", async inputForm => {
       const values = formData(inputForm);
+      const number = chatDraft ? normalizePhone(values.phone) : "";
+      if (chatDraft) {
+        await requireDraftChat(chatDraft, number);
+        if (groups().some(group => group.phone === number)) {
+          showExistingContact();
+          throw Error("Este número ya tiene una ficha. Vincula el contacto existente para conservar sus servicios e historial.");
+        }
+      }
       const pricePending = !values.price.trim();
       await commit("saveClient", { ...(editing ? { id: initial.id } : {}), name: values.name.trim(), phone: values.phone.trim(), accountId: values.accountId || "", service: values.service.trim(), email: values.email.trim(), profile: values.profile.trim(), expires: values.expires || "", price: pricePending ? 0 : cents(values.price), pricePending, pin: values.pin.trim(), notes: values.notes.trim(), paid: values.paid === "on", ...(reactivating ? { reactivate: true } : {}) });
+      if (chatDraft) {
+        // A saved ficha must never be submitted again if only its chat link
+        // fails. Keep it in Clientes and close the creation form in that case.
+        try {
+          const before = await requireDraftChat(chatDraft, number);
+          await companion.bindConversation({ chatId: before.chatId, phone: number, name: before.name });
+          const linked = await companion.getContext();
+          if (linked?.chatId !== before.chatId || linked.name !== before.name || linked.isGroup || linked.ambiguous || contactPhone(linked.phone) !== number)
+            throw Error("El chat cambió durante el vínculo.");
+          updateContext(linked);
+          linkingContact = false;
+          setStatus("Ficha creada y vinculada a este chat.");
+        } catch {
+          setStatus("Ficha guardada en Clientes. Vuelve al chat correcto y pulsa Vincular contacto existente para conectarla.", true);
+        }
+        return;
+      }
       setStatus(editing ? "Servicio actualizado." : "Ficha guardada.");
     });
     // The form's initial contact stays fixed if WhatsApp changes while it is open.
     const name = field(body, "Nombre", "name", { value: initial.name || "", required: true, maxLength: 120, autocomplete: "name" });
-    const phone = field(body, "WhatsApp", "phone", { value: initial.phone || "", type: "tel", placeholder: "+51 987 654 321", autocomplete: "tel" });
+    const phone = field(body, "WhatsApp", "phone", { value: initial.phone || "", type: "tel", required: Boolean(chatDraft), placeholder: "+51 987 654 321", autocomplete: "tel" });
     name.id = "compact-client-name";
     phone.id = "compact-client-phone";
     name.readOnly = editing || Boolean(initial.lockContact);
     phone.readOnly = editing || Boolean(initial.lockContact);
     if (name.readOnly) name.title = "Edita la información de todos sus servicios desde Editar datos";
     if (phone.readOnly) phone.title = name.title;
+    const existingContact = chatDraft ? node("div", "", "compact-existing-contact") : null;
+    function showExistingContact() {
+      if (!existingContact) return;
+      existingContact.replaceChildren();
+      const number = contactPhone(phone.value);
+      const group = number && groups().find(item => item.phone === number);
+      existingContact.hidden = !group;
+      const submit = form.querySelector("button[type=submit]");
+      submit.dataset.blocked = group ? "true" : "false";
+      submit.disabled = Boolean(group);
+      if (!group) return;
+      existingContact.append(node("p", `Este número ya pertenece a ${group.clients[0].name}. Usa su ficha existente.`),
+        button("Vincular ficha existente", async () => {
+          await requireDraftChat(chatDraft, number);
+          if (await bindPhone(number)) { dialog.close(); render(); }
+        }, "compact-secondary", "compact-use-existing-contact"));
+    }
+    if (existingContact) {
+      existingContact.id = "compact-existing-contact";
+      existingContact.setAttribute("role", "status");
+      body.append(node("p", "Confirma su nombre y teléfono. Para Perú puedes escribir los 9 dígitos; se añadirá +51.", "compact-muted compact-create-hint"), existingContact);
+      phone.addEventListener("input", showExistingContact);
+      showExistingContact();
+    }
     const account = field(body, "Cuenta", "accountId", { tag: "select" });
     account.id = "compact-client-account";
     const none = node("option", "Sin cuenta asignada");
@@ -780,7 +849,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     profileSelect.addEventListener("change", () => { profile.value = profileSelect.value; });
     selectAccount(true);
     dialog.showModal();
-    (name.value ? expires : name).focus();
+    (chatDraft && !phone.value ? phone : name.value ? expires : name).focus();
   }
   function openRenewForm(client) {
     const service = client.service || "Servicio";

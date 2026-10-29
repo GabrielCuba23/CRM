@@ -28,7 +28,7 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión integrada 1.3.0](https://drive.google.com/file/d/1urtxPhfjs5mWTL0yvKUdqGQ2QPYo5BRP/view)
+1. Descarga la [extensión integrada 1.3.1](https://drive.google.com/file/d/1dzD0vnsAYCYpmRouf5HK9fbbliSyMeZH/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -64,6 +64,10 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
   navegador para ese CRM; si WhatsApp no ofrece una identidad estable, duran solo
   mientras permanezcas en la conversación. Puedes cambiarlos o quitarlos sin
   borrar al cliente. El nombre por sí solo no identifica al cliente.
+  **Crear ficha nueva** abre el formulario en el chat y precarga los datos
+  disponibles. Si introduces un teléfono existente, ofrece vincular su ficha
+  para conservar los servicios y el historial. Una ficha nueva guardada se
+  conecta con la conversación original, siempre que siga abierta.
 - **Clientes** busca por nombre, teléfono o servicio. Cada contacto reúne sus
   servicios; puedes editar sus datos y añadir otro servicio sin duplicar los anteriores.
 - Cada servicio tiene **Renovar**, **Mensaje** y un menú para editarlo,
@@ -85,6 +89,11 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
   no se modifica automáticamente.
 - **Abrir CRM** abre la web para finanzas, proveedores, reportes, automatización
   y otras tareas extensas. Ambas interfaces usan la misma base y sus revisiones.
+
+La instalación descomprimida todavía requiere actualizar archivos. Para recibir
+actualizaciones automáticas debe publicarse Nexo en Chrome Web Store e instalarlo
+una vez desde su ficha. El [material de publicación](extension/STORE.md) está
+preparado; todavía no se ha enviado ni aprobado en la tienda.
 
 Los cambios confirmados se guardan en el servidor. Una revisión antigua se rechaza
 para no sobrescribir operaciones de otra sesión; guarda o cierra los formularios

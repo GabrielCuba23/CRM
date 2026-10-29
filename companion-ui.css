@@ -89,6 +89,10 @@
 .nexo-compact .compact-link-tools > p { font-size:11px; margin-bottom:8px; }
 .nexo-compact .compact-link-tools > button { margin-right:17px; margin-bottom:5px; }
 .nexo-compact .compact-empty > button + button { display:block; margin:10px auto 0; }
+.nexo-compact .compact-create-hint { font-size:11px; margin:0 0 13px; line-height:1.5; }
+.nexo-compact .compact-existing-contact { background:#eef7f3; border:1px solid #cce5dc; border-radius:8px; padding:11px; margin-bottom:13px; }
+.nexo-compact .compact-existing-contact[hidden] { display:none; }
+.nexo-compact .compact-existing-contact p { font-size:12px; margin:0 0 9px; }
 .nexo-compact .compact-link-card > .compact-primary { width:100%; }
 .nexo-compact .compact-status { padding:10px 12px; border:1px solid #c9e5d8; border-radius:8px; background:#e7f5ed; color:#216f53; font-size:12px; margin:0 0 14px; overflow-wrap:anywhere; }
 .nexo-compact .compact-status.is-error { background:#fff1f0; border-color:#f1d6d5; color:#a3434a; }

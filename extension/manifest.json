@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Nexo CRM para WhatsApp Web",
   "description": "Clientes, fichas y cuentas junto al chat de WhatsApp: servicios, perfiles, renovaciones y mensajes conectados con tu CRM.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "scripting", "clipboardWrite", "offscreen"],
   "host_permissions": ["https://web.whatsapp.com/*", "https://nexo-crm.acxelcubaaraoz.workers.dev/*"],
@@ -10,7 +10,7 @@
   "background": { "service_worker": "background.mjs", "type": "module" },
   "action": { "default_title": "Abrir Nexo CRM" },
   "options_ui": { "page": "options.html", "open_in_tab": true },
-  "icons": { "192": "app/app-icon-192.png", "512": "app/app-icon-512.png" },
+  "icons": { "128": "icon-128.png", "192": "app/app-icon-192.png", "512": "app/app-icon-512.png" },
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
