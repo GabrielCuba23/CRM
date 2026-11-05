@@ -20,13 +20,17 @@ async function copyText(text) {
 
 const parameters = new URLSearchParams(location.search);
 const embedded = parameters.get("embedded") === "1";
+const nativePanel = parameters.get("panel") === "1" && !embedded;
 const optionsUrl = chrome.runtime.getURL("options.html");
 const workspaceUrl = new URL(chrome.runtime.getURL("app/index.html"));
 if (embedded) workspaceUrl.searchParams.set("embedded", "1");
+if (nativePanel) workspaceUrl.searchParams.set("panel", "1");
 const login = new URL(workspaceUrl);
 login.searchParams.set("setup", "1");
 const loginUrl = login.href;
-let configuredOrigin = "", configuredWaTabId, authenticationProvider = "", passwordConfigured = true;
+let configuredOrigin = "", configuredWaTabId, configuredPanelWindowId, authenticationProvider = "", passwordConfigured = true;
+let nativeChatActive = false;
+let nativeContextRead = 0, lastNativeContext = null;
 let embeddedVisible = !embedded;
 let phase = "booting", bootComplete = false, connectionCheckRunning = false;
 let connectionCheckPending = false, pendingReadyOrigin = "", connectionTimer;
@@ -34,8 +38,10 @@ let recoveryStarted = false, lastConnectionProbe = 0, applicationStarted = false
 let nativeSubmitting = false;
 const recoveryKey = "nexo.connection-recovery";
 
-document.documentElement.classList.toggle("nexo-embedded", embedded);
-document.body.classList.toggle("nexo-embedded", embedded);
+document.documentElement.classList.toggle("nexo-embedded", embedded || nativePanel);
+document.body.classList.toggle("nexo-embedded", embedded || nativePanel);
+document.documentElement.classList.toggle("nexo-native-panel", nativePanel);
+document.body.classList.toggle("nexo-native-panel", nativePanel);
 document.body.hidden = true;
 const stylesheet = document.createElement("link");
 stylesheet.rel = "stylesheet";
@@ -63,6 +69,69 @@ if (embedded && "IntersectionObserver" in globalThis) {
 }
 document.addEventListener("visibilitychange", announceVisibility);
 
+function nativePanelShell() {
+  if (!nativePanel) return null;
+  let header = document.querySelector("#nexo-native-panel-header");
+  if (header) return header;
+  header = document.createElement("header");
+  header.id = "nexo-native-panel-header";
+  const brand = document.createElement("strong");
+  brand.textContent = "Nexo CRM";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.id = "nexo-return-to-whatsapp";
+  open.textContent = "Abrir WhatsApp";
+  open.addEventListener("click", async () => {
+    open.disabled = true;
+    try {
+      await rpc("wa.open");
+      if (configuredOrigin) await readContext();
+    } catch (error) {
+      nativeChatNotice(error?.message || "Abre WhatsApp para trabajar con la conversación.");
+    } finally { if (open.isConnected) open.disabled = false; }
+  });
+  const notice = document.createElement("p");
+  notice.id = "nexo-native-chat-notice";
+  notice.setAttribute("role", "status");
+  notice.setAttribute("aria-live", "polite");
+  notice.hidden = true;
+  header.append(brand, open, notice);
+  document.body.prepend(header);
+  return header;
+}
+function nativeChatNotice(message) {
+  if (!nativePanel) return;
+  const notice = nativePanelShell().querySelector("#nexo-native-chat-notice");
+  notice.textContent = message || "";
+  notice.hidden = !message;
+}
+function recordNativeContext(context) {
+  if (!nativePanel) return context;
+  if (!Number.isInteger(configuredPanelWindowId) || context?.windowId !== configuredPanelWindowId)
+    throw Error("Actualiza el panel para volver a conectar esta ventana de WhatsApp.");
+  configuredWaTabId = context.tabId;
+  nativeChatActive = context.active === true;
+  lastNativeContext = context;
+  nativePanelShell();
+  nativeChatNotice(nativeChatActive ? "" : "Puedes gestionar el CRM aquí. Abre WhatsApp para trabajar con el chat.");
+  if (!nativeChatActive) {
+    // The CRM remains visible on other sites, but periodic message collection
+    // must stop as soon as its WhatsApp conversation leaves the foreground.
+    document.dispatchEvent(new CustomEvent("nexo-companion-visibility", { detail: { visible: false } }));
+  }
+  return context;
+}
+async function readContext() {
+  const origin = configuredOrigin;
+  const read = nativePanel ? ++nativeContextRead : 0;
+  const context = await rpc("wa.context", { expectedOrigin: origin });
+  if (nativePanel && (read !== nativeContextRead || origin !== configuredOrigin)) {
+    if (origin === configuredOrigin && lastNativeContext) return lastNativeContext;
+    throw Error("La conversación cambió. Espera un momento y vuelve a intentarlo.");
+  }
+  return recordNativeContext(context);
+}
+
 globalThis.NexoCompanion = Object.freeze({
   compact: true,
   loginUrl,
@@ -78,11 +147,12 @@ globalThis.NexoCompanion = Object.freeze({
       result.body = JSON.stringify({ ok: true, logoutUrl: loginUrl });
     return new Response(result.body, { status: result.status, headers: result.headers });
   },
-  getContext: () => rpc("wa.context", { expectedOrigin: configuredOrigin }),
+  getContext: readContext,
   bindConversation: input => rpc("wa.bind", { input, expectedOrigin: configuredOrigin }),
   unbindConversation: input => rpc("wa.unbind", { input, expectedOrigin: configuredOrigin }),
   captureVisibleMessages: () => {
     if (!visible()) throw Error("Abre el panel de Nexo en WhatsApp para registrar mensajes visibles.");
+    if (nativePanel && !nativeChatActive) throw Error("Abre WhatsApp antes de registrar los textos de esta conversación.");
     return rpc("wa.capture", { expectedOrigin: configuredOrigin });
   },
   async prepareMessage(input) {
@@ -91,15 +161,27 @@ globalThis.NexoCompanion = Object.freeze({
     return result;
   },
   onContext(handler) {
+    let nativeNotification = 0, removed = false;
     const listener = (message, sender) => {
       if (sender.id !== chrome.runtime.id || sender.tab || message?.channel !== "nexo.context" || message.origin !== configuredOrigin) return;
       // A dock belongs to its own WhatsApp tab. Other open conversations cannot
       // silently replace its recipient through a background identity broadcast.
       if (embedded && (!Number.isInteger(configuredWaTabId) || message.context?.tabId !== configuredWaTabId)) return;
-      handler(message.context);
+      if (nativePanel && message.context?.windowId !== configuredPanelWindowId) return;
+      if (nativePanel) {
+        // Notifications are wakeups, not recipient selections. Re-read the
+        // same-window WhatsApp target so another tab's late identity cannot
+        // replace the current chat in this persistent document.
+        const notification = ++nativeNotification, origin = configuredOrigin;
+        readContext().then(context => {
+          if (!removed && notification === nativeNotification && origin === configuredOrigin) handler(context);
+        }).catch(() => {});
+        return;
+      }
+      handler(recordNativeContext(message.context));
     };
     chrome.runtime.onMessage.addListener(listener);
-    return () => chrome.runtime.onMessage.removeListener(listener);
+    return () => { removed = true; nativeNotification++; chrome.runtime.onMessage.removeListener(listener); };
   },
   async openLogin() {
     if (authenticationProvider === "password") { setupCard(); return; }
@@ -177,6 +259,7 @@ function setupCard(message) {
   note.textContent = "La configuración se abre en otra pestaña. Tus conversaciones permanecen en WhatsApp y tus operaciones se guardan en tu CRM.";
   main.append(logo, label, title, description, actions, status, note);
   document.body.append(main);
+  nativePanelShell();
   document.body.hidden = false;
 }
 
@@ -230,6 +313,7 @@ function nativeSetupCard(message) {
   note.className = "nexo-setup-note"; note.textContent = "Usa las mismas credenciales que en la web.";
   main.append(logo, label, title, description, form, status, advanced, note);
   document.body.append(main); document.body.hidden = false;
+  nativePanelShell();
   form.addEventListener("submit", async event => {
     event.preventDefault();
     if (nativeSubmitting) return;
@@ -318,6 +402,7 @@ async function refreshConnection() {
       if (!applicationStarted) {
         configuredOrigin = origin;
         configuredWaTabId = fresh.waTabId;
+        configuredPanelWindowId = fresh.panelWindowId;
       } else {
         showConnectionNotice();
         setupStatus("Cambió el CRM conectado. Recarga el panel antes de iniciar sesión.");
@@ -398,6 +483,7 @@ try {
   const configuration = await rpc("configuration.get");
   configuredOrigin = configuration.origin || "";
   configuredWaTabId = configuration.waTabId;
+  configuredPanelWindowId = configuration.panelWindowId;
   authenticationProvider = configuredOrigin === DEFAULT_ORIGIN ? "password" : "";
   if (configuredOrigin) {
     const auth = await rpc("crm.authStatus", { expectedOrigin: configuredOrigin });
@@ -414,6 +500,7 @@ try {
     await import("./app/app.js");
     document.body.hidden = false;
     phase = "active";
+    nativePanelShell();
     try { sessionStorage.removeItem(recoveryKey); } catch {}
   }
 } catch (error) {

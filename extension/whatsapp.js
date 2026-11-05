@@ -375,6 +375,10 @@
       setScope(message.scope);
       const actions = { context, capture, prepare, bind, unbind };
       if (!Object.hasOwn(actions, message.action)) throw Error("Operación no permitida.");
+      // A native browser panel can stay visible while this WhatsApp tab is
+      // hidden. Check again in the document at the instant of the operation.
+      if (message.requireVisible === true && (document.hidden || document.visibilityState === "hidden"))
+        throw Error("Vuelve a la pestaña de WhatsApp para trabajar con esta conversación.");
       sendResponse({ ok: true, result: actions[message.action](message.input) });
     } catch (error) { sendResponse({ ok: false, error: error.message }); }
     return false;

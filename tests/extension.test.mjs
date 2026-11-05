@@ -5,6 +5,7 @@ import { readFile, mkdtemp, readdir, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import * as policy from "../extension/policy.mjs";
 import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, draftInput, safeContext, WA_ORIGIN } from "../extension/policy.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -128,7 +129,7 @@ async function backgroundFixture({ localState, waState, beforeWhatsAppSend } = {
     },
     scripting: { async executeScript(input) { calls.push({ type: "inject", input }); } },
   };
-  const context = vm.createContext({ chrome, URL, TextEncoder, crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN });
+  const context = vm.createContext({ chrome, URL, TextEncoder, ...policy });
   vm.runInContext(source.replace(/^import[^\n]+\n/, ""), context);
   assert.equal(typeof messageListener, "function");
   const invoke = (message, sender) => new Promise(resolve => {
@@ -213,9 +214,9 @@ test("The toolbar opens the dock in its WhatsApp tab without the Chrome side pan
   assert(!calls.some(call => call.type === "query"));
 });
 
-async function whatsappFixture({ title = "+51 999 999 999", peer = "opaque-peer@lid", group = false, draft = "", entries = [] } = {}) {
+async function whatsappFixture({ title = "+51 999 999 999", peer = "opaque-peer@lid", group = false, draft = "", entries = [], rpc = false } = {}) {
   const source = await readFile(join(root, "extension/whatsapp.js"), "utf8");
-  const state = { title, peer, group, draft, entries, insertions: 0, clicks: 0 };
+  const state = { title, peer, group, draft, entries, insertions: 0, clicks: 0, hidden: false };
   const titleNode = { getAttribute: () => state.title, get textContent() { return state.title; } };
   const header = {
     get textContent() { return state.title + (state.group ? " · participantes" : ""); },
@@ -240,13 +241,35 @@ async function whatsappFixture({ title = "+51 999 999 999", peer = "opaque-peer@
     querySelectorAll() { return state.entries.length ? state.entries.map(entryNode) : state.peer ? [{ getAttribute: () => `false_${state.peer}_identity` }] : []; },
   };
   const document = {
+    get hidden() { return state.hidden; },
+    get visibilityState() { return state.hidden ? "hidden" : "visible"; },
     querySelector: () => main,
     execCommand(command, _ui, text) { assert.equal(command, "insertText"); state.draft += text; state.insertions++; return true; },
   };
-  const context = vm.createContext({ document, innerHeight: 800, innerWidth: 1200 });
+  let listener;
+  const context = vm.createContext({ document, innerHeight: 800, innerWidth: 1200, ...(rpc ? {
+    chrome: { runtime: { id, getURL: path => `chrome-extension://${id}/${path}`, onMessage: { addListener(fn) { listener = fn; } }, async sendMessage() {} } },
+    MutationObserver: class { observe() {} }, setTimeout() { return 1; },
+  } : {}) });
   vm.runInContext(source, context);
-  return { state, adapter: context.__nexoWhatsAppAdapter };
+  return { state, adapter: context.__nexoWhatsAppAdapter, invoke: message => new Promise(resolve => listener({ channel: "nexo.whatsapp", scope: "https://crm.example", ...message }, { id, url: `chrome-extension://${id}/background.mjs` }, resolve)) };
 }
+
+test("The actual WhatsApp receiver rechecks visibility after the browser approved a native-panel operation", async () => {
+  const f = await whatsappFixture({ rpc: true, entries: [{ id: "one", body: "No leer con la pestaña oculta", direction: "received" }] });
+  f.state.hidden = true;
+  for (const action of ["capture", "prepare", "bind", "unbind"]) {
+    const reply = await f.invoke({ action, requireVisible: true, input: { phone: "51999999999", text: "No insertar", chatId: "wa:opaque-peer@lid", name: "+51 999 999 999" } });
+    assert.equal(reply.ok, false, action); assert.match(reply.error, /pestaña de WhatsApp/i);
+  }
+  assert.equal(f.state.insertions, 0); assert.equal(f.state.draft, "");
+  const identity = await f.invoke({ action: "context" });
+  assert.equal(identity.ok, true); assert.equal(identity.result.phone, "51999999999");
+  assert(!JSON.stringify(identity).includes("No leer con la pestaña oculta"));
+  f.state.hidden = false;
+  const visible = await f.invoke({ action: "prepare", requireVisible: true, input: { phone: "51999999999", text: "Borrador solicitado" } });
+  assert.equal(visible.ok, true); assert.equal(f.state.draft, "Borrador solicitado");
+});
 
 test("The WhatsApp adapter never guesses a phone from an opaque peer; manual linking follows the exact conversation", async () => {
   const { state, adapter } = await whatsappFixture({ title: "Ana", peer: "123456789@lid" });
@@ -329,11 +352,11 @@ test("The package contains the entire CRM and no server data or remote executabl
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "1.3.1");
+  assert.equal(manifest.version, "1.4.0");
   assert.deepEqual(manifest.host_permissions, ["https://web.whatsapp.com/*", "https://nexo-crm.acxelcubaaraoz.workers.dev/*"]);
   assert.equal(manifest.externally_connectable, undefined);
-  assert.equal(manifest.side_panel, undefined);
-  assert(!manifest.permissions.includes("sidePanel"));
+  assert.deepEqual(manifest.side_panel, { default_path: "app/index.html?panel=1" });
+  assert(manifest.permissions.includes("sidePanel"));
   assert(manifest.permissions.includes("offscreen"));
   assert(!manifest.permissions.includes("debugger"));
   assert.deepEqual(manifest.content_scripts, [{

@@ -2,6 +2,8 @@
 
 Estado: paquete preparado para revisión técnica; **todavía no publicado**. La
 instalación como carpeta descomprimida no recibe actualizaciones automáticas.
+La publicación está **aplazada por presupuesto cero**. No se solicita registrar
+ni pagar una cuenta para usar la instalación local.
 
 ## Distribución y actualizaciones
 
@@ -65,6 +67,7 @@ Web, usando la base del negocio y las operaciones que solicite el usuario.
 | `scripting` | Instalar los archivos empaquetados del panel y adaptador al abrir Nexo en una pestaña de WhatsApp; conectar instancias antiguas mediante el puente empaquetado de compatibilidad. |
 | `clipboardWrite` | Copiar el texto solicitado por el usuario. No se lee el portapapeles. |
 | `offscreen` | Usar un documento interno empaquetado para copiar desde el panel incrustado. |
+| `sidePanel` | Mantener la interfaz del CRM en la barra global de Chrome al cambiar de pestaña, sin leer otros sitios. |
 | `https://web.whatsapp.com/*` | Mostrar el panel, reconocer la conversación visible y preparar borradores o capturar textos cuando el usuario lo solicita. |
 | Dominio exacto del CRM principal | Iniciar sesión y consultar o guardar datos mediante la API HTTPS del CRM. |
 | `https://*/*` opcional | Solicitar acceso al dominio exacto de otra instancia solo al elegirla en Usar otro CRM. No concede acceso a todos los sitios al instalar. |

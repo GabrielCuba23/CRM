@@ -1,12 +1,13 @@
 # Nexo CRM para WhatsApp Web
 
 Extensión Manifest V3 para Chrome de computadora. Presenta una interfaz compacta
-dentro de WhatsApp Web, conectada a la misma base del CRM. Tiene tres entradas:
+en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. Tiene tres entradas:
 **Chat actual**, **Clientes** y **Cuentas**. Las herramientas avanzadas siguen
 disponibles desde **Abrir CRM**.
-Un botón **Nexo** muestra u oculta el panel integrado a la derecha. En pantallas
-amplias se reserva espacio para mantener la conversación visible; en ventanas
-estrechas el panel puede superponerse y cerrarse con el botón **×**.
+Pulsa **Nexo** en WhatsApp o el icono de la extensión para abrir la barra. Una vez
+abierta permanece visible al cambiar de pestaña en esa ventana, también en otros
+sitios. Puedes cerrarla desde el control de Chrome y abrirla de nuevo con Nexo.
+El modo integrado en la página se conserva para entornos sin el panel nativo.
 
 ## Construir e instalar
 
@@ -19,17 +20,17 @@ python3 extension/build.py
 Descomprime el ZIP en una carpeta privada. En `chrome://extensions` activa
 **Modo de desarrollador**, pulsa **Cargar descomprimida** y selecciona esa
 carpeta. En una instalación local, conserva la carpeta para futuras aperturas.
-La distribución en Chrome Web Store requiere su publicación por el propietario.
+La instalación local no requiere pagar una tienda ni contratar una suscripción.
 
 ## Entrar con correo y contraseña
 
 1. Crea tu contraseña una vez mediante el enlace privado de activación del CRM.
    El enlace es personal, se utiliza una sola vez y caduca a las 24 horas.
-2. Abre o recarga WhatsApp Web. Nexo aparece junto a la conversación.
+2. Abre o recarga WhatsApp Web y pulsa **Nexo** para abrir la barra lateral.
 3. Escribe tu correo y contraseña en **Iniciar sesión**, dentro del panel.
    Usa las mismas credenciales que en la web del CRM.
 4. La extensión se comunica directamente con el servidor. Puedes cerrar la web
-   del CRM y continuar trabajando en WhatsApp.
+   del CRM y continuar trabajando con la barra lateral abierta.
 
 El CRM principal está configurado en la extensión. **Usar otro CRM** permite
 cambiar el dominio y autorizar esa instancia expresamente. Las instancias que
@@ -38,13 +39,21 @@ CRM; este requisito no se aplica al CRM principal con contraseña.
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.3.1. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.4.0. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
 instalación de Nexo activa. La versión 1.3.0 añade correo y contraseña dentro
 del panel y elimina la necesidad de conservar abierta la web del CRM principal.
 La dirección antigua `/companion` abre el CRM completo.
+
+La versión 1.4.0 usa el panel global de Chrome para mantener Nexo visible al
+cambiar de pestaña, sin recargar sus formularios ni pedir el acceso otra vez.
+**Abrir WhatsApp** vuelve a la conversación conectada de esa misma ventana.
+Fuera de WhatsApp puedes consultar y gestionar clientes, servicios y cuentas;
+para leer textos o preparar un borrador debes volver a su pestaña. No se leen
+otras páginas por tener la barra abierta. El permiso `sidePanel` solo permite
+mostrar esta interfaz persistente del navegador.
 
 La versión 1.3.1 permite **Crear ficha nueva** desde **Chat actual**, junto a
 **Vincular contacto existente**. Completa los datos de la conversación, comprueba
@@ -53,11 +62,11 @@ si el teléfono ya pertenece a un contacto y conecta la ficha guardada con ese c
 ### Actualizaciones automáticas
 
 La instalación descomprimida requiere reemplazar sus archivos y pulsar Recargar.
-Para distribuir actualizaciones automáticas debe publicarse la extensión en
-Chrome Web Store e instalarse una vez desde su ficha. Chrome distribuye las
-versiones posteriores publicadas y aprobadas; las mejoras del servidor y los
-datos compartidos siguen actualizándose desde la web. El paquete actual no está
-publicado en la tienda. Consulta [la preparación de la publicación](STORE.md).
+La web y los datos compartidos se actualizan desde el servidor. La publicación
+en Chrome Web Store está aplazada porque requiere un registro de pago, fuera del
+presupuesto de este proyecto. El paquete actual no está publicado en la tienda;
+no utiliza un actualizador de código remoto. Los materiales de publicación en
+`STORE.md` se conservan solo como referencia para el futuro.
 
 La versión 1.2.1 reconoce también el panel nativo «Info. del contacto» cuando
 WhatsApp muestra su nombre y teléfono como texto normal. Conserva la ficha
@@ -139,7 +148,8 @@ de respaldo que solicites expresamente.
 ## Pruebas
 
 ```sh
-node --test tests/extension.test.mjs tests/extension-password.test.mjs tests/native-auth.test.mjs tests/companion-workspace.test.mjs tests/whatsapp-identity.test.mjs
+node --test tests/extension.test.mjs tests/side-panel.test.mjs tests/extension-password.test.mjs tests/native-auth.test.mjs tests/companion-workspace.test.mjs tests/whatsapp-identity.test.mjs
+NODE_PATH=/ruta/a/node_modules node tests/persistent-panel-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/password-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/extension-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/compact-extension-browser.cjs
@@ -151,4 +161,7 @@ mensajes con límites de Chrome simulados. El Chromium administrado del entorno
 bloquea extensiones de terceros; esa política no se modifica ni se evita.
 La prueba de contraseña ejecuta el Worker y D1 reales en Miniflare, con la web y
 la extensión empaquetada; solo los límites de Chrome y el chat son simulados.
+La prueba de barra persistente usa la misma interfaz empaquetada y comprueba
+cambios de pestaña, aislamiento entre ventanas y conservación de formularios;
+las API de Chrome, su barra nativa y las páginas de WhatsApp están simuladas.
 La compatibilidad final con tu sesión real debe comprobarse en tu Chrome.

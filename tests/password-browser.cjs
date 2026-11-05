@@ -23,6 +23,8 @@ const WA = `<!doctype html><meta charset="utf-8"><title>WhatsApp · fixture</tit
 <div id="app"><aside class="list" id="pane-side"><b>WhatsApp · datos ficticios</b><div aria-selected="true">Cliente de prueba</div></aside><section id="main"><header><span title="+51 999 999 999">+51 999 999 999</span></header><div class="history"><div class="message-in" data-id="false_browser-fixture@lid_1"><div data-pre-plain-text="[10:30] Cliente: "><span class="selectable-text">Mensaje de ejemplo.</span></div></div></div><footer><div role="textbox" contenteditable="true"></div></footer></section></div>`;
 const MIME = { '.html':'text/html; charset=utf-8', '.css':'text/css', '.mjs':'text/javascript', '.js':'text/javascript', '.svg':'image/svg+xml', '.png':'image/png', '.webmanifest':'application/manifest+json' };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const PERSISTENT_PANEL = process.env.PERSISTENT_PANEL_ONLY === '1';
+const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
 
 (async () => {
   const root = path.resolve(__dirname, '..');
@@ -57,10 +59,11 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   };
   let apiLoginCalls = 0, setupCalls = 0, directCalls = 0, writes = 0, createdTabs = 0, bridgeCalls = 0;
   const issuedTokens = [], broadcasts = [], clipboard = [], errors = [];
-  const pages = new Map(), backgroundListeners = [], storageListeners = [];
+  const pages = new Map(), backgroundListeners = [], storageListeners = [], activationListeners = [];
   const local = {}, session = {};
-  let nextTabId = 1, whatsapp, clipboardReady = false;
-  const tab = page => ({id:pages.get(page),url:page.url(),status:'complete'});
+  let nextTabId = 1, whatsapp, clipboardReady = false, panelPage, activeBrowserTabId;
+  const panelCalls = [];
+  const tab = page => ({id:pages.get(page),windowId:1,active:PERSISTENT_PANEL?pages.get(page)===activeBrowserTabId:page===whatsapp,url:page.url(),status:'complete'});
   const pageFor = id => [...pages].find(([,value])=>value===id)?.[0];
   const api = async (url, init={}) => {
     const request = new Request(url, init);
@@ -109,7 +112,10 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   }
   try {
     global.chrome={
-      runtime:{id:EXT_ID,getURL:suffix=>EXT_ORIGIN+suffix,onMessage:{addListener:listener=>backgroundListeners.push(listener)},onInstalled:{addListener(){}},async openOptionsPage(){},async getContexts(){return clipboardReady?[{}]:[];},async sendMessage(message){
+      runtime:{id:EXT_ID,getURL:suffix=>EXT_ORIGIN+suffix,onMessage:{addListener:listener=>backgroundListeners.push(listener)},onInstalled:{addListener(){}},async openOptionsPage(){panelCalls.push({type:'open-options'});},async getContexts(filter={}){
+        if(filter.contextTypes?.includes('SIDE_PANEL'))return panelPage?[{contextType:'SIDE_PANEL',documentId:PANEL_DOCUMENT_ID,documentUrl:EXT_ORIGIN+'app/index.html?panel=1',windowId:1}]:[];
+        return clipboardReady?[{}]:[];
+      },async sendMessage(message){
         broadcasts.push(structuredClone(message));
         if (message.channel==='nexo.clipboard.offscreen') {clipboard.push(message.text);return {ok:true};}
         for (const page of pages.keys()) for (const frame of page.frames()) if (frame.url().startsWith(EXT)) await frame.evaluate(({message,id})=>{for(const listener of globalThis.__chromeListeners||[]) listener(message,{id},()=>{});},{message,id:EXT_ID});
@@ -118,7 +124,11 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
       permissions:{async contains({origins}){return origins.every(origin=>origin===CRM+'/*');}},
       offscreen:{async createDocument(){clipboardReady=true;}},
       action:{onClicked:{addListener(){}}},
-      tabs:{onUpdated:{addListener(){}},onRemoved:{addListener(){}},onActivated:{addListener(){}},async get(id){const page=pageFor(id);if(!page)throw Error('Closed fixture tab');return tab(page);},async query(query){if(query.active)return whatsapp?[tab(whatsapp)]:[];return [...pages].filter(([page])=>!query.url||page.url().startsWith(query.url.replace(/\*$/,''))).map(([page])=>tab(page));},async create({url}){createdTabs++;const page=await browserContext.newPage();pages.set(page,nextTabId++);await page.goto(url);return tab(page);},async update(id,input){const page=pageFor(id);if(input.url)await page.goto(input.url);return tab(page);},async sendMessage(id,message){
+      ...(PERSISTENT_PANEL?{sidePanel:{async setPanelBehavior(input){panelCalls.push({type:'behavior',input});},async open(input){panelCalls.push({type:'open',input});}},windows:{async get(windowId){return{id:windowId,focused:windowId===1};},async update(windowId){return{id:windowId,focused:true};}}}:{}),
+      tabs:{onUpdated:{addListener(){}},onRemoved:{addListener(){}},onActivated:{addListener:listener=>activationListeners.push(listener)},async get(id){const page=pageFor(id);if(!page)throw Error('Closed fixture tab');return tab(page);},async query(query){
+        if(!PERSISTENT_PANEL&&query.active)return whatsapp?[tab(whatsapp)]:[];
+        return [...pages].filter(([page])=>page!==panelPage&&(!query.active||pages.get(page)===activeBrowserTabId)&&(!query.windowId||query.windowId===1)&&(!query.url||page.url().startsWith(query.url.replace(/\*$/,'')))).map(([page])=>tab(page));
+      },async create({url,windowId}){createdTabs++;const page=await browserContext.newPage();pages.set(page,nextTabId++);activeBrowserTabId=pages.get(page);await page.goto(url);return tab(page);},async update(id,input){const page=pageFor(id);if(!page)throw Error('Closed fixture tab');if(input.active){activeBrowserTabId=id;for(const listener of activationListeners)listener({tabId:id,windowId:1});}if(input.url)await page.goto(input.url);return tab(page);},async sendMessage(id,message){
         if(message.channel==='nexo.crm.bridge')bridgeCalls++;
         return pageFor(id).evaluate(({message,id})=>new Promise(resolve=>{let asyncReply=false;let sent=false;const done=value=>{if(!sent){sent=true;resolve(value);}};for(const listener of globalThis.__chromeListeners||[])if(listener(message,{id,url:chrome.runtime.getURL('background.mjs')},done)===true)asyncReply=true;if(!asyncReply&&!sent)resolve(undefined);}),{message,id:EXT_ID});
       }},
@@ -130,14 +140,16 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
       const embedded=frame.url().startsWith(EXT)&&frame!==page.mainFrame();
       const sender={id:EXT_ID,frameId:embedded?1:0,url:frame.url()};
       if(frame.url().startsWith(EXT)){const parsed=new URL(frame.url());sender.url=EXT_ORIGIN+parsed.pathname.slice(1)+parsed.search;if(embedded)sender.tab=tab(page);}else sender.tab=tab(page);
+      if(PERSISTENT_PANEL&&page===panelPage&&frame===page.mainFrame())sender.documentId=PANEL_DOCUMENT_ID;
       return dispatch(message,sender);
     });
-    await browserContext.addInitScript(({id,fixtureExtension})=>{
+    await browserContext.addInitScript(({id,fixtureExtension,persistentPanel})=>{
       globalThis.__chromeListeners=[];
       globalThis.chrome={permissions:{request:async()=>true},runtime:{id,getURL:suffix=>fixtureExtension+suffix,sendMessage:message=>globalThis.nexoToBackground(message),onMessage:{addListener:listener=>globalThis.__chromeListeners.push(listener),removeListener:listener=>{globalThis.__chromeListeners=globalThis.__chromeListeners.filter(item=>item!==listener);}}},storage:{onChanged:{addListener(){}}}};
+      if(persistentPanel)chrome.runtime.getManifest=()=>({side_panel:{default_path:'app/index.html?panel=1'}});
       const nativeSetInterval=window.setInterval.bind(window);
       window.setInterval=(callback,delay,...args)=>{if(delay===20000)window.__nexoWorkspacePoll=callback;return nativeSetInterval(callback,delay,...args);};
-    },{id:EXT_ID,fixtureExtension:EXT});
+    },{id:EXT_ID,fixtureExtension:EXT,persistentPanel:PERSISTENT_PANEL});
     await browserContext.route(CRM+'/**',async route=>{
       const request=route.request();
       const headers=await request.allHeaders();
@@ -150,6 +162,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
       return route.fulfill({contentType:MIME[path.extname(filename)]||'application/octet-stream',body:fs.readFileSync(filename)});
     });
     await browserContext.route('https://web.whatsapp.com/**',route=>route.fulfill({contentType:'text/html',body:WA}));
+    if(PERSISTENT_PANEL)await browserContext.route('https://unrelated.example/**',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>Otra pestaña · fixture</title><p>Datos sintéticos: otro sitio.</p>'}));
 
     // A private one-use setup link creates the owner's password, then cookie
     // login works normally. Setup secrets leave the address bar immediately.
@@ -191,9 +204,92 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     if(process.env.PASSWORD_WEB_ONLY==='1'){console.log('Real Worker/D1 web password flow passed: one-use invite, cleared fragment, private cookie, bad/good login, logout and full CRM load.');return;}
 
     whatsapp=await browserContext.newPage();pages.set(whatsapp,nextTabId++);
+    if(PERSISTENT_PANEL)activeBrowserTabId=pages.get(whatsapp);
     await whatsapp.goto('https://web.whatsapp.com/');
     await whatsapp.evaluate(fs.readFileSync(path.join(unpacked,'whatsapp.js'),'utf8'));
     await whatsapp.evaluate(fs.readFileSync(path.join(unpacked,'dock.js'),'utf8'));
+    if(PERSISTENT_PANEL){
+      // Chrome owns the real native panel document. This fixture represents it
+      // as a top-level packaged page and mocks only Chrome's panel/window APIs.
+      // Keeping that document alive across active-tab changes is explicit here;
+      // it is not a claim that managed Chromium installed a third-party MV3.
+      const launcher=whatsapp.locator('#nexo-whatsapp-dock [data-nexo-action=open]');
+      await launcher.waitFor({state:'visible'});
+      assert.equal(await whatsapp.locator('#nexo-whatsapp-dock iframe').count(),0,'Native mode must not mount a second CRM inside WhatsApp.');
+      assert.equal(await whatsapp.locator('html').evaluate(node=>node.classList.contains('nexo-dock-push')),false);
+      await launcher.click();
+      await until(()=>Promise.resolve(panelCalls.some(item=>item.type==='open')),'The WhatsApp launcher did not request the global native panel.');
+      const opened=panelCalls.find(item=>item.type==='open');
+      assert.equal(opened.input.windowId,1);
+      assert.equal(Object.hasOwn(opened.input,'tabId'),false,'Tab-scoped panels do not meet persistent-across-tabs behavior.');
+      assert(panelCalls.some(item=>item.type==='behavior'&&item.input.openPanelOnActionClick===true));
+      panelPage=await browserContext.newPage();pages.set(panelPage,nextTabId++);
+      await panelPage.setViewportSize({width:420,height:850});
+      await panelPage.goto(EXT+'app/index.html?panel=1');
+      await panelPage.locator('#nexo-login-form').waitFor({state:'visible',timeout:25000});
+      assert.equal(await panelPage.locator('#nexo-login-form [type=url]').count(),0);
+      assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
+      await panelPage.locator('#nexo-login-form [name=email]').fill(OWNER);
+      await panelPage.locator('#nexo-login-form [name=password]').fill(PASSWORD);
+      await panelPage.locator('#nexo-login-submit').click();
+      await panelPage.locator('#companion-workspace').waitFor({state:'visible',timeout:25000});
+      await panelPage.locator('#compact-chat-name').filter({hasText:'Cliente de prueba'}).waitFor({state:'visible'});
+      assert.equal(new URL(await panelPage.evaluate(()=>NexoCompanion.loginUrl)).searchParams.get('panel'),'1');
+      assert.equal((await panelPage.evaluate(()=>NexoCompanion.getContext())).active,true);
+      const loginCount=apiLoginCalls, nativeUrl=panelPage.url();
+      await panelPage.evaluate(()=>{window.__persistentPanelSentinel='document-kept-with-unsaved-form';});
+      await panelPage.locator('#compact-edit-contact').click();
+      await panelPage.locator('#compact-contact-form [name=name]').fill('Contacto editado con otra pestaña abierta');
+      const other=await browserContext.newPage();pages.set(other,nextTabId++);
+      await other.goto('https://unrelated.example/');
+      activeBrowserTabId=pages.get(other);
+      for(const listener of activationListeners)listener({tabId:activeBrowserTabId,windowId:1});
+      await until(async()=>!(await panelPage.evaluate(()=>NexoCompanion.getContext())).active,'The native panel did not observe that WhatsApp left the foreground.');
+      const retained=await panelPage.evaluate(()=>NexoCompanion.getContext());
+      assert.equal(retained.active,false);assert.equal(retained.windowId,1);assert.equal(retained.tabId,pages.get(whatsapp));
+      await panelPage.locator('#nexo-native-chat-notice').filter({hasText:/gestionar|WhatsApp/}).waitFor({state:'visible'});
+      assert.equal(await panelPage.locator('#compact-contact-dialog').evaluate(node=>node.open),true);
+      assert.equal(await panelPage.locator('#compact-contact-form [name=name]').inputValue(),'Contacto editado con otra pestaña abierta');
+      assert.equal(await panelPage.evaluate(()=>window.__persistentPanelSentinel),'document-kept-with-unsaved-form');
+      assert.equal(panelPage.url(),nativeUrl);assert.equal(apiLoginCalls,loginCount,'Changing Chrome tabs must not require login again.');
+      assert.equal(await panelPage.locator('#nexo-login-form').count(),0);
+      const capture=await panelPage.evaluate(async()=>{try{await NexoCompanion.captureVisibleMessages();return'unexpected';}catch(error){return error.message;}});
+      assert.match(capture,/WhatsApp|conversación/i);
+      const prepare=await panelPage.evaluate(async()=>{try{await NexoCompanion.prepareMessage({phone:'51999999999',text:'No insertar con WhatsApp oculto'});return'unexpected';}catch(error){return error.message;}});
+      assert.match(prepare,/WhatsApp|pestaña/i);
+      assert.equal(await whatsapp.locator('footer [contenteditable]').innerText(),'');
+      await panelPage.locator('#compact-contact-form button[type=submit]').click();
+      await panelPage.locator('#compact-contact-dialog').waitFor({state:'hidden'});
+      assert.equal(writes,1,'The CRM must remain editable while another website is active.');
+      const saved=await DB.prepare('SELECT revision,body FROM workspace WHERE id=1').first();
+      assert.equal(saved.revision,2);assert.equal(JSON.parse(saved.body).clients[0].name,'Contacto editado con otra pestaña abierta');
+      assert.equal(activeBrowserTabId,pages.get(other),'Editing the CRM must not steal focus from the other website.');
+      fs.mkdirSync('/workspace/work/deliverables',{recursive:true});
+      await panelPage.screenshot({path:'/workspace/work/deliverables/persistent-panel-v1.4.0.png',fullPage:false});
+      await panelPage.locator('#nexo-return-to-whatsapp').click();
+      await until(()=>Promise.resolve(activeBrowserTabId===pages.get(whatsapp)),'Explicit return must select the same window WhatsApp tab.');
+      assert.equal((await panelPage.evaluate(()=>NexoCompanion.getContext())).active,true);
+      assert.equal(apiLoginCalls,loginCount);assert.equal(panelPage.url(),nativeUrl);
+      assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
+      assert(!panelCalls.some(item=>item.type==='open-options'),'No installation/login flow requires an extra options page.');
+
+      // A broadcast from another browser window cannot replace this recipient.
+      await panelPage.evaluate(({id,origin})=>{for(const fn of window.__chromeListeners)fn({channel:'nexo.context',origin,context:{windowId:2,tabId:999,chatId:'wa:other-window@lid',name:'Wrong window',phone:'51988888888',active:true}},{id},()=>{});},{id:EXT_ID,origin:CRM});
+      assert.equal((await panelPage.evaluate(()=>NexoCompanion.getContext())).tabId,pages.get(whatsapp));
+      pages.delete(whatsapp);await whatsapp.close();
+      await panelPage.locator('#compact-tab-clients').click();
+      await panelPage.locator('#compact-content').getByRole('heading',{name:'Contacto editado con otra pestaña abierta',exact:true}).waitFor({state:'visible'});
+      assert.equal(await panelPage.locator('#nexo-login-form').count(),0,'Closing WhatsApp must not end the CRM session.');
+      assert.equal(apiLoginCalls,loginCount);assert.equal(panelPage.url(),nativeUrl);
+      assert.equal(await panelPage.evaluate(()=>window.__persistentPanelSentinel),'document-kept-with-unsaved-form');
+      const privateState=JSON.stringify({local,session,broadcasts});
+      assert(!privateState.includes(PASSWORD));
+      for(const value of issuedTokens){assert(!JSON.stringify(local).includes(value));assert(!JSON.stringify(broadcasts).includes(value));}
+      assert.deepEqual(errors.filter(message=>!/No se pudo verificar la sesión privada|Tu sesión caducó|Sesión no válida|401|Service Worker/i.test(message)),[]);
+      console.log('Persistent panel passed: real packaged top-level CRM, inline password login, global window-scoped open, no WhatsApp iframe duplicate, active-tab change preserves the same document/form/session, off-WhatsApp CRM D1 write without focus stealing, capture/draft blocked, exact-window return, foreign-window identity ignored and CRM usable after WhatsApp closes.');
+      console.log('Chrome sidePanel/window APIs and WhatsApp are mocked; real Worker/D1, packaged UI and background router run. This does not install MV3 or test the owner Chrome.');
+      return;
+    }
     const iframe=whatsapp.locator('#nexo-whatsapp-dock iframe#nexo-crm-frame');
     await iframe.waitFor({state:'visible'});
     const embedded=await iframe.contentFrame();

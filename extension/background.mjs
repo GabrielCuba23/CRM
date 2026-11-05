@@ -14,6 +14,66 @@ let authenticationEpoch = 0;
 function tabOrigin(tab) {
   try { return new URL(tab?.url || "").origin; } catch { return ""; }
 }
+function nativePanelPage(sender) {
+  if (!isExtensionPage(sender, EXTENSION_ID) || (sender.frameId ?? 0) !== 0) return false;
+  try { const url = new URL(sender.url); return url.pathname === "/app/index.html" && url.searchParams.get("panel") === "1"; }
+  catch { return false; }
+}
+async function nativePanelWindow(sender) {
+  // A query-string window number is not an authority. Derive the containing
+  // Chrome window from this actual extension document instead.
+  if (!nativePanelPage(sender) || sender.tab || typeof sender.documentId !== "string" || !sender.documentId || !chrome.runtime.getContexts)
+    throw Error("Abre Nexo desde la barra lateral de Chrome para continuar.");
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"], documentIds: [sender.documentId] });
+  const matches = contexts.filter(item => item.contextType === "SIDE_PANEL" && item.documentId === sender.documentId && item.documentUrl === sender.url && Number.isInteger(item.windowId) && item.windowId >= 0);
+  if (matches.length !== 1) throw Error("No se pudo identificar esta barra lateral. Vuelve a abrir Nexo en Chrome.");
+  return matches[0].windowId;
+}
+const windowWhatsAppKey = windowId => "panelWhatsApp:" + windowId;
+let windowSelectionWrites = Promise.resolve();
+const activationSequences = new Map(), rememberedActivationSequences = new Map();
+function rememberWindowWhatsApp(tab, activatedSequence) {
+  if (!Number.isInteger(tab?.id) || !Number.isInteger(tab.windowId) || tab.windowId < 0 || tabOrigin(tab) !== WA_ORIGIN) return Promise.resolve();
+  const operation = windowSelectionWrites.then(async () => {
+    const live = await chrome.tabs.get(tab.id);
+    if (tabOrigin(live) !== WA_ORIGIN || live.windowId !== tab.windowId) return;
+    if (Number.isInteger(activatedSequence)) {
+      // Metadata for two onActivated events may arrive out of order. A later
+      // WhatsApp activation always owns the remembered target, even if the
+      // user has already moved on to a non-WhatsApp page by the time it resolves.
+      if (activatedSequence < (rememberedActivationSequences.get(tab.windowId) || 0)) return;
+    } else {
+      const active = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+      if (live.active !== true || !active.some(item => item.id === live.id)) return;
+    }
+    await storage.set({ [windowWhatsAppKey(tab.windowId)]: live.id });
+    if (Number.isInteger(activatedSequence)) rememberedActivationSequences.set(tab.windowId, activatedSequence);
+  });
+  windowSelectionWrites = operation.catch(() => {});
+  return operation;
+}
+async function activeWhatsApp(tab) {
+  const current = await chrome.tabs.get(tab.id);
+  if (tabOrigin(current) !== WA_ORIGIN || current.windowId !== tab.windowId || current.active !== true) return false;
+  if (chrome.windows?.get && (await chrome.windows.get(current.windowId)).focused === false) return false;
+  return true;
+}
+function openNativePanel(sender) {
+  if ((!isWhatsAppSender(sender, EXTENSION_ID) && !isExtensionPage(sender, EXTENSION_ID)) || !Number.isInteger(sender.tab?.windowId) || sender.tab.windowId < 0)
+    throw Error("Abre Nexo con su icono de la barra de Chrome.");
+  if (!chrome.sidePanel?.open) throw Error("Actualiza Chrome para mantener Nexo visible al cambiar de pestaña.");
+  // Invoke within the original click gesture, before storage/tab/network awaits.
+  const opening = chrome.sidePanel.open({ windowId: sender.tab.windowId });
+  return opening.then(async () => {
+    if (tabOrigin(sender.tab) === WA_ORIGIN) {
+      await rememberWindowWhatsApp(sender.tab);
+      await chrome.tabs.sendMessage(sender.tab.id, { channel: "nexo.dock", action: "close" }, { frameId: 0 }).catch(() => {});
+    }
+    return { opened: true, windowId: sender.tab.windowId };
+  });
+}
+if (chrome.sidePanel?.setPanelBehavior)
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 async function notifyConnection(origin, ready, reason) {
   // This lifecycle signal contains no identity, CSRF value, or workspace data.
   await chrome.runtime.sendMessage({ channel: "nexo.connection", origin, ready, ...(reason ? { reason } : {}) }).catch(() => {});
@@ -303,10 +363,30 @@ async function connectCrm(sender, expectedOrigin) {
   if (result.ready) await returnToWhatsAppIfRequested(tab.id, origin).catch(() => {});
   return { tabId: tab.id, ...result };
 }
-async function whatsappTab(pinnedTabId) {
+async function whatsappTab(pinnedTabId, windowId) {
   if (Number.isInteger(pinnedTabId)) {
     const tab = await chrome.tabs.get(pinnedTabId);
     if (!tab?.url || new URL(tab.url).origin !== WA_ORIGIN) throw Error("La pestaña de WhatsApp cambió. Recarga WhatsApp Web.");
+    return tab;
+  }
+  if (Number.isInteger(windowId)) {
+    let tab = (await chrome.tabs.query({ active: true, windowId })).find(item => tabOrigin(item) === WA_ORIGIN);
+    let hadRemembered = false;
+    if (!tab) {
+      const values = await storage.get(windowWhatsAppKey(windowId));
+      hadRemembered = Number.isInteger(values[windowWhatsAppKey(windowId)]);
+      if (hadRemembered)
+        try { tab = await chrome.tabs.get(values[windowWhatsAppKey(windowId)]); } catch { /* Closed WhatsApp tab. */ }
+    }
+    if (!hadRemembered && (tabOrigin(tab) !== WA_ORIGIN || tab.windowId !== windowId)) {
+      // A unique WhatsApp in this window is unambiguous on first use. Never
+      // borrow another Chrome window's recipient or pick among multiple chats.
+      const candidates = await chrome.tabs.query({ url: WA_ORIGIN + "/*", windowId });
+      tab = candidates.length === 1 ? candidates[0] : null;
+    }
+    if (tabOrigin(tab) !== WA_ORIGIN || tab.windowId !== windowId)
+      throw Error("Abre WhatsApp Web en esta ventana y selecciona una conversación. Puedes seguir usando Clientes y Cuentas aquí.");
+    await rememberWindowWhatsApp(tab);
     return tab;
   }
   const active = (await chrome.tabs.query({ active: true, currentWindow: true })).find(tab => tab.url && new URL(tab.url).origin === WA_ORIGIN);
@@ -344,23 +424,47 @@ let whatsappOperations = Promise.resolve();
 async function waRequest(action, input, sender, expectedOrigin, explicitTabId) {
   const { origin } = await configuration();
   if (crmOrigin(expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Recarga el panel antes de vincular o enviar mensajes.");
-  const tab = await whatsappTab(explicitTabId ?? embeddedWhatsAppTab(sender, EXTENSION_ID));
+  const panelWindowId = nativePanelPage(sender) ? await nativePanelWindow(sender) : undefined;
+  let tab;
+  try { tab = await whatsappTab(explicitTabId ?? embeddedWhatsAppTab(sender, EXTENSION_ID), panelWindowId); }
+  catch (error) {
+    if (Number.isInteger(panelWindowId) && action === "context")
+      return { ...safeContext({}, undefined), windowId: panelWindowId, active: false };
+    throw error;
+  }
+  const guard = Number.isInteger(panelWindowId) ? async () => {
+    const selected = await whatsappTab(undefined, panelWindowId);
+    if (selected.id !== tab.id) throw Error("Cambió la pestaña de WhatsApp. Revisa el contacto antes de continuar.");
+    if (action !== "context" && !await activeWhatsApp(tab))
+      throw Error("Vuelve a la pestaña de WhatsApp antes de vincular, guardar textos o preparar un mensaje.");
+  } : undefined;
+  await guard?.();
   // Native DOM/storage operations are short and share persisted peer links.
   // Serialize across tabs so polling cannot resurrect an unlink or interleave
   // an older restore with another tab's changed recipient. No prompt or CRM
   // network request runs inside this queue.
-  const operation = whatsappOperations.then(() => waRequestOnTab(action, input, origin, tab));
+  const operation = whatsappOperations.then(async () => {
+    const result = await waRequestOnTab(action, input, origin, tab, guard, Number.isInteger(panelWindowId) && action !== "context");
+    if (Number.isInteger(panelWindowId) && ["context", "bind", "unbind"].includes(action)) {
+      const active = await activeWhatsApp(tab);
+      await guard();
+      return { ...result, windowId: panelWindowId, active };
+    }
+    return result;
+  });
   whatsappOperations = operation.catch(() => {});
   return operation;
 }
-async function waRequestOnTab(action, input, origin, tab) {
+async function waRequestOnTab(action, input, origin, tab, guard, requireVisible = false) {
   const send = async (operation, payload) => {
+    await guard?.();
     if ((await configuration()).origin !== origin) throw Error("Cambió el CRM conectado. Recarga el panel.");
     let response;
-    try { response = await chrome.tabs.sendMessage(tab.id, { channel: "nexo.whatsapp", scope: origin, action: operation, ...payload }, { frameId: 0 }); }
+    try { response = await chrome.tabs.sendMessage(tab.id, { channel: "nexo.whatsapp", scope: origin, action: operation, ...(requireVisible ? { requireVisible: true } : {}), ...payload }, { frameId: 0 }); }
     catch { throw Error("Recarga WhatsApp Web después de instalar la extensión."); }
     if (!response?.ok) throw Error(response?.error || "No se pudo leer la conversación actual.");
     if ((await configuration()).origin !== origin) throw Error("Cambió el CRM conectado. Recarga el panel.");
+    await guard?.();
     return response.result;
   };
   const restore = async () => {
@@ -411,14 +515,22 @@ async function openWhatsAppDock(candidate, action = "open") {
   return { tabId: tab.id };
 }
 async function execute(message, sender) {
+  if (message?.type === "panel.open") return openNativePanel(sender);
   if (isWhatsAppSender(sender, EXTENSION_ID)) {
     if (message?.type === "configuration.open") { await rememberWhatsAppReturn(sender.tab); await chrome.runtime.openOptionsPage(); return { opened: true }; }
     if (message?.type !== "wa.contextChanged") throw Error("Operación no permitida desde esta página.");
     await storage.set({ waTabId: sender.tab.id });
+    const live = await chrome.tabs.get(sender.tab.id);
+    if (live.active === true) await rememberWindowWhatsApp(live);
     // Re-read the current native identity in the configured scope instead of
     // forwarding a stale manual binding from another CRM's content-script cache.
     const { origin } = await configuration();
-    const current = await waRequest("context", undefined, sender, origin, sender.tab.id);
+    let current = await waRequest("context", undefined, sender, origin, sender.tab.id);
+    if (Number.isInteger(live.windowId)) {
+      const saved = await storage.get(windowWhatsAppKey(live.windowId));
+      if (saved[windowWhatsAppKey(live.windowId)] === live.id)
+        current = { ...current, windowId: live.windowId, active: await activeWhatsApp(live) };
+    }
     chrome.runtime.sendMessage({ channel: "nexo.context", origin, context: current }).catch(() => {});
     return { accepted: true };
   }
@@ -428,6 +540,12 @@ async function execute(message, sender) {
       const values = await chrome.storage.local.get("crmOrigin");
       let origin = values.crmOrigin || "";
       if (!origin) try { origin = (await configuration()).origin; } catch { /* Other hosts need a one-time grant in advanced options. */ }
+      if (nativePanelPage(sender)) {
+        const panelWindowId = await nativePanelWindow(sender);
+        let waTabId;
+        try { waTabId = (await whatsappTab(undefined, panelWindowId)).id; } catch { /* CRM works without an open WhatsApp. */ }
+        return { origin, panelWindowId, waTabId };
+      }
       return { origin, waTabId: embeddedWhatsAppTab(sender, EXTENSION_ID) };
     }
     case "clipboard.copy": return copyText(message.text);
@@ -495,6 +613,22 @@ async function execute(message, sender) {
       return reply.response;
     }
     case "wa.open": {
+      if (nativePanelPage(sender)) {
+        const windowId = await nativePanelWindow(sender);
+        let tab;
+        try { tab = await whatsappTab(undefined, windowId); }
+        catch {
+          // This is an explicit "Abrir WhatsApp" click, so a unique remaining
+          // tab can be focused. Passive context reads never make this switch.
+          const candidates = await chrome.tabs.query({ url: WA_ORIGIN + "/*", windowId });
+          if (candidates.length === 1) tab = candidates[0];
+        }
+        if (!tab) tab = await chrome.tabs.create({ url: WA_ORIGIN + "/", active: true, windowId });
+        else tab = await chrome.tabs.update(tab.id, { active: true });
+        await chrome.windows?.update?.(windowId, { focused: true });
+        await rememberWindowWhatsApp(tab);
+        return { tabId: tab.id, windowId };
+      }
       const pinned = embeddedWhatsAppTab(sender, EXTENSION_ID);
       const candidate = Number.isInteger(pinned) ? await chrome.tabs.get(pinned) : undefined;
       const result = await openWhatsAppDock(candidate);
@@ -528,7 +662,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 chrome.runtime.onInstalled.addListener(({ reason }) => {
-  if (reason === "install") chrome.runtime.openOptionsPage();
+  // Native Chrome panels open from a deliberate toolbar/launcher click. Do not
+  // redirect a fresh installation to another setup or licensing page.
+  if (reason === "install" && !chrome.sidePanel?.open) chrome.runtime.openOptionsPage();
+});
+chrome.tabs.onActivated?.addListener(({ tabId, windowId }) => {
+  const sequence = (activationSequences.get(windowId) || 0) + 1;
+  activationSequences.set(windowId, sequence);
+  (async () => {
+    const tab = await chrome.tabs.get(tabId);
+    if (tabOrigin(tab) === WA_ORIGIN) await rememberWindowWhatsApp(tab, sequence);
+    if (activationSequences.get(windowId) !== sequence) return;
+    const { origin } = await configuration();
+    const selected = await whatsappTab(undefined, windowId);
+    const current = await waRequest("context", undefined, {}, origin, selected.id);
+    if (activationSequences.get(windowId) !== sequence) return;
+    chrome.runtime.sendMessage({ channel: "nexo.context", origin, context: { ...current, windowId, active: await activeWhatsApp(selected) } }).catch(() => {});
+  })().catch(() => {});
 });
 chrome.tabs.onUpdated?.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== "complete") return;
@@ -546,4 +696,12 @@ chrome.tabs.onRemoved?.addListener(tabId => {
     if (connectionReturn?.tabId === tabId) await storage.remove("connectionReturn");
   })().catch(() => {});
 });
-chrome.action.onClicked.addListener(tab => { openWhatsAppDock(tab, "toggle").catch(() => chrome.runtime.openOptionsPage()); });
+chrome.action.onClicked.addListener(tab => {
+  if (chrome.sidePanel?.open) {
+    // setPanelBehavior handles the browser gesture and global panel. Remember
+    // WhatsApp only; switching to another site must not focus it again.
+    rememberWindowWhatsApp(tab).catch(() => {});
+    return;
+  }
+  openWhatsAppDock(tab, "toggle").catch(() => chrome.runtime.openOptionsPage());
+});

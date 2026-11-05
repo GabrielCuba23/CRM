@@ -10,7 +10,8 @@ Fecha de entrada en vigor: **[completar]**.
 
 ## Para qué sirve
 
-Nexo muestra un panel de CRM dentro de WhatsApp Web. Permite consultar y
+Nexo muestra un panel de CRM en la barra lateral de Chrome, conectado a WhatsApp
+Web. La barra puede seguir abierta al visitar otras pestañas, sin leer esas páginas. Permite consultar y
 gestionar contactos, fichas de servicios, cuentas, perfiles, cobros y mensajes
 utilizando la misma base que la web del CRM. El CRM principal está preconfigurado;
 el usuario puede autorizar otra instancia en las opciones avanzadas.
@@ -46,6 +47,9 @@ La extensión guarda localmente en Chrome el dominio elegido y los vínculos de
 conversaciones que el usuario confirme. Los vínculos con una identidad estable
 se separan por CRM; los que solo identifican la conversación abierta no se
 recuerdan como vínculos estables tras navegar a otro chat.
+El almacenamiento de sesión también conserva el identificador de la pestaña de
+WhatsApp asociada a cada ventana, para mantener esa conexión cuando cambias de
+pestaña. Esta asociación no contiene el contenido de otras páginas.
 
 La credencial temporal de acceso se conserva en el almacenamiento de sesión
 confiable de la extensión, separado de los scripts de la página. La contraseña

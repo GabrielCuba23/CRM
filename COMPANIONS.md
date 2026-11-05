@@ -1,7 +1,8 @@
 # Nexo CRM en WhatsApp Web y Android
 
-La extensión presenta una interfaz compacta dentro de la misma página
-de WhatsApp Web en Chrome de computadora. La APK abre el CRM privado en Android. Las ventas,
+La extensión presenta una interfaz compacta en la barra lateral de Chrome,
+conectada a WhatsApp Web. Permanece abierta al cambiar de pestaña en la misma
+ventana. La APK abre el CRM privado en Android. Las ventas,
 cuentas, perfiles, cobros, renovaciones, notas y configuración usan la misma base
 del negocio; no se mantiene una copia independiente del inventario en cada app.
 
@@ -28,7 +29,7 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión integrada 1.3.1](https://drive.google.com/file/d/1dzD0vnsAYCYpmRouf5HK9fbbliSyMeZH/view)
+1. Descarga la [extensión con barra persistente 1.4.0](https://drive.google.com/file/d/1ONr2jnlfHO_U9kn7Wy3CeFbcLWHyyVup/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -36,7 +37,8 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
    El CRM principal ya está configurado en la extensión.
 4. Abre o recarga WhatsApp Web e inicia sesión con tu correo y contraseña dentro
    de Nexo. La web usa las mismas credenciales; puedes cerrarla mientras trabajas.
-5. Pulsa el botón Nexo o el icono de la extensión para mostrar u ocultar el panel.
+5. Pulsa el botón Nexo o el icono de la extensión para abrir la barra lateral.
+   Seguirá visible al cambiar de pestaña. **Abrir WhatsApp** vuelve a su chat.
    **Usar otro CRM** permite configurar otra instancia cuando la necesites.
 
 Si ya instalaste una versión anterior, reemplaza los archivos en la misma carpeta,
@@ -90,10 +92,14 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
 - **Abrir CRM** abre la web para finanzas, proveedores, reportes, automatización
   y otras tareas extensas. Ambas interfaces usan la misma base y sus revisiones.
 
-La instalación descomprimida todavía requiere actualizar archivos. Para recibir
-actualizaciones automáticas debe publicarse Nexo en Chrome Web Store e instalarlo
-una vez desde su ficha. El [material de publicación](extension/STORE.md) está
-preparado; todavía no se ha enviado ni aprobado en la tienda.
+La instalación descomprimida requiere actualizar archivos. La publicación de
+pago en Chrome Web Store está aplazada: este proyecto mantiene presupuesto cero,
+sin suscripciones ni pagos únicos. El material de publicación se conserva como
+referencia; no se ha enviado ni aprobado en la tienda.
+
+La barra persistente permite gestionar el CRM mientras visitas otra pestaña,
+sin leer esa página. Para capturar textos o preparar mensajes debes volver a
+WhatsApp. Cada ventana conserva su conexión independiente con WhatsApp.
 
 Los cambios confirmados se guardan en el servidor. Una revisión antigua se rechaza
 para no sobrescribir operaciones de otra sesión; guarda o cierra los formularios

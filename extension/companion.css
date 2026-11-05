@@ -150,3 +150,37 @@ body.nexo-compact > .crm-sidebar,
 body.nexo-compact main > :not(#companion-workspace),
 body.nexo-compact > footer { display: none !important; }
 body.nexo-compact main { display: block; max-width: 100%; margin: 0 !important; padding: 0 !important; }
+
+/* A browser-owned panel stays in the same document as Chrome changes tabs.
+   It shares the narrow CRM presentation without inserting another WhatsApp
+   iframe or changing the website underneath it. */
+html.nexo-native-panel { min-width: 0; width: 100%; overflow-x: hidden; }
+body.nexo-native-panel { min-width: 0; width: 100%; margin: 0; }
+#nexo-native-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #d5e1dc;
+  background: #f0f4f2;
+  color: #173a2e;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+#nexo-native-panel-header > strong { font-size: 15px; }
+#nexo-return-to-whatsapp {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: #e0ece6;
+  color: #006c59;
+  font: 600 11px/1.4 system-ui, sans-serif;
+  cursor: pointer;
+}
+#nexo-return-to-whatsapp:focus-visible { outline: 2px solid #008069; outline-offset: 2px; }
+#nexo-return-to-whatsapp:disabled { opacity: .6; cursor: wait; }
+#nexo-native-chat-notice { grid-column: 1 / -1; margin: 0; font-size: 11px; line-height: 1.5; color: #526b60; }
+#nexo-native-chat-notice[hidden] { display: none; }
+.dark #nexo-native-panel-header { background: #202c33; border-color: #34434b; color: #e9edef; }
+.dark #nexo-return-to-whatsapp { background: #34434b; color: #d9fdd3; }
+.dark #nexo-native-chat-notice { color: #aebac1; }

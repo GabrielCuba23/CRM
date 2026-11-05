@@ -7,6 +7,85 @@
   }
   if (!globalThis.chrome?.runtime?.id || window !== window.top || location.origin !== "https://web.whatsapp.com") return;
 
+  // The global Chrome panel owns the CRM document. WhatsApp only needs a small
+  // launcher; mounting another iframe here would create two independent forms.
+  let nativePanel = false;
+  try { nativePanel = Boolean(chrome.runtime.getManifest?.().side_panel?.default_path); } catch {}
+  if (nativePanel) {
+    const extensionId = chrome.runtime.id;
+    const extensionOrigin = chrome.runtime.getURL("");
+    const host = document.createElement("nexo-whatsapp-dock");
+    host.id = "nexo-whatsapp-dock";
+    host.dataset.nexoOwned = "true";
+    host.dataset.state = "native";
+    host.dataset.layout = "native";
+    const shadow = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = `
+      :host{all:initial!important;position:fixed!important;inset:0!important;z-index:2147483000!important;pointer-events:none!important;display:block!important;direction:ltr!important;color-scheme:light!important;font:13px/1.4 system-ui,sans-serif!important}
+      button{all:unset;box-sizing:border-box;position:absolute;right:0;top:88px;display:flex;align-items:center;justify-content:center;min-width:88px;min-height:40px;padding:8px 12px;border-radius:12px 0 0 12px;background:#008069;color:#fff;box-shadow:0 3px 12px #073e2a24;pointer-events:auto;font-weight:650;cursor:pointer}
+      button:hover{background:#006c59}button:focus-visible{outline:3px solid #1cb08f;outline-offset:2px}button:disabled{opacity:.65;cursor:wait}
+      p{position:absolute;right:10px;top:136px;max-width:250px;padding:10px;border:1px solid #d6e2dc;border-radius:8px;background:#fff;color:#314f42;box-shadow:0 3px 14px #153c2e20;pointer-events:auto;font:12px/1.5 system-ui,sans-serif}
+      [hidden]{display:none!important}
+    `;
+    const launcher = document.createElement("button");
+    launcher.type = "button";
+    launcher.dataset.nexoAction = "open";
+    launcher.textContent = "Nexo";
+    launcher.title = "Abrir Nexo CRM en la barra lateral de Chrome";
+    launcher.setAttribute("aria-label", launcher.title);
+    const hint = document.createElement("p");
+    hint.setAttribute("role", "status");
+    hint.setAttribute("aria-live", "polite");
+    hint.hidden = true;
+    shadow.append(style, launcher, hint);
+    function openPanel() {
+      // Dispatch in the click's turn: Chrome requires a user gesture to open a
+      // native panel. Do not put configuration or other asynchronous work first.
+      let request;
+      try { request = chrome.runtime.sendMessage({ channel: "nexo", type: "panel.open" }); }
+      catch (error) { request = Promise.reject(error); }
+      launcher.disabled = true;
+      hint.hidden = true;
+      return Promise.resolve(request).then(result => {
+        if (!result?.ok) throw Error(result?.error || "No se pudo abrir la barra lateral.");
+        return state();
+      }).catch(error => {
+        hint.textContent = error?.message || "Pulsa el icono de Nexo en la barra de Chrome para abrir el CRM.";
+        hint.hidden = false;
+        return state();
+      }).finally(() => { launcher.disabled = false; });
+    }
+    function state() { return { open: false, mounted: host.isConnected, layout: "native", width: 0 }; }
+    function ensureMounted() {
+      if (!document.body || host.isConnected) return;
+      const previous = document.getElementById(host.id);
+      if (previous && previous !== host && previous.dataset.nexoOwned === "true") previous.remove();
+      document.body.append(host);
+    }
+    launcher.addEventListener("click", openPanel);
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message?.channel !== "nexo.dock") return false;
+      if (sender.id !== extensionId || sender.tab || (sender.url && !sender.url.startsWith(extensionOrigin))) {
+        sendResponse({ ok: false, error: "Origen de extensión no autorizado." });
+        return false;
+      }
+      if (!["open", "close", "toggle", "state"].includes(message.action || "toggle")) {
+        sendResponse({ ok: false, error: "Acción de panel no válida." });
+        return false;
+      }
+      ensureMounted();
+      sendResponse({ ok: true, result: state() });
+      return false;
+    });
+    const observer = new MutationObserver(ensureMounted);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    window.addEventListener("pagehide", () => observer.disconnect(), { once: true });
+    globalThis.__nexoDockController = Object.freeze({ ensureMounted, open: openPanel, close: state, state });
+    ensureMounted();
+    return;
+  }
+
   const HOST_ID = "nexo-whatsapp-dock";
   const STYLE_ID = "nexo-whatsapp-dock-layout";
   const PUSH_CLASS = "nexo-dock-push";
