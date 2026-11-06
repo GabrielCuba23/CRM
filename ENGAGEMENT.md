@@ -1,6 +1,6 @@
-# Chatbot y cinco líneas · Nexo 1.6.0
+# Chatbot y cinco líneas · Nexo 1.6.1
 
-Publicado en el CRM principal. Descarga la [extensión 1.6.0](https://drive.google.com/file/d/1schKsp9Jl1gA0_VqHAK8EaL_sv3XwSX8/view)
+Publicado en el CRM principal. Descarga la [extensión 1.6.1](https://drive.google.com/file/d/1Y1npoyESJNvckZiPeHuwpf5HTNgEtl9K/view)
 y actualiza los archivos en la misma carpeta instalada; después pulsa Recargar
 en `chrome://extensions` y recarga WhatsApp Web. Conserva una sola instalación
 de Nexo activa. Las líneas y el chatbot empiezan sin activar.
@@ -11,6 +11,11 @@ La extensión ofrece lo mismo en Chatbot, junto a Chat actual, Clientes, Cuentas
 y Campañas. El acceso sigue siendo el correo y contraseña del CRM.
 
 ## Empezar
+
+Si todavía no hay líneas, la primera pantalla muestra **Añadir mi línea** y
+**Crear una respuesta**, sin un selector vacío. **Configurar respuestas** abre
+las reglas. Los requisitos que falten para activar el perfil tienen acciones
+directas. **Detener chatbot** aparece cuando ese perfil está activado.
 
 1. En Chatbot → Mi línea, pulsa Añadir línea e introduce su nombre y número.
 2. En Reglas, crea una respuesta de texto, foto o video. Elige texto exacto,

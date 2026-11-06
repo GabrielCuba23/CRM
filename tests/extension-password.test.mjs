@@ -104,7 +104,7 @@ test("Wrong passwords leave no session, and WhatsApp pages cannot call login or 
   const f = await fixture();
   const wrong = await f.invoke({ type: "crm.login", input: { email: "owner@example.test", password: "wrong" } });
   assert.equal(wrong.ok, false); assert.match(wrong.error, /incorrectos/);
-  assert.deepEqual(f.session, {});
+  assert.deepEqual(Object.keys(f.session).filter(key => key.startsWith('nativeSession:')), []);
   const count = f.requests.length;
   const content = { id, url: policy.WA_ORIGIN + "/", frameId: 0, tab: embedded.tab };
   for (const type of ["crm.login", "crm.authStatus", "crm.request", "crm.verify"]) {

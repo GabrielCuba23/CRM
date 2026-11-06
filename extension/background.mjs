@@ -10,6 +10,23 @@ chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch
 chrome.storage.session.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
 const authModes = new Map();
 let authenticationEpoch = 0;
+// Chrome can terminate and recreate an MV3 worker while storage.session and
+// the side panel stay alive. Keep the session generation with those runs.
+const authenticationReady = storage.get('authenticationEpoch').then(saved => {
+  const value = saved.authenticationEpoch;
+  authenticationEpoch = Number.isSafeInteger(value) && value >= 0 ? value : 0;
+});
+let authenticationWrites = Promise.resolve();
+function advanceAuthenticationEpoch() {
+  const operation = authenticationWrites.then(async () => {
+    await authenticationReady;
+    authenticationEpoch++;
+    await storage.set({authenticationEpoch});
+    return authenticationEpoch;
+  });
+  authenticationWrites = operation.catch(() => {});
+  return operation;
+}
 const engagementRuntime = createEngagementRuntime({
   local: chrome.storage.local, session: storage,
   getOrigin: async () => (await configuration()).origin,
@@ -294,7 +311,7 @@ async function authStatus(origin, fresh = false) {
 }
 async function nativeRequest(origin, request) {
   if (request.path === "/api/logout" || request.path === "/api/password") {
-    authenticationEpoch++; void engagementRuntime.invalidate().catch(() => {});
+    await advanceAuthenticationEpoch(); void engagementRuntime.invalidate().catch(() => {});
   }
   const session = await nativeSession(origin);
   if (!session) return { status: 401, body: JSON.stringify({ error: "Inicia sesión con tu correo y contraseña." }), headers: { "Content-Type": "application/json" } };
@@ -313,7 +330,7 @@ async function nativeVerify(origin) {
 async function nativeLogin(origin, input) {
   if (typeof input?.email !== "string" || input.email.length > 254 || typeof input?.password !== "string" || !input.password || input.password.length > 1024)
     throw Error("Introduce tu correo y contraseña.");
-  const epoch = ++authenticationEpoch;
+  const epoch = await advanceAuthenticationEpoch();
   void engagementRuntime.invalidate().catch(() => {});
   const status = await authStatus(origin, true);
   if (status.authProvider !== "password") throw Error("Este CRM conserva el acceso anterior. Abre su sesión desde las opciones avanzadas.");
@@ -642,6 +659,7 @@ async function campaignMedia(origin, media = []) {
 }
 async function execute(message, sender) {
   if (message?.type === "panel.open") return openNativePanel(sender);
+  await authenticationReady;
   if (isWhatsAppSender(sender, EXTENSION_ID)) {
     if (message.type === 'engagement.tick') return engagementRuntime.tick(sender,message.input);
     if (message.type === 'engagement.permit') return engagementRuntime.permit(sender,message.input);
@@ -729,15 +747,18 @@ async function execute(message, sender) {
       if (before.phone !== phone) {
         await waRequest("campaignCheck", undefined, sender, origin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
         await chrome.tabs.update(tab.id, { url: WA_ORIGIN + "/send?phone=" + phone });
-        const limit = Date.now() + 45000; let revealed = false, current;
+        const limit = Date.now() + 45000; let revealedIdentity = "", current;
         while (Date.now() < limit) {
           await campaignRun(sender, message);
           if (!await activeWhatsApp(tab)) throw Error("La campaña se pausó porque WhatsApp dejó de estar activo.");
           try {
             current = await waRequest("context", undefined, sender, origin, tab.id, message.panelContextId, message.panelWindowId, message.panelInstance);
             if (current.phone === phone && current.chatId && !current.isGroup && !current.ambiguous) break;
-            if (current.name && current.chatId && !revealed) {
-              await waRequest("campaignReveal", undefined, sender, origin, tab.id, message.panelContextId, message.panelWindowId, message.panelInstance); revealed = true;
+            const identity = current.chatId + "\0" + current.name;
+            // Navigation can leave the previous document responding briefly.
+            // Its drawer must not consume the target contact's reveal attempt.
+            if (current.name && current.chatId && !current.isGroup && !current.ambiguous && !current.phone && identity !== revealedIdentity) {
+              await waRequest("campaignReveal", undefined, sender, origin, tab.id, message.panelContextId, message.panelWindowId, message.panelInstance); revealedIdentity = identity;
             }
           } catch { /* WhatsApp is replacing its document. */ }
           await delayCampaign(300);
@@ -792,7 +813,7 @@ async function execute(message, sender) {
       const previous = await chrome.storage.local.get("crmOrigin");
       await chrome.storage.local.set({ crmOrigin: origin });
       if (previous.crmOrigin !== origin) {
-        authenticationEpoch++;
+        await advanceAuthenticationEpoch();
         void engagementRuntime.invalidate().catch(() => {});
         if (previous.crmOrigin) await forgetNativeSession(previous.crmOrigin);
         await forgetNativeSession(origin);

@@ -83,7 +83,7 @@ async function main() {
     await page.locator('#outreach-campaign-media').setInputFiles([{name:'foto.png',mimeType:'image/png',buffer:png},{name:'video.mp4',mimeType:'video/mp4',buffer:mp4}]);await page.getByText('Archivos guardados.',{exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>__calls.upload.length),2);assert.equal(await page.locator('.outreach-media-row').count(),2);
     await page.getByRole('button',{name:'Vista previa',exact:true}).first().click();await page.locator('img.outreach-preview-media').waitFor();
-    await page.locator('summary').filter({hasText:'Programación y ritmo'}).click();await page.locator('[name=delaySeconds]').fill('0');await page.locator('[name=batchPauseSeconds]').fill('0');
+    await page.locator('#outreach-timing-settings > summary').click();await page.locator('[name=delaySeconds]').fill('0');await page.locator('[name=batchPauseSeconds]').fill('0');
     await page.locator('#outreach-save-campaign').click();await page.waitForFunction(()=>__state().growth.outreach.campaigns.length===1);
     let stored=await page.evaluate(()=>__state().growth.outreach.campaigns[0]);assert.equal(stored.media.length,2);assert.ok(stored.media.every(file=>file.sha256.length===64&&!('data'in file)));assert.equal(await page.evaluate(()=>__calls.send.length),0,'saving never sends');
     await page.locator('#outreach-start-campaign').click();await waitCampaign(()=>__state().growth.outreach.campaigns[0].status==='completed');
@@ -122,10 +122,23 @@ async function main() {
     await page.locator('#outreach-start-campaign').click();await waitCampaign(()=>__calls.send.length===1);await page.evaluate(()=>__hidden(true));await waitCampaign(()=>__state().growth.outreach.campaigns[0].status==='paused');assert.equal(await page.evaluate(()=>__calls.send.length),1);await page.evaluate(()=>__hidden(false));
     console.log('PASS switching away from WhatsApp or hiding the panel pauses the queue');
 
-    await page.evaluate(()=>{__fresh();__ui.openComposer({recipients:[{name:'Programado',phone:'966555444'}],body:'Horario',name:'Programada'});});await page.getByText('Programación y ritmo de envío',{exact:true}).click();await page.locator('[name=scheduledAt]').evaluate(input=>{const future=new Date(Date.now()+120000);input.value=new Date(future.getTime()-future.getTimezoneOffset()*60000).toISOString().slice(0,16);input.dispatchEvent(new Event('change'));});await page.locator('#outreach-start-campaign').click();await waitCampaign(()=>__state().growth.outreach.campaigns[0].status==='scheduled');assert.equal(await page.evaluate(()=>__calls.send.length),0);await page.locator('#outreach-pause-campaign').click();await waitCampaign(()=>__state().growth.outreach.campaigns[0].status==='paused');assert.equal(await page.evaluate(()=>__calls.send.length),0);console.log('PASS future schedule is persisted, waits and can be paused without sending');
+    await page.evaluate(()=>{__fresh();__ui.openComposer({recipients:[{name:'Programado',phone:'966555444'}],body:'Horario',name:'Programada'});});await page.locator('#outreach-timing-settings > summary').click();await page.locator('[name=scheduledAt]').evaluate(input=>{const future=new Date(Date.now()+120000);input.value=new Date(future.getTime()-future.getTimezoneOffset()*60000).toISOString().slice(0,16);input.dispatchEvent(new Event('change'));});await page.locator('#outreach-start-campaign').click();await waitCampaign(()=>__state().growth.outreach.campaigns[0].status==='scheduled');assert.equal(await page.evaluate(()=>__calls.send.length),0);await page.locator('#outreach-pause-campaign').click();await waitCampaign(()=>__state().growth.outreach.campaigns[0].status==='paused');assert.equal(await page.evaluate(()=>__calls.send.length),0);console.log('PASS future schedule is persisted, waits and can be paused without sending');
 
     await page.evaluate(()=>{__fresh();__initialize(false);__ui.openComposer({recipients:[{name:'Web',phone:'966555444'}],body:'Solo configurar',name:'Web'});});assert.equal(await page.locator('#outreach-start-campaign').isEnabled(),false);await page.getByText('Puedes configurar y guardar aquí.',{exact:false}).waitFor();
     assert.deepEqual(errors,[]);console.log('PASS web config has no native delivery and browser has no uncaught errors');
+    await page.evaluate(()=>{__fresh();__ui.openComposer({recipients:[{name:'Ana',phone:'912345678'}],body:'Hola {nombre}, mensaje inicial',name:'Mi borrador'});});
+    await page.locator('#outreach-create-template-inline').click();
+    await page.locator('dialog [name=name]').fill('Plantilla desde mi campaña');
+    await page.locator('dialog [name=body]').fill('Hola {nombre}, mensaje reutilizable');
+    await page.locator('dialog button[type=submit]').click();await page.locator('dialog').waitFor({state:'hidden'});
+    assert.equal(await page.locator('#outreach-campaign-name').inputValue(),'Mi borrador');
+    assert.equal(await page.locator('#outreach-campaign-body').inputValue(),'Hola {nombre}, mensaje reutilizable');
+    assert.equal(await page.locator('.outreach-recipient-list .outreach-contact-row').count(),1);
+    assert.equal(await page.evaluate(()=>__state().growth.outreach.templates.length),1);
+    assert.equal(await page.evaluate(()=>__calls.send.length),0);
+    assert.equal(await page.locator('[name=template]').inputValue(),await page.evaluate(()=>__state().growth.outreach.templates[0].id));
+    await page.locator('#outreach-timing-settings > summary').click();await page.locator('[name=delaySeconds]').fill('8');
+    console.log('PASS template creation beside campaign selector preserves draft and recipient, applies saved template and exposes sending rules');
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

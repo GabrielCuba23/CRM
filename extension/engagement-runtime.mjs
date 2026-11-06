@@ -42,7 +42,7 @@ export function createEngagementRuntime(deps) {
   async function api(origin, path, body) { return request(origin, '/api/engagement' + path, body === undefined ? 'GET' : 'POST', body); }
   function publicState(run, selectedLineId = '') {
     return {selectedLineId, running: run?.active === true, lineId: run?.lineId || '', allowBackground: run?.allowBackground === true,
-      lastStatus: run?.lastStatus || '', lastError: run?.lastError || '', tabId: run?.tabId, expiresAt:run?.expiresAt};
+      lastStatus: run?.lastStatus || '', lastError: run?.lastError || '', attention:run?.attention || '', tabId: run?.tabId, expiresAt:run?.expiresAt};
   }
   async function patch(run, fields) {
     const current = await runValue();
@@ -143,12 +143,21 @@ export function createEngagementRuntime(deps) {
           if(now()-(run.lastHeartbeat||0)>=25000||run.expiresAt*1000-now()<60000){config=await heartbeat(run);run=(await runValue())||run;}
           const snapshot=await sendContent(run.tabId,run.origin,'botSnapshot',{runId:run.runId});
           const context=snapshot.context;
-          if(!context?.chatId||!context.phone||context.isGroup||context.ambiguous)return {running:true};
+          if(!context?.chatId||!context.phone||context.isGroup||context.ambiguous){
+            const attention=context?.isGroup?'group':context?.ambiguous?'changing':context?.chatId&&!context.phone?'phone':'chat';
+            const descriptions={group:'El chatbot no responde a grupos. Abre una conversación individual.',changing:'WhatsApp está cambiando de conversación. Esperando que termine.',phone:'WhatsApp oculta el teléfono de este chat. En Chat actual, vincula su ficha o abre la información del contacto.',chat:'Abre una conversación individual para que el chatbot pueda responder.'};
+            await patch(run,{attention,lastStatus:descriptions[attention],lastError:''});
+            return {running:true,attention};
+          }
+          if(run.attention)await patch(run,{attention:'',lastStatus:'Esperando mensajes nuevos en el chat abierto.',lastError:''});
           for(const incoming of (snapshot.messages||[]).slice(-10)){
             if(incoming.phone!==context.phone||incoming.chatId!==context.chatId||typeof incoming.body!=='string'||!incoming.body.trim())continue;
-            const rule=selectRuntimeRule(config.bot,incoming.body);if(!rule)continue;
+            const rule=selectRuntimeRule(config.bot,incoming.body);if(!rule){await patch(run,{lastStatus:'El texto nuevo no coincide con ninguna regla habilitada.',lastError:''});continue;}
             const grant=await api(run.origin,'/bot/claim',{...leaseBody(run),phone:context.phone,incomingId:incoming.id,incomingText:incoming.body,ruleId:rule.id});
-            if(!grant.claimed)continue;
+            if(!grant.claimed){
+              const reasons={outside_hours:'El mensaje llegó fuera del horario configurado.',disabled:'Las respuestas automáticas están desactivadas en el CRM.',rule_changed:'Las reglas cambiaron. Actualizando la configuración del chatbot.',cooldown_or_changed:'Pausa mínima por contacto activa o configuración modificada. Esperando otro mensaje nuevo.',cooldown:'Pausa mínima por contacto activa. Esperando otro mensaje nuevo.',history_limit:'El historial de respuestas alcanzó su límite. No se enviarán nuevas respuestas.',duplicate:'Este mensaje ya tiene un intento registrado; no se repetirá.'};
+              await patch(run,{lastStatus:reasons[grant.reason]||'No se autorizó otra respuesta para este mensaje.',lastError:''});continue;
+            }
             let result;
             try {
               await valid(run);
@@ -161,7 +170,7 @@ export function createEngagementRuntime(deps) {
                 values={...values,name:first?.name||context.name,business:state.settings?.businessName||state.settings?.business||state.settings?.crmName||'',service:first?.service||'',services:[...new Set(clients.map(row=>row.service))].join(', '),expires:first?.expires||'',profile:first?.profile||'',price:first&&!first.pricePending&&Number.isSafeInteger(first.price)?(first.price/100).toFixed(2):''};
               }
               await valid(run);
-              await patch(run,{pendingClaim:{claimId:grant.claimId,claimToken:grant.claimToken,phone:context.phone,incomingId:incoming.id,chatId:context.chatId},lastStatus:'Preparando respuesta a '+(context.name||context.phone)+'.',lastError:''});
+              await patch(run,{attention:'',pendingClaim:{claimId:grant.claimId,claimToken:grant.claimToken,phone:context.phone,incomingId:incoming.id,chatId:context.chatId},lastStatus:'Preparando respuesta a '+(context.name||context.phone)+'.',lastError:''});
               result=await sendContent(run.tabId,run.origin,'campaignSend',{runId:run.runId,mode:'bot',claimId:grant.claimId,claimToken:grant.claimToken,incomingId:incoming.id,chatId:context.chatId,allowBackground:run.allowBackground,phone:context.phone,text:personalizeRuntimeReply(grant.rule.text,values),files,automatic:true});
               if(!['sent_observed','failed','uncertain'].includes(result?.status))result={status:'uncertain',error:'No se pudo verificar el resultado de la respuesta.'};
             }catch(error){result={status:'uncertain',error:error.message};}

@@ -157,16 +157,20 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     else renderHistory();
   }
   function renderLine() {
-    const toolbar = actions(button('Actualizar', () => refresh({ force: true }), 'engagement-text', 'engagement-refresh'));
+    const toolbar = actions(button('Configurar respuestas',()=>{view='rules';render();},'engagement-secondary','engagement-configure'),button('Actualizar', () => refresh({ force: true }), 'engagement-text', 'engagement-refresh'));
     content.append(toolbar);
     const current = selectedLine(), mine = card('Esta instalación');
     if (!transport.getEngagementRuntime) {
       mine.append(node('p', 'Puedes configurar aquí las líneas y las reglas. Inicia el chatbot desde la extensión de Chrome con WhatsApp abierto.', 'engagement-muted'));
+    } else if(!config.lines.length){
+      mine.append(node('p','Todavía no has añadido una línea. Registra el número del WhatsApp que usas en este perfil para empezar.','engagement-muted'),button('Añadir mi línea',()=>editLine(),'engagement-primary','engagement-new-line'));
+      if(!activeRules().length)mine.append(button('Crear una respuesta',()=>{view='rules';render();editRule();},'engagement-secondary','engagement-first-response'));
+      mine.append(node('p','El chatbot todavía no está iniciado. Después de añadir tu línea y una respuesta podrás activarlo; entonces aparecerá Detener chatbot.','engagement-muted'));
     } else {
       const selector = field(mine, 'Línea de este perfil de Chrome', 'selectedLineId', { tag: 'select' }); selector.id = 'engagement-selected-line';
       option(selector, '', 'Selecciona tu línea');
       for (const line of config.lines) option(selector, line.id, `${line.name} · +${line.phone}`);
-      selector.value = runtime?.selectedLineId || ''; selector.disabled = runtime?.running === true;
+      selector.value = runtime?.selectedLineId || (config.lines.length === 1 ? config.lines[0].id : ''); selector.disabled = runtime?.running === true;
       const use = button('Usar esta línea', async () => {
         requireClean(); if (!selector.value) throw Error('Elige una línea registrada.');
         runtime = await transport.selectEngagementLine({ lineId: selector.value });
@@ -179,6 +183,18 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       badge.id = 'engagement-runtime-state'; badge.classList.toggle('is-running', running); mine.append(badge);
       if (runtime?.lastError) mine.append(node('p', runtime.lastError, 'engagement-error'));
       else if (runtime?.lastStatus) mine.append(node('p', runtime.lastStatus, 'engagement-muted'));
+      if(runtime?.attention==='phone')mine.append(button('Ir a Chat actual',()=>{document.getElementById('compact-tab-chat')?.click();},'engagement-secondary','engagement-identify-contact'));
+      const missing=[];
+      if(!config.lines.length)missing.push({text:'Añade el número que usas en WhatsApp.',action:'Añadir línea',run:()=>editLine()});
+      else if(!current)missing.push({text:'Elige la línea de este perfil.',action:'Usar línea seleccionada',run:()=>use.click()});
+      else if(!current.enabled)missing.push({text:'Habilita esta línea.',action:'Editar línea',run:()=>editLine(current)});
+      if(!activeRules().length)missing.push({text:'Crea una respuesta para los mensajes que recibes.',action:'Crear respuesta',run:()=>{view='rules';render();editRule();}});
+      if(!config.bot.enabled)missing.push({text:'Habilita las respuestas del negocio.',action:'Activar respuestas',run:async()=>{await save(next=>{next.bot.enabled=true;});status('Respuestas habilitadas. Inicia el chatbot en la línea de este perfil.');render();}});
+      if(!running&&missing.length){
+        const setup=card('Para activar este perfil');setup.id='engagement-prerequisites';
+        for(const step of missing){const row=node('div','','engagement-setup-step');row.append(node('p',step.text,'engagement-muted'),button(step.action,step.run,'engagement-secondary'));setup.append(row);}
+        mine.append(setup);
+      }
       const background = check(mine, 'Permitir trabajar en segundo plano en este perfil', 'allowBackground', runtime?.allowBackground === true);
       background.id = 'engagement-background'; background.disabled = !current?.allowBackground || running;
       if (!current?.allowBackground) mine.append(node('p', 'Para usar segundo plano, habilítalo primero al editar esta línea.', 'engagement-muted'));
@@ -194,19 +210,21 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
         config = validSnapshot(await call('/api/engagement')); render();
       }, 'engagement-primary', 'engagement-start');
       start.disabled = running || !current?.enabled || !config.bot.enabled || !activeRules().length;
+      if(start.disabled&&!running)start.setAttribute('aria-describedby','engagement-prerequisites');
       const stop = button('Detener chatbot', async () => {
         runtime = await transport.stopChatbot();
         if (runtime?.running === undefined) runtime = await transport.getEngagementRuntime();
         status('Chatbot detenido en este perfil.'); await refresh({ force: true });
       }, 'engagement-danger', 'engagement-stop'); stop.disabled = !running;
-      mine.append(actions(start, stop));
+      mine.append(actions(...(running?[stop]:[start])));
+      if(!running)mine.append(node('p','Todavía no está iniciado. Al activarlo aparecerá Detener chatbot.','engagement-muted'));
       if (!config.bot.enabled || !activeRules().length) mine.append(node('p', 'Primero crea una respuesta y activa el chatbot en Reglas.', 'engagement-muted'));
     }
     mine.append(node('p', 'Responde textos nuevos del chat individual abierto después de activarlo. No revisa otros chats, grupos ni el historial anterior.', 'engagement-scope'));
     content.append(mine);
     const lines = card(`Tus líneas · ${config.lines.length}/5`);
     const add = button('+ Añadir línea', () => editLine(), 'engagement-primary', 'engagement-new-line'); add.disabled = config.lines.length >= 5;
-    lines.append(actions(add));
+    if(config.lines.length||!transport.getEngagementRuntime)lines.append(actions(add));
     if (!config.lines.length) lines.append(empty('Añade el nombre y número de tu primera línea.'));
     for (const line of config.lines) {
       const row = node('article', '', 'engagement-line'); row.dataset.lineId = line.id;
@@ -225,7 +243,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       if (transport.stopChatbot) await transport.stopChatbot().catch(() => {});
       status('Todas las líneas detenidas. El chatbot quedó desactivado.'); await refresh({ force: true });
     }, 'engagement-danger', 'engagement-stop-all');
-    content.append(actions(stopAll));
+    if(config.lines.length)content.append(actions(stopAll));
   }
   function editLine(line) {
     requireClean();
@@ -394,10 +412,17 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
   }
   function destroy() {
     if (destroyed) return; destroyed = true;
+    clearInterval(runtimeTimer);
     for (const url of objectURLs) URL.revokeObjectURL(url);
     css.remove();
   }
   window.addEventListener('pagehide', destroy, { once: true });
+  const runtimeTimer=setInterval(()=>{
+    if(destroyed||!root.isConnected||document.hidden||dirty||dialogCount||busy)return;
+    const active=document.activeElement;
+    if(active&&root.contains(active)&&active.matches('input,textarea,select,[contenteditable=true]'))return;
+    void refresh();
+  },5000);
   render(); void refresh();
   return { refresh, isBusy: () => busy > 0 || dirty || dialogCount > 0, destroy };
 }
