@@ -199,6 +199,7 @@ globalThis.NexoCompanion = Object.freeze({
   getEngagementRuntime: () => rpc('engagement.status', {expectedOrigin:configuredOrigin}),
   selectEngagementLine: input => rpc('engagement.select', {input,expectedOrigin:configuredOrigin}),
   startChatbot: input => rpc('engagement.start', {input,expectedOrigin:configuredOrigin}),
+  setChatbotBackground: input => rpc('engagement.background', {input,expectedOrigin:configuredOrigin}),
   stopChatbot: () => rpc('engagement.stop', {expectedOrigin:configuredOrigin}),
   bindConversation: input => rpc("wa.bind", { input, expectedOrigin: configuredOrigin }),
   unbindConversation: input => rpc("wa.unbind", { input, expectedOrigin: configuredOrigin }),

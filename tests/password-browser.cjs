@@ -321,7 +321,81 @@ const PANEL_CONTEXT_ID = 'synthetic-native-panel-context';
       assert.equal(apiLoginCalls,loginCount);assert.equal(panelPage.url(),nativeUrl);
       assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
       assert(!panelCalls.some(item=>item.type==='open-options'),'No installation/login flow requires an extra options page.');
-      if(process.env.ENGAGEMENT_PANEL_ONLY==='1'){
+      if(process.env.FLOW_PANEL_ONLY==='1'){
+        // Move to a different, saved-name contact whose opaque peer is stable
+        // but whose phone is unavailable. Reusing the previous peer would keep
+        // an observed number cached and would not reproduce the reported gap.
+        const flowPeer='synthetic-flow-person@lid';
+        await whatsapp.evaluate(peer=>{
+          document.querySelector('#main header').replaceChildren(Object.assign(document.createElement('span'),{textContent:'Persona sin número'}));
+          document.querySelector('#pane-side [aria-selected]').textContent='Persona sin número';
+          const baseline=document.createElement('div');baseline.className='message-in';baseline.dataset.id='false_'+peer+'_previous';
+          const plain=document.createElement('div');plain.setAttribute('data-pre-plain-text','[10:30] Persona: ');
+          const text=document.createElement('span');text.className='selectable-text';text.textContent='Texto anterior al inicio del chatbot';plain.append(text);baseline.append(plain);document.querySelector('.history').replaceChildren(baseline);
+          let count=0;const send=document.createElement('button');send.setAttribute('aria-label','Enviar');send.textContent='Enviar';
+          send.onclick=()=>{const row=document.createElement('div');row.className='message-out';row.dataset.id='true_'+peer+'_flow-'+(++count);row.textContent=document.querySelector('footer [contenteditable]').innerText;document.querySelector('.history').append(row);document.querySelector('footer [contenteditable]').textContent='';};document.querySelector('footer').append(send);
+        },flowPeer);
+        await until(async()=>{const context=await panelPage.evaluate(()=>NexoCompanion.getContext());return context.chatId==='wa:'+flowPeer&&context.phone==='';},'The synthetic phone-less opaque peer was not identified.');
+        await panelPage.locator('#compact-tab-engagement').click();
+        await panelPage.locator('#engagement-new-line').click();
+        await panelPage.locator('.engagement-dialog [name=name]').fill('Flujo sintético');
+        await panelPage.locator('.engagement-dialog [name=phone]').fill('977777777');
+        await panelPage.locator('.engagement-dialog button[type=submit]').click();
+        await panelPage.locator('.engagement-dialog').waitFor({state:'hidden'});
+        await panelPage.locator('#engagement-tab-flows').click();await panelPage.locator('#bot-flow-example').click();
+        assert.equal(await panelPage.locator('#bot-flow-options .bot-flow-option').count(),8);
+        assert.equal(await panelPage.locator('#bot-flow-enabled').isChecked(),false,'Opening an example must never enable it.');
+        await panelPage.locator('#bot-flow-name').fill('Menú integrado de soporte');
+        await panelPage.locator('#bot-flow-node-text').fill('Hola. Elige una opción para continuar.');
+        await panelPage.locator('#bot-flow-enabled').check();await panelPage.locator('#bot-flow-default').check();
+        await panelPage.locator('#bot-flow-save').click();await panelPage.locator('#bot-flow-new').waitFor();
+        assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM engagement_bot_attempts').first()).n,0,'Saving a flow cannot send anything.');
+        await panelPage.locator('#engagement-tab-rules').click();
+        await panelPage.locator('#engagement-config-form [name=enabled]').check();await panelPage.locator('#engagement-save-config').click();
+        await panelPage.locator('#engagement-notice').filter({hasText:'Configuración guardada. Inicia o vuelve a iniciar cada línea para aplicar sus respuestas.'}).waitFor();
+        await panelPage.locator('#engagement-tab-line').click();
+        const config=JSON.parse((await DB.prepare('SELECT body FROM engagement_config WHERE id=1').first()).body),flow=config.bot.flows[0];
+        assert.equal(config.bot.rules.length,0,'This test must use the real flow engine without a legacy response rule.');
+        await panelPage.locator('#engagement-selected-line').selectOption(config.lines[0].id);await panelPage.locator('#engagement-use-line').click();
+        await panelPage.locator('#engagement-start').click();
+        await until(()=>Promise.resolve(session.engagementRuntime?.active===true),'The flow chatbot did not arm through the native panel.');
+        assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM engagement_bot_attempts').first()).n,0,'Historical text cannot start a flow.');
+        async function incoming(text,index){
+          await whatsapp.evaluate(({peer,text,index})=>{const row=document.createElement('div');row.className='message-in';row.dataset.id='false_'+peer+'_incoming-'+index;const plain=document.createElement('div');plain.setAttribute('data-pre-plain-text','[12:00] Persona: ');const span=document.createElement('span');span.className='selectable-text';span.textContent=text;plain.append(span);row.append(plain);document.querySelector('.history').append(row);},{peer:flowPeer,text,index});
+          await until(async()=> (await DB.prepare("SELECT COUNT(*) AS n FROM engagement_bot_attempts WHERE status='sent_observed'").first()).n===index,'Flow reply '+index+' was not observed and committed.');
+          const attempt=await DB.prepare('SELECT phone,chat_id,rule_id,status FROM engagement_bot_attempts WHERE incoming_id=?').bind('false_'+flowPeer+'_incoming-'+index).first();
+          assert.equal(attempt.phone,'','The sender phone must remain unavailable throughout this test.');assert.equal(attempt.chat_id,'wa:'+flowPeer);assert.equal(attempt.rule_id,'flow:'+flow.id);assert.equal(attempt.status,'sent_observed');
+          return whatsapp.locator('[data-id="true_'+flowPeer+'_flow-'+index+'"]').innerText();
+        }
+        const menu=await incoming('hola',1);assert.match(menu,/1\. Precios/);assert.match(menu,/8\. Soporte/);
+        let conversation=await DB.prepare('SELECT * FROM engagement_conversations WHERE line_id=?').bind(config.lines[0].id).first();
+        assert.equal(conversation.phone,'');assert.equal(conversation.chat_id,'wa:'+flowPeer);assert.match(conversation.contact_key,/^chat:[a-f0-9]{64}$/);assert.equal(JSON.parse(conversation.state_json).nodeId,'menu');assert.equal(JSON.parse(conversation.state_json).waiting,true);
+        const activeRun=session.engagementRuntime.runId;
+        await panelPage.locator('#engagement-background').check();
+        await until(()=>Promise.resolve(session.engagementRuntime?.allowBackground===true),'The running phone-less flow did not enable background from the direct checkbox.');
+        assert.equal(session.engagementRuntime.runId,activeRun,'Changing background must preserve the armed baseline.');
+        activeBrowserTabId=pages.get(other);for(const listener of activationListeners)listener({tabId:activeBrowserTabId,windowId:1});
+        assert.match(await incoming('8',2),/Sobre qué servicio necesitas ayuda/);
+        assert.match(await incoming('Netflix',3),/Describe qué ocurre con Netflix/);
+        assert.match(await incoming('No puedo ingresar',4),/Tu consulta es sobre Netflix:[\s\S]*No puedo ingresar/);
+        conversation=await DB.prepare('SELECT * FROM engagement_conversations WHERE line_id=?').bind(config.lines[0].id).first();
+        const conversationState=JSON.parse(conversation.state_json);assert.equal(conversationState.flowId,flow.id);assert.equal(conversationState.nodeId,'soporte-resumen');assert.equal(conversationState.ended,true);assert.deepEqual(conversationState.variables,{servicio:'Netflix',problema:'No puedo ingresar'});assert.equal(conversation.pending_claim,'');assert.equal(conversation.blocked,0);
+        assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM engagement_bot_attempts').first()).n,4,'Each incoming message must produce exactly one committed reply.');
+        assert.equal(await whatsapp.locator('.message-out').count(),4);assert.equal(await whatsapp.locator('footer [contenteditable]').innerText(),'');assert.equal(session.engagementRuntime.active,true);assert.equal(session.engagementRuntime.runId,activeRun);
+        await panelPage.locator('#engagement-tab-history').click();await panelPage.getByText('Conversaciones por pasos',{exact:true}).waitFor();
+        await panelPage.getByRole('button',{name:'Reiniciar conversación',exact:true}).click();
+        await until(async()=> (await DB.prepare('SELECT state_json FROM engagement_conversations WHERE line_id=?').bind(config.lines[0].id).first()).state_json==='null','The native activity reset did not clear the real D1 flow state.');
+        assert.equal(await whatsapp.locator('.message-out').count(),4,'Resetting state must not send a message.');
+        await panelPage.locator('#engagement-tab-line').click();await panelPage.locator('#engagement-stop').click();
+        await until(()=>Promise.resolve(session.engagementRuntime?.active===false),'Stopping the flow did not revoke its runtime.');
+        await until(async()=> (await DB.prepare('SELECT COUNT(*) AS n FROM engagement_leases').first()).n===0,'Stopping the flow did not release its lease.');
+        activeBrowserTabId=pages.get(whatsapp);for(const listener of activationListeners)listener({tabId:activeBrowserTabId,windowId:1});
+        await until(async()=>(await panelPage.evaluate(()=>NexoCompanion.getContext())).active===true,'The panel did not return to the same WhatsApp fixture.');
+        assert.equal(apiLoginCalls,loginCount);assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);assert.equal(await panelPage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+        await panelPage.screenshot({path:'/workspace/work/deliverables/flow-panel-v1.7.0.png',fullPage:false});
+        console.log('Flow integration passed: actual packaged native-panel UI, authenticated background, content adapter, Worker and D1. A phone-less stable @lid receives an eight-option menu, chooses8, answers two questions, and commits one observed response per input; captured answers persist, live background changes preserve the baseline and operate off-tab, explicit reset sends nothing, and stop releases the lease.');
+      }
+      else if(process.env.ENGAGEMENT_PANEL_ONLY==='1'){
         await panelPage.locator('#compact-tab-engagement').click();
         await panelPage.locator('#engagement-new-line').click();
         await panelPage.locator('.engagement-dialog [name=name]').fill('Línea sintética');

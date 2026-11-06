@@ -97,15 +97,23 @@ continuar.
 
 ## Controles del usuario
 
-El chatbot por reglas se activa expresamente por línea y perfil de Chrome. Lee
+El chatbot por reglas y flujos se activa expresamente por línea y perfil de Chrome. Lee
 textos nuevos cargados en el chat individual abierto, conserva un registro del
 intento y puede pulsar Enviar para la respuesta configurada. No responde al
 historial anterior ni recorre otros chats o grupos. El modo en segundo plano
-requiere autorización adicional al configurar e iniciar esa línea; permite
-seguir usando su pestaña de WhatsApp mientras otra ventana está en primer plano.
+se autoriza desde Mi línea, incluso con el chatbot activo; permite seguir
+usando su pestaña de WhatsApp al cambiar de pestaña o ventana.
 El registro compartido admite hasta cinco líneas, con reservas exclusivas que
 caducan. El número de cada línea lo declara el propietario; registrarlo no inicia
 ni certifica una cuenta de WhatsApp. Detener todas las líneas revoca las reservas.
+
+Los flujos conservan en el servidor el paso y las respuestas recopiladas por
+línea y conversación, con caducidad de treinta minutos por defecto. Un
+identificador estable permite responder aunque WhatsApp oculte el teléfono;
+no se deduce el número ni se asigna una ficha por nombre. El avance requiere
+observar la salida. Un resultado incierto bloquea esa conversación; el usuario
+puede revisarla y reiniciar su flujo desde Actividad. Las respuestas de los
+clientes no se envían a ningún proveedor de IA.
 
 El usuario puede cerrar sesión, cambiar su contraseña, quitar un vínculo de chat,
 detener la captura de textos y gestionar los registros mediante el CRM. Quitar

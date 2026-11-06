@@ -188,10 +188,10 @@ export async function handleOutreachMedia(request, env) {
       let campaigns = [];
       try { const outreach = JSON.parse(workspace?.body || "{}").growth?.outreach || {}; campaigns = [...(outreach.campaigns || []), ...(outreach.templates || [])]; } catch {}
       const engagement=await db.prepare('SELECT body FROM engagement_config WHERE id=1').first();
-      if(engagement)campaigns.push(...(JSON.parse(engagement.body).bot?.rules||[]));
+      if(engagement){const bot=JSON.parse(engagement.body).bot||{};campaigns.push(...(bot.rules||[]),...(bot.flows||[]).flatMap(flow=>flow.nodes||[]));}
       if (campaigns.some(campaign => Array.isArray(campaign.media) && campaign.media.some(item => item.id === id)))
         throw new MediaError("Este archivo está usado en una campaña, plantilla o chatbot. Quítalo antes de eliminarlo.", 409);
-      const unused="NOT EXISTS(SELECT 1 FROM workspace,json_tree(workspace.body,'$.growth.outreach') j WHERE j.key='id' AND j.value=? AND j.fullkey LIKE '%.media[%].id') AND NOT EXISTS(SELECT 1 FROM engagement_config,json_tree(engagement_config.body,'$.bot.rules') j WHERE j.key='id' AND j.value=? AND j.fullkey LIKE '%.media[%].id')";
+      const unused="NOT EXISTS(SELECT 1 FROM workspace,json_tree(workspace.body,'$.growth.outreach') j WHERE j.key='id' AND j.value=? AND j.fullkey LIKE '%.media[%].id') AND NOT EXISTS(SELECT 1 FROM engagement_config,json_tree(engagement_config.body,'$.bot') j WHERE j.key='id' AND j.value=? AND j.fullkey LIKE '%.media[%].id')";
       const deleted=await db.batch([
         db.prepare("DELETE FROM outreach_media_chunks WHERE media_id=? AND "+unused).bind(id,id,id),
         db.prepare("DELETE FROM outreach_media WHERE id=? AND "+unused).bind(id,id,id),

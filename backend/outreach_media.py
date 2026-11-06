@@ -183,7 +183,8 @@ def register_outreach_media(app, db_path):
                     campaigns = outreach.get('campaigns', []) + outreach.get('templates', [])
                     config = db.execute('SELECT body FROM engagement_config WHERE id=1').fetchone()
                     if config:
-                        campaigns += json.loads(config['body']).get('bot', {}).get('rules', [])
+                        bot = json.loads(config['body']).get('bot', {})
+                        campaigns += bot.get('rules', []) + [node for flow in bot.get('flows', []) for node in flow.get('nodes', [])]
                     if any(any(item.get('id') == media_id for item in campaign.get('media', [])) for campaign in campaigns):
                         raise MediaError('Este archivo está usado en una campaña o plantilla. Quítalo antes de eliminarlo.', 409)
                     db.execute('DELETE FROM outreach_media_chunks WHERE media_id=?', (media_id,))

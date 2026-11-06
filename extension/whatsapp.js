@@ -369,6 +369,14 @@
     return { started: true };
   }
   function botEnsure(input) { return botArm?.runId === input?.runId ? { started: true } : botStart(input); }
+  function botSetBackground(input = {}) {
+    if (!botArm || botArm.runId !== input.runId || typeof input.allowBackground !== 'boolean')
+      throw Error('Activa el chatbot antes de cambiar su trabajo en segundo plano.');
+    // Only the authenticated background router may invoke this action. Keep
+    // the baseline and eligible incoming messages while changing this grant.
+    botArm.allowBackground = input.allowBackground;
+    return { updated: true, allowBackground: botArm.allowBackground };
+  }
   function botStop(input = {}) {
     if (botArm && (!input.runId || input.runId === botArm.runId)) {
       cancelledCampaigns.add(botArm.runId); botArm = null; clearInterval(botTimer);
@@ -378,7 +386,7 @@
   function botSnapshot(input = {}) {
     if (!botArm || botArm.runId !== input.runId) throw Error('El chatbot está detenido.');
     const current = context();
-    if (current.chatId !== botArm.chatId || current.name !== botArm.name || !current.chatId || current.isGroup || current.ambiguous) {
+    if (current.chatId !== botArm.chatId || current.name !== botArm.name || !/^wa:[^\s]+$/.test(current.chatId || '') || current.isGroup || current.ambiguous) {
       baselineBot(current); return { context: current, messages: [] };
     }
     if (!botArm.allowBackground && document.hidden) { baselineBot(current); return { context: current, messages: [] }; }
@@ -392,10 +400,10 @@
       botArm.seen.add(id);
       if (index <= oldTail || !id.startsWith('false_') || !item.matches('.message-in') && !item.querySelector('.message-in')) continue;
       const peer = /^(?:true|false)_([^_]+)_/.exec(id)?.[1];
-      if (!peer || 'wa:' + peer !== current.chatId || !current.phone) continue;
+      if (!peer || 'wa:' + peer !== current.chatId) continue;
       const body = [...item.querySelectorAll('[data-pre-plain-text] .selectable-text,[data-testid="msg-text"],.copyable-text .selectable-text')].filter(part => !part.closest('[data-testid="quoted-message"],.quoted-mention')).map(part => part.innerText || part.textContent || '').join('\n').trim().slice(0,8000);
       if (!body) continue;
-      const message = { id, body, phone: current.phone, chatId: current.chatId };
+      const message = { id, body, phone: current.phone, chatId: current.chatId, name: current.name };
       messages.push(message); botArm.eligible.set(id, message);
     }
     botArm.tail = nodes.at(-1)?.getAttribute('data-id') || botArm.tail;
@@ -423,14 +431,38 @@
   function campaignGuard(input) {
     if (cancelledCampaigns.has(input.runId)) throw Error("La campaña fue detenida.");
     const botMessage = input.mode === 'bot' && botArm?.runId === input.runId ? botArm.eligible.get(input.incomingId) : null;
-    if (input.mode === 'bot' && (!botMessage || botMessage.phone !== input.phone)) throw Error('El chatbot no tiene un mensaje nuevo para responder.');
+    if (input.mode === 'bot' && (!botMessage || !/^wa:[^\s]+$/.test(botMessage.chatId || '') || input.chatId !== botMessage.chatId))
+      throw Error('El chatbot no tiene un mensaje nuevo con una identidad estable para responder.');
     const background = botMessage && botArm.allowBackground && input.allowBackground === true;
     if (!background && (document.hidden || document.visibilityState === "hidden")) throw Error("WhatsApp dejó de estar visible. La campaña está pausada.");
     const current = context();
-    if (!current.chatId || current.isGroup || current.ambiguous || current.phone !== input.phone)
-      throw Error("La conversación no coincide con el número seleccionado.");
-    if (botMessage && current.chatId !== botMessage.chatId) throw Error('La conversación del chatbot cambió.');
+    if (!current.chatId || current.isGroup || current.ambiguous)
+      throw Error("La conversación no coincide con el destinatario seleccionado.");
+    if (botMessage) {
+      if (current.chatId !== botMessage.chatId || current.name !== botMessage.name) throw Error('La conversación del chatbot cambió.');
+      const known = [botMessage.phone, input.phone, current.phone].filter(Boolean);
+      if (known.some(number => !phone(number) || phone(number) !== number) || new Set(known).size > 1)
+        throw Error('El teléfono visible no coincide con la conversación del chatbot.');
+    } else {
+      const expectedPhone = phone(input.phone);
+      if (!expectedPhone || expectedPhone !== input.phone || current.phone !== expectedPhone)
+        throw Error("La conversación no coincide con el número seleccionado.");
+    }
     return current;
+  }
+  function prepareBot(input) {
+    campaignGuard(input);
+    const composer = main()?.querySelector('footer [contenteditable="true"][role="textbox"]') || main()?.querySelector('[data-testid="conversation-compose-box-input"][contenteditable="true"]');
+    if (!composer) throw Error('WhatsApp cambió su editor. No se puede preparar la respuesta del chatbot.');
+    if ((composer.innerText || composer.textContent || '').trim()) throw Error('WhatsApp ya tiene un borrador. Se conserva sin reemplazarlo.');
+    composer.focus();
+    campaignGuard(input);
+    if (!composer.isConnected || document.activeElement !== composer || (composer.innerText || composer.textContent || '').trim())
+      throw Error('El editor de WhatsApp cambió durante la preparación. No se envió la respuesta.');
+    if (!document.execCommand('insertText', false, input.text) || !editorMatches(composer, input.text))
+      throw Error('No se pudo verificar el borrador del chatbot.');
+    campaignGuard(input);
+    return { prepared: true };
   }
   const waitCampaign = ms => new Promise(resolve => setTimeout(resolve, ms));
   function sendButton(scope) {
@@ -481,16 +513,40 @@
           caption.focus(); if (!document.execCommand("insertText", false, input.text) || !editorMatches(caption, input.text)) throw Error("No se pudo verificar el pie del archivo.");
         }
       } else {
-        const prepared = prepare({ phone: input.phone, text: input.text });
+        const prepared = input.mode === 'bot' ? prepareBot(input) : prepare({ phone: input.phone, text: input.text });
         if (!prepared.prepared) throw Error(prepared.reason || "No se pudo preparar el mensaje.");
       }
       campaignGuard(input);
       if (input.automatic !== true) return { status: "prepared", evidence: "Borrador y archivos preparados; envío pendiente de tu confirmación." };
       const button = scope && sendButton(scope);
       if (!button) throw Error("No se encontró un botón de envío verificable.");
-      const permit = await chrome.runtime.sendMessage({ channel: "nexo", type: input.mode === 'bot' ? 'engagement.permit' : "campaign.permit", input: { runId: input.runId, phone: input.phone, ...(input.mode === 'bot' ? { claimId: input.claimId, claimToken: input.claimToken } : {}) } });
+      const editor = scope.querySelector("[contenteditable='true']");
+      const mediaState = () => [...scope.querySelectorAll('img,video')].map(node => ({ node,
+        source: node.getAttribute('src') || '', poster: node.getAttribute('poster') || '',
+        children: [...node.querySelectorAll('source')].map(item => [item.getAttribute('src') || '', item.getAttribute('type') || '']),
+      }));
+      const preparedMedia = input.files.length ? mediaState() : [];
+      const verifyPrepared = () => {
+        if (!root.isConnected || document.querySelector('#main') !== root || !scope.isConnected || !button.isConnected || !scope.contains(button) || sendButton(scope) !== button || button.disabled || button.getAttribute('aria-disabled') === 'true')
+          throw Error('El editor o el botón de WhatsApp cambió. No se envió la respuesta.');
+        const currentEditor = scope.querySelector("[contenteditable='true']");
+        if (currentEditor !== editor || editor && (!editor.isConnected || !editorMatches(editor, input.text)) || !editor && input.text)
+          throw Error('El borrador cambió mientras se autorizaba el envío. Se conserva sin enviarlo.');
+        if (!input.files.length) {
+          if (document.querySelector("[data-testid='media-editor'],[data-testid='media-caption-input-container']"))
+            throw Error('Se abrió un adjunto mientras se autorizaba el envío. Se conserva sin enviarlo.');
+        } else {
+          const currentMedia = mediaState();
+          if (!preparedMedia.length || currentMedia.length !== preparedMedia.length || currentMedia.some((item, index) => {
+            const expected = preparedMedia[index];
+            return item.node !== expected.node || item.source !== expected.source || item.poster !== expected.poster || JSON.stringify(item.children) !== JSON.stringify(expected.children);
+          })) throw Error('El adjunto cambió mientras se autorizaba el envío. Se conserva sin enviarlo.');
+        }
+      };
+      verifyPrepared();
+      const permit = await chrome.runtime.sendMessage({ channel: "nexo", type: input.mode === 'bot' ? 'engagement.permit' : "campaign.permit", input: { runId: input.runId, phone: input.phone, ...(input.mode === 'bot' ? { chatId: input.chatId, claimId: input.claimId, claimToken: input.claimToken } : {}) } });
       if (!permit?.ok || permit.result?.allowed !== true) throw Error("La campaña está pausada, la barra se cerró o terminó la sesión.");
-      campaignGuard(input); clicked = true; button.click();
+      campaignGuard(input); verifyPrepared(); clicked = true; button.click();
       const until = Date.now() + 15000;
       const normalize = value => String(value || "").replace(/\s+/g, " ").trim();
       while (Date.now() < until) {
@@ -574,7 +630,7 @@
     incomplete = [...result.values()].filter(row => !row.phone).length;
     return { contacts: [...result.values()], incomplete, note: "Lista cargada de WhatsApp; no incluye números que WhatsApp no muestra ni contactos de otras cuentas." };
   }
-  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone, campaignCheck, campaignSend, exportContacts, botStart, botEnsure, botStop, botSnapshot };
+  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone, campaignCheck, campaignSend, exportContacts, botStart, botEnsure, botSetBackground, botStop, botSnapshot };
   const invalidateNativeNavigation = () => { navigationRevision++; openIntent = null; requestContextUpdate(); };
   document.addEventListener?.("pointerdown", event => {
     const target = event.target;
@@ -600,7 +656,7 @@
     }
     try {
       setScope(message.scope);
-      const actions = { context, capture, prepare, bind, unbind, botStart, botEnsure, botStop, botSnapshot };
+      const actions = { context, capture, prepare, bind, unbind, botStart, botEnsure, botSetBackground, botStop, botSnapshot };
       if (message.action === "campaignCancel") {
         if (cancelledCampaigns.size > 100) cancelledCampaigns.clear();
         if (typeof message.input?.runId === "string") cancelledCampaigns.add(message.input.runId);

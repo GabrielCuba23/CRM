@@ -1,7 +1,7 @@
 # Nexo CRM para WhatsApp Web
 
 Extensión Manifest V3 para Chrome de computadora. Presenta una interfaz compacta
-en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.6.1 del código tiene cinco entradas:
+en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.7.0 del código tiene cinco entradas:
 **Chat actual**, **Clientes**, **Cuentas**, **Campañas** y **Chatbot**. Las herramientas avanzadas siguen
 disponibles desde **Abrir CRM**.
 Pulsa **Nexo** en WhatsApp o el icono de la extensión para abrir la barra. Una vez
@@ -144,6 +144,29 @@ demuestra que el destinatario lo haya recibido.
 La ficha elegida y el chat abierto deben corresponder a la misma persona antes
 de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destinatario.
 
+## Flujos de conversación en 1.7.0
+
+**Chatbot → Flujos** permite crear menús numerados, preguntas con validación,
+respuestas finales y pasos de atención personal. **Usar ejemplo menú 1–8** abre
+un borrador editable. Cambia sus mensajes, opciones y destinos, prueba la
+conversación y pulsa **Guardar flujo**. Puedes hacerlo el flujo inicial o
+indicar las frases que lo disparan; después habilita las respuestas del negocio
+e inicia el chatbot en **Mi línea**.
+
+Cada conversación conserva su paso y sus respuestas en el servidor. El cliente
+puede escribir **menú** o **0** para comenzar de nuevo y **salir** para terminar.
+Los pasos avanzan al observar la salida en WhatsApp. Si un envío queda incierto,
+la conversación se bloquea para revisión; **Actividad → Reiniciar conversación** permite
+restablecerla expresamente. La memoria caduca a los 30 minutos por defecto.
+Los menús son mensajes de texto: no requieren botones nativos, una API de IA ni
+un servicio de pago.
+
+El bot puede responder al chat individual con identificador estable aunque
+WhatsApp no muestre su teléfono. Esto no adivina números ni vincula clientes por
+nombre. **Permitir trabajar en segundo plano en este perfil**, en **Mi línea**,
+puede cambiarse incluso con el bot activo sin reiniciarlo. Chrome y WhatsApp
+deben permanecer abiertos; el bot sigue limitado al chat individual abierto.
+
 ## Campañas, fotos, videos y contactos en 1.5.0
 
 La 1.6.1 muestra **Añadir mi línea** y **Crear una respuesta** cuando todavía no
@@ -159,7 +182,7 @@ Lima y fotos/videos. Cada número necesita su perfil de Chrome y su WhatsApp
 vinculado. Crea sus respuestas, selecciona la línea y confirma **Iniciar chatbot**.
 Se responde solo a textos nuevos del chat individual abierto, sin recorrer otros
 chats ni el historial. Para trabajar con cinco perfiles a la vez, autoriza segundo
-plano en cada línea y al iniciar cada perfil. **Detener todas las líneas** está
+plano desde **Mi línea** en cada perfil. **Detener todas las líneas** está
 disponible desde la extensión y la web. No se contrata una API de IA ni una tienda.
 
 **Campañas** contiene cuatro apartados: **Campañas**, **Contactos**, **Plantillas**

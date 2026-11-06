@@ -13,6 +13,8 @@ export const API_METHODS = Object.freeze({
   "/api/engagement": ["GET", "PUT"],
   "/api/engagement/history": ["GET"],
   "/api/engagement/stop": ["POST"],
+  "/api/engagement/conversations": ["GET"],
+  "/api/engagement/conversations/reset": ["POST"],
 });
 export function crmOrigin(value) {
   let parsed;

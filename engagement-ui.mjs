@@ -1,4 +1,5 @@
 import { normalizeRecipientPhone, personalizeMessage } from './outreach.mjs';
+import { initializeBotFlowEditor } from './bot-flow-ui.mjs';
 
 const uid = () => crypto.randomUUID();
 const clone = value => structuredClone(value);
@@ -24,17 +25,18 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
   css.href = new URL('./engagement-ui.css', import.meta.url).href;
   document.head.append(css);
 
-  let config = null, runtime = null, history = [], view = 'line';
-  let busy = 0, dirty = false, destroyed = false, loadInFlight = null, dialogCount = 0;
+  let config = null, runtime = null, history = [], conversations = [], view = 'line', flowsUI = null;
+  let busy = 0, dirty = false, destroyed = false, loadInFlight = null, dialogCount = 0, backgroundBusy = false;
   const objectURLs = new Set();
   const heading = node('div', '', 'engagement-heading');
-  heading.append(node('h2', 'Chatbot y líneas'), node('p', 'Respuestas por reglas, sin suscripción.', 'engagement-muted'));
+  heading.append(node('h2', 'Chatbot y líneas'), node('p', 'Menús, preguntas y respuestas por reglas, sin suscripción.', 'engagement-muted'));
   const notice = node('p', '', 'engagement-notice');
   notice.id = 'engagement-notice'; notice.hidden = true;
   notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
   const navigation = node('nav', '', 'engagement-tabs');
   navigation.setAttribute('aria-label', 'Chatbot y líneas');
   const content = node('div'); content.id = 'engagement-content';
+  const flowsHost = node('div');
   root.append(heading, navigation, notice, content);
 
   function status(text, error = false) {
@@ -73,6 +75,8 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
   function actions(...items) { const item = node('div', '', 'engagement-actions'); item.append(...items); return item; }
   function selectedLine() { return config?.lines.find(line => line.id === runtime?.selectedLineId); }
   function activeRules() { return config?.bot.rules.filter(rule => rule.enabled) || []; }
+  function activeFlows() { return config?.bot.flows?.filter(flow => flow.enabled) || []; }
+  function hasResponses() { return activeRules().length > 0 || activeFlows().length > 0; }
   function requireClean() { if (dirty) throw Error('Guarda la configuración antes de realizar esta acción.'); }
   async function call(path, options = {}) {
     const response = await (transport.fetch || fetch)(path, {
@@ -90,13 +94,13 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     return value;
   }
   async function refresh({ force = false } = {}) {
-    if (destroyed || (!force && (dirty || dialogCount || busy))) return;
+    if (destroyed || flowsUI?.isBusy() || (!force && (dirty || dialogCount || busy))) return;
     if (loadInFlight) return loadInFlight;
     loadInFlight = (async () => {
       const next = validSnapshot(await call('/api/engagement'));
       let nextRuntime = null;
       if (transport.getEngagementRuntime) nextRuntime = await transport.getEngagementRuntime();
-      if (destroyed || (!force && (dirty || dialogCount))) return;
+      if (destroyed || flowsUI?.isBusy() || (!force && (dirty || dialogCount))) return;
       config = next; runtime = nextRuntime;
       if (view === 'history') await readHistory();
       render();
@@ -116,6 +120,8 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     const result = await call('/api/engagement/history');
     if (!Array.isArray(result.items)) throw Error('No se pudo leer la actividad del chatbot.');
     history = result.items;
+    const current = await call('/api/engagement/conversations').catch(() => null);
+    conversations = Array.isArray(current?.items) ? current.items : [];
   }
   function dialog(title, saveAction) {
     const item = node('dialog', '', 'engagement-dialog'), form = node('form');
@@ -133,9 +139,10 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     });
     return { item, form, body, error, submit };
   }
-  for (const [key, text] of [['line', 'Mi línea'], ['rules', 'Reglas'], ['history', 'Actividad']]) {
+  for (const [key, text] of [['line', 'Mi línea'], ['flows', 'Flujos'], ['rules', 'Reglas'], ['history', 'Actividad']]) {
     navigation.append(button(text, async () => {
       if (dirty && !confirm('¿Descartar los cambios sin guardar?')) return;
+      if (flowsUI?.hasDraft()) { if (!confirm('¿Descartar el borrador del flujo sin guardar?')) return; flowsUI.discard(); }
       dirty = false; view = key;
       if (view === 'history' && config) await readHistory();
       render();
@@ -153,18 +160,23 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       return;
     }
     if (view === 'line') renderLine();
+    else if (view === 'flows') {
+      content.append(flowsHost);
+      if (!flowsUI) flowsUI = initializeBotFlowEditor({root: flowsHost, getConfig: () => config, save, transport, notify: status});
+      else flowsUI.refresh();
+    }
     else if (view === 'rules') renderRules();
     else renderHistory();
   }
   function renderLine() {
-    const toolbar = actions(button('Configurar respuestas',()=>{view='rules';render();},'engagement-secondary','engagement-configure'),button('Actualizar', () => refresh({ force: true }), 'engagement-text', 'engagement-refresh'));
+    const toolbar = actions(button('Crear o editar un flujo',()=>{view='flows';render();},'engagement-primary','engagement-configure-flow'),button('Configurar respuestas',()=>{view='rules';render();},'engagement-secondary','engagement-configure'),button('Actualizar', () => refresh({ force: true }), 'engagement-text', 'engagement-refresh'));
     content.append(toolbar);
     const current = selectedLine(), mine = card('Esta instalación');
     if (!transport.getEngagementRuntime) {
-      mine.append(node('p', 'Puedes configurar aquí las líneas y las reglas. Inicia el chatbot desde la extensión de Chrome con WhatsApp abierto.', 'engagement-muted'));
+      mine.append(node('p', 'Puedes configurar aquí líneas, flujos y reglas. Inicia el chatbot desde la extensión de Chrome con WhatsApp abierto.', 'engagement-muted'));
     } else if(!config.lines.length){
       mine.append(node('p','Todavía no has añadido una línea. Registra el número del WhatsApp que usas en este perfil para empezar.','engagement-muted'),button('Añadir mi línea',()=>editLine(),'engagement-primary','engagement-new-line'));
-      if(!activeRules().length)mine.append(button('Crear una respuesta',()=>{view='rules';render();editRule();},'engagement-secondary','engagement-first-response'));
+      if(!hasResponses())mine.append(button('Crear un flujo',()=>{view='flows';render();},'engagement-secondary','engagement-first-flow'),button('Crear una respuesta',()=>{view='rules';render();editRule();},'engagement-secondary','engagement-first-response'));
       mine.append(node('p','El chatbot todavía no está iniciado. Después de añadir tu línea y una respuesta podrás activarlo; entonces aparecerá Detener chatbot.','engagement-muted'));
     } else {
       const selector = field(mine, 'Línea de este perfil de Chrome', 'selectedLineId', { tag: 'select' }); selector.id = 'engagement-selected-line';
@@ -188,19 +200,43 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       if(!config.lines.length)missing.push({text:'Añade el número que usas en WhatsApp.',action:'Añadir línea',run:()=>editLine()});
       else if(!current)missing.push({text:'Elige la línea de este perfil.',action:'Usar línea seleccionada',run:()=>use.click()});
       else if(!current.enabled)missing.push({text:'Habilita esta línea.',action:'Editar línea',run:()=>editLine(current)});
-      if(!activeRules().length)missing.push({text:'Crea una respuesta para los mensajes que recibes.',action:'Crear respuesta',run:()=>{view='rules';render();editRule();}});
+      if(!hasResponses())missing.push({text:'Crea un flujo de conversación o una respuesta habilitada.',action:'Crear respuesta',run:()=>{view='rules';render();editRule();}});
       if(!config.bot.enabled)missing.push({text:'Habilita las respuestas del negocio.',action:'Activar respuestas',run:async()=>{await save(next=>{next.bot.enabled=true;});status('Respuestas habilitadas. Inicia el chatbot en la línea de este perfil.');render();}});
       if(!running&&missing.length){
         const setup=card('Para activar este perfil');setup.id='engagement-prerequisites';
         for(const step of missing){const row=node('div','','engagement-setup-step');row.append(node('p',step.text,'engagement-muted'),button(step.action,step.run,'engagement-secondary'));setup.append(row);}
         mine.append(setup);
       }
-      const background = check(mine, 'Permitir trabajar en segundo plano en este perfil', 'allowBackground', runtime?.allowBackground === true);
-      background.id = 'engagement-background'; background.disabled = !current?.allowBackground || running;
-      if (!current?.allowBackground) mine.append(node('p', 'Para usar segundo plano, habilítalo primero al editar esta línea.', 'engagement-muted'));
+      const background = check(mine, 'Permitir trabajar en segundo plano en este perfil', 'allowBackground', running ? runtime?.allowBackground === true : current?.allowBackground === true);
+      background.id = 'engagement-background'; background.disabled = !current || backgroundBusy;
+      background.addEventListener('change', async () => {
+        if (backgroundBusy) return;
+        const requested = background.checked, previous = config.lines.find(line => line.id === current.id)?.allowBackground === true;
+        if (running && typeof transport.setChatbotBackground !== 'function') {
+          background.checked = runtime?.allowBackground === true;
+          report(Error('Esta instalación necesita la actualización de Nexo para cambiar segundo plano mientras está activo.')); return;
+        }
+        background.disabled = true; backgroundBusy = true; busy++; let saved = false;
+        try {
+          requireClean();
+          await save(next => { const line = next.lines.find(line => line.id === current.id); if (!line) throw Error('Esta línea ya no existe.'); line.allowBackground = requested; }); saved = true;
+          if (running) {
+            const nextRuntime = await transport.setChatbotBackground({ allowBackground: requested });
+            runtime = nextRuntime?.running === undefined ? await transport.getEngagementRuntime() : nextRuntime;
+            if (runtime?.allowBackground !== requested) throw Error(runtime?.lastError || 'No se confirmó el cambio en este perfil.');
+          }
+          status(requested ? 'Segundo plano habilitado. Chrome y WhatsApp deben seguir abiertos.' : 'Segundo plano desactivado. Mantén WhatsApp y la barra abiertos.');
+        } catch (error) {
+          if (saved) { try { await save(next => { const line = next.lines.find(line => line.id === current.id); if (line) line.allowBackground = previous; }); } catch { /* Preserve the authoritative setting if another profile changed it. */ } }
+          if (transport.getEngagementRuntime) runtime = await transport.getEngagementRuntime().catch(() => runtime);
+          background.checked = runtime?.running === true ? runtime.allowBackground === true : previous;
+          report(error);
+        } finally { busy--; backgroundBusy = false; const control = root.querySelector('#engagement-background'); if (control) control.disabled = !selectedLine(); }
+      });
+      mine.append(node('p', 'Puedes cambiar esta opción aunque el chatbot ya esté activo. Chrome y WhatsApp deben permanecer abiertos; no funciona con el equipo apagado.', 'engagement-muted'));
       const start = button('Iniciar chatbot', async () => {
         requireClean(); if (!current || !current.enabled) throw Error('Selecciona una línea habilitada.');
-        if (!config.bot.enabled || !activeRules().length) throw Error('Activa el chatbot y guarda al menos una regla habilitada en Reglas.');
+        if (!config.bot.enabled || !hasResponses()) throw Error('Activa el chatbot y guarda al menos un flujo o una regla habilitada.');
         const message = `¿Activar las respuestas de ${current.name} (+${current.phone}) en este perfil? Comprueba que es el número de su WhatsApp. Solo se responderán textos nuevos del chat individual abierto.` + (background.checked ? ' Autorizas que esa pestaña de WhatsApp trabaje también en segundo plano.' : ' Mantén WhatsApp y la barra abiertos.');
         if (!confirm(message)) return;
         runtime = await transport.startChatbot({ lineId: current.id, allowBackground: background.checked });
@@ -209,7 +245,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
         status('Chatbot activado. Los mensajes anteriores no se responderán.');
         config = validSnapshot(await call('/api/engagement')); render();
       }, 'engagement-primary', 'engagement-start');
-      start.disabled = running || !current?.enabled || !config.bot.enabled || !activeRules().length;
+      start.disabled = running || !current?.enabled || !config.bot.enabled || !hasResponses();
       if(start.disabled&&!running)start.setAttribute('aria-describedby','engagement-prerequisites');
       const stop = button('Detener chatbot', async () => {
         runtime = await transport.stopChatbot();
@@ -218,7 +254,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       }, 'engagement-danger', 'engagement-stop'); stop.disabled = !running;
       mine.append(actions(...(running?[stop]:[start])));
       if(!running)mine.append(node('p','Todavía no está iniciado. Al activarlo aparecerá Detener chatbot.','engagement-muted'));
-      if (!config.bot.enabled || !activeRules().length) mine.append(node('p', 'Primero crea una respuesta y activa el chatbot en Reglas.', 'engagement-muted'));
+      if (!config.bot.enabled || !hasResponses()) mine.append(node('p', 'Guarda un flujo o una regla habilitada y activa las respuestas del negocio para iniciar.', 'engagement-muted'));
     }
     mine.append(node('p', 'Responde textos nuevos del chat individual abierto después de activarlo. No revisa otros chats, grupos ni el historial anterior.', 'engagement-scope'));
     content.append(mine);
@@ -235,7 +271,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     }
     const profiles = node('details'); profiles.append(node('summary', 'Usar cinco números simultáneos'));
     profiles.append(node('p', 'Usa un perfil de Chrome distinto por número. En cada perfil instala Nexo, abre su WhatsApp Web, vincula ese número como lo haces normalmente y selecciona su línea. Todos usan el mismo correo del CRM.', 'engagement-muted'));
-    profiles.append(node('p', 'Cinco pestañas del mismo perfil comparten la misma sesión de WhatsApp. Para atender en paralelo, autoriza segundo plano en cada línea y en cada perfil. Chrome debe seguir abierto.', 'engagement-muted'));
+    profiles.append(node('p', 'Cinco pestañas del mismo perfil comparten la misma sesión de WhatsApp. Para atender en paralelo, activa segundo plano desde Mi línea en cada perfil. Chrome debe seguir abierto.', 'engagement-muted'));
     lines.append(profiles); content.append(lines);
     const stopAll = button('Detener todas las líneas', async () => {
       requireClean(); if (!confirm('¿Detener todas las líneas y desactivar el chatbot del negocio?')) return;
@@ -277,6 +313,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     check(general, 'Activar respuestas automáticas', 'enabled', config.bot.enabled);
     const cooldown = field(general, 'Pausa mínima entre respuestas al mismo contacto (segundos)', 'cooldownSeconds', { type: 'number', min: 0, max: 86400, step: 1, required: true, value: String(config.bot.cooldownSeconds) });
     cooldown.id = 'engagement-cooldown';
+    const timeout = field(general, 'Reiniciar conversación tras inactividad (minutos)', 'conversationTtlMinutes', { type: 'number', min: 1, max: 1440, step: 1, required: true, value: String(config.bot.conversationTtlMinutes || 30) });
     const hours = node('details'); hours.append(node('summary', 'Horario de atención'));
     const useHours = check(hours, 'Responder solo dentro del horario', 'hoursEnabled', config.bot.hours.enabled);
     const times = node('div', '', 'engagement-grid');
@@ -294,7 +331,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       event.preventDefault(); if (submit.disabled) return; submit.disabled = true; busy++;
       try {
         const values = Object.fromEntries(new FormData(form));
-        await save(next => { next.bot = { ...next.bot, enabled: values.enabled === 'on', cooldownSeconds: Number(cooldown.value), timezone: 'America/Lima', hours: { enabled: useHours.checked, start: start.value, end: end.value, days: [1, 2, 3, 4, 5, 6, 7].filter(day => values['day-' + day] === 'on') } }; });
+        await save(next => { next.bot = { ...next.bot, enabled: values.enabled === 'on', cooldownSeconds: Number(cooldown.value), conversationTtlMinutes: Number(timeout.value), timezone: 'America/Lima', hours: { enabled: useHours.checked, start: start.value, end: end.value, days: [1, 2, 3, 4, 5, 6, 7].filter(day => values['day-' + day] === 'on') } }; });
         status('Configuración guardada. Inicia o vuelve a iniciar cada línea para aplicar sus respuestas.'); render();
       } catch (error) { report(error); }
       finally { busy--; submit.disabled = false; }
@@ -309,7 +346,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       const row = node('article', '', 'engagement-rule'); row.dataset.ruleId = rule.id;
       const title = node('div', '', 'engagement-heading'); title.append(node('strong', rule.name), node('span', rule.enabled ? 'Habilitada' : 'Desactivada', 'engagement-pill'));
       row.append(title, node('p', rule.match === 'fallback' ? 'Respuesta general' : (rule.match === 'exact' ? 'Texto exacto: ' : 'Contiene: ') + rule.keywords.join(' · '), 'engagement-muted'));
-      row.append(node('p', rule.text || 'Solo archivos adjuntos', 'engagement-message'));
+      row.append(node('p', rule.flowId ? 'Inicia el flujo: ' + (config.bot.flows?.find(flow => flow.id === rule.flowId)?.name || 'Flujo anterior') : rule.text || 'Solo archivos adjuntos', 'engagement-message'));
       if (rule.media?.length) row.append(node('small', rule.media.length + ' archivos adjuntos', 'engagement-muted'));
       const up = button('Subir', () => moveRule(index, -1), 'engagement-text'); up.disabled = index === 0;
       const down = button('Bajar', () => moveRule(index, 1), 'engagement-text'); down.disabled = index === config.bot.rules.length - 1;
@@ -327,8 +364,9 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     requireClean(); let media = clone(rule?.media || []);
     const { item, body, submit } = dialog(rule ? 'Editar respuesta' : 'Nueva respuesta', async form => {
       const values = Object.fromEntries(new FormData(form));
-      const value = { id: rule?.id || uid(), name: values.name.trim(), enabled: values.enabled === 'on', match: values.match, keywords: values.match === 'fallback' ? [] : [...new Set(values.keywords.split(/[\n,]+/).map(value => value.trim()).filter(Boolean))], text: values.text, media };
-      if (!value.name || !value.text.trim() && !value.media.length) throw Error('Escribe el nombre y una respuesta o adjunta un archivo.');
+      const value = { id: rule?.id || uid(), name: values.name.trim(), enabled: values.enabled === 'on', match: values.match, keywords: values.match === 'fallback' ? [] : [...new Set(values.keywords.split(/[\n,]+/).map(value => value.trim()).filter(Boolean))], text: values.flowId ? '' : values.text, media: values.flowId ? [] : media };
+      if (values.flowId) value.flowId = values.flowId;
+      if (!value.name || !value.flowId && !value.text.trim() && !value.media.length) throw Error('Escribe el nombre y una respuesta, elige un flujo o adjunta un archivo.');
       if (value.match !== 'fallback' && !value.keywords.length) throw Error('Escribe al menos una palabra o frase.');
       await save(next => {
         if (rule) next.bot.rules = next.bot.rules.map(other => other.id === rule.id ? value : other);
@@ -343,6 +381,10 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     const keywords = field(body, 'Palabras o frases, una por línea', 'keywords', { tag: 'textarea', rows: 3, value: (rule?.keywords || []).join('\n'), placeholder: 'precio\ncatálogo' });
     const updateKeywords = () => { keywords.parentElement.hidden = match.value === 'fallback'; };
     match.addEventListener('change', updateKeywords); updateKeywords();
+    const flow = field(body, 'Acción de esta regla', 'flowId', { tag: 'select' });
+    option(flow, '', 'Enviar una respuesta');
+    for (const value of config.bot.flows || []) option(flow, value.id, 'Iniciar flujo: ' + value.name + (value.enabled ? '' : ' (desactivado)'));
+    flow.value = rule?.flowId || '';
     const text = field(body, 'Respuesta', 'text', { tag: 'textarea', rows: 5, maxLength: 8000, value: rule?.text || '', placeholder: 'Hola {nombre}, estos son nuestros precios…' });
     body.append(node('p', 'Variables: {nombre}, {telefono}, {negocio}, {servicio}, {vence}. No se entregan contraseñas automáticamente.', 'engagement-muted'));
     const attachments = card('Foto o video (opcional)'), mediaRows = node('div');
@@ -382,6 +424,8 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       })); attachments.append(library);
     }
     attachments.append(mediaRows, node('p', 'Los archivos se guardan en la biblioteca privada del CRM. Máximo 10 adjuntos y 20 MiB por respuesta.', 'engagement-muted')); renderMedia(); body.append(attachments);
+    const updateAction = () => { text.parentElement.hidden = Boolean(flow.value); attachments.hidden = Boolean(flow.value); };
+    flow.addEventListener('change', updateAction); updateAction();
     const preview = node('details'); preview.append(node('summary', 'Vista previa del texto'));
     const output = node('p', '', 'engagement-message');
     const updatePreview = () => {
@@ -392,6 +436,25 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
   }
   function renderHistory() {
     content.append(node('p', 'Se muestran los últimos intentos registrados. Una salida observada no confirma entrega ni lectura.', 'engagement-muted'), actions(button('Actualizar actividad', async () => { await readHistory(); render(); }, 'engagement-secondary', 'engagement-refresh-history')));
+    if (conversations.length) {
+      const ongoing = card('Conversaciones por pasos');
+      for (const conversation of conversations) {
+        const item = node('article', '', 'engagement-rule');
+        const line = config.lines.find(line => line.id === conversation.lineId);
+        const flow = config.bot.flows?.find(flow => flow.id === conversation.state?.flowId);
+        const step = flow?.nodes.find(step => step.id === conversation.state?.nodeId);
+        item.append(node('strong', conversation.phone ? '+' + conversation.phone : 'Conversación de WhatsApp'), node('p', (line?.name || 'Línea') + (flow ? ' · ' + flow.name : ''), 'engagement-muted'));
+        const description = conversation.blocked ? 'Requiere revisar el último envío en WhatsApp.' : conversation.pending ? 'Respuesta en proceso.' : conversation.state?.handoff ? 'Atención personal.' : conversation.state?.ended ? 'Flujo terminado.' : conversation.state?.waiting ? 'Esperando la respuesta del cliente.' : 'Sin flujo activo.';
+        item.append(node('p', description, conversation.blocked ? 'engagement-error' : 'engagement-muted'));
+        if (step) item.append(node('p', 'Paso actual: ' + (step.text.split('\n')[0].slice(0,120) || step.type), 'engagement-muted'));
+        item.append(button('Reiniciar conversación', async () => {
+          if (!confirm('¿Reiniciar esta conversación? No se enviará ningún mensaje. El siguiente texto nuevo empezará de nuevo.')) return;
+          await call('/api/engagement/conversations/reset', { method: 'POST', body: JSON.stringify({ lineId: conversation.lineId, contactKey: conversation.contactKey }) });
+          await readHistory(); status('Conversación reiniciada. No se enviaron mensajes.'); render();
+        }, 'engagement-secondary')); ongoing.append(item);
+      }
+      content.append(ongoing);
+    }
     if (!history.length) content.append(empty('Todavía no hay respuestas automáticas registradas.'));
     for (const row of history) {
       const item = card(); item.classList.add('engagement-history-item');
@@ -399,6 +462,7 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
       item.append(node('strong', line?.name || row.lineName || 'Línea'), node('span', labels[row.status] || row.status || 'Registrado', 'engagement-pill'));
       if (row.phone) item.append(node('p', '+' + row.phone, 'engagement-muted'));
       if (row.ruleName || row.ruleId) item.append(node('p', row.ruleName || config.bot.rules.find(rule => rule.id === row.ruleId)?.name || 'Respuesta anterior', 'engagement-muted'));
+      if (row.flowId) item.append(node('p', 'Flujo: ' + (config.bot.flows?.find(flow => flow.id === row.flowId)?.name || 'Flujo anterior'), 'engagement-muted'));
       const stamp = row.updatedAt || row.createdAt || row.sentAt;
       if (stamp) {
         const milliseconds = typeof stamp === 'number' ? stamp < 1e12 ? stamp * 1000 : stamp : Date.parse(stamp);
@@ -414,15 +478,15 @@ export function initializeEngagement({ root, transport = {}, getState = () => ({
     if (destroyed) return; destroyed = true;
     clearInterval(runtimeTimer);
     for (const url of objectURLs) URL.revokeObjectURL(url);
-    css.remove();
+    css.remove(); flowsUI?.destroy();
   }
   window.addEventListener('pagehide', destroy, { once: true });
   const runtimeTimer=setInterval(()=>{
-    if(destroyed||!root.isConnected||document.hidden||dirty||dialogCount||busy)return;
+    if(destroyed||!root.isConnected||document.hidden||dirty||dialogCount||busy||flowsUI?.isBusy())return;
     const active=document.activeElement;
     if(active&&root.contains(active)&&active.matches('input,textarea,select,[contenteditable=true]'))return;
     void refresh();
   },5000);
   render(); void refresh();
-  return { refresh, isBusy: () => busy > 0 || dirty || dialogCount > 0, destroy };
+  return { refresh, isBusy: () => busy > 0 || dirty || dialogCount > 0 || Boolean(flowsUI?.isBusy()), destroy };
 }

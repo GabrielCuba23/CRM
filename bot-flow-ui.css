@@ -1,0 +1,16 @@
+.bot-flow-workspace{min-width:0;color:inherit}
+.bot-flow-workspace h3{margin-top:8px}
+.bot-flow-workspace button{max-width:100%}
+.bot-flow-options{margin:12px 0}
+.bot-flow-option{border:1px solid #dfe7e9;border-radius:10px;padding:10px;margin:10px 0;background:#f8fafb}
+.bot-flow-option-fields{display:grid;grid-template-columns:minmax(95px,.6fr) minmax(0,1.4fr);gap:10px}
+.bot-flow-option label{margin:7px 0}
+.bot-flow-transcript{display:grid;gap:9px;max-height:360px;overflow:auto;padding:8px 0}
+.bot-flow-bubble{background:#edf5f3;border-radius:10px;padding:10px;min-width:0}
+.bot-flow-bubble.is-user{background:#e7f2f9;margin-left:20px}
+.bot-flow-bubble strong{font-size:11px;color:#506871}
+.bot-flow-bubble p{white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0;font-size:12px}
+.dark .bot-flow-option{background:#202c33;border-color:#34434b}
+.dark .bot-flow-bubble{background:#223c36}
+.dark .bot-flow-bubble.is-user{background:#203948}
+@media(max-width:350px){.bot-flow-option-fields{grid-template-columns:1fr}}

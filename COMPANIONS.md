@@ -29,7 +29,7 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión Nexo 1.6.1](https://drive.google.com/file/d/1Y1npoyESJNvckZiPeHuwpf5HTNgEtl9K/view)
+1. Descarga la [extensión Nexo 1.7.0](https://drive.google.com/file/d/1nvrSId8VEoJNKbp7qmK88WtRsu_6KPNG/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.

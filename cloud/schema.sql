@@ -66,6 +66,17 @@ CREATE TABLE IF NOT EXISTS engagement_bot_attempts (
   token_hash TEXT NOT NULL,
   status TEXT NOT NULL CHECK(status IN ('pending','sent_observed','failed','uncertain')),
   created INTEGER NOT NULL, updated INTEGER NOT NULL,
-  evidence TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT ''
+  evidence TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
+  contact_key TEXT NOT NULL DEFAULT '', chat_id TEXT NOT NULL DEFAULT '', next_state TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS engagement_bot_attempts_recent ON engagement_bot_attempts(line_id,phone,created);
+CREATE INDEX IF NOT EXISTS engagement_bot_attempts_contact ON engagement_bot_attempts(line_id,contact_key,created);
+
+CREATE TABLE IF NOT EXISTS engagement_conversations (
+  line_id TEXT NOT NULL, contact_key TEXT NOT NULL, chat_id TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '', state_json TEXT NOT NULL DEFAULT 'null',
+  revision INTEGER NOT NULL DEFAULT 0, expires INTEGER NOT NULL, updated INTEGER NOT NULL,
+  blocked INTEGER NOT NULL DEFAULT 0, pending_claim TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(line_id,contact_key)
+);
+CREATE INDEX IF NOT EXISTS engagement_conversations_updated ON engagement_conversations(updated);

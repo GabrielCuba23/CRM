@@ -1,5 +1,6 @@
 // Shared, deterministic line configuration and rule matching. This module never
 // reads WhatsApp, starts a runtime, accesses credentials or sends a message.
+import { cleanBotFlows } from './bot-flows.mjs';
 const TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm']);
 const fail = (message = 'La configuración de líneas o chatbot no es válida.') => { throw Error(message); };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -34,9 +35,10 @@ function rule(value) {
   const cleaned = [...new Set(keywords.map(item => text(item, 100, true).trim()))];
   if (value.match !== 'fallback' && !cleaned.length) fail('Añade al menos una palabra o frase al chatbot.');
   const files = rows(value.media ?? [], 10, media), body = text(value.text ?? '', 8000);
-  if (!body.trim() && !files.length) fail('Escribe la respuesta o añade un archivo.');
+  const flowId = value.flowId === undefined ? undefined : text(value.flowId, 100);
+  if (!body.trim() && !files.length && !flowId) fail('Escribe la respuesta, añade un archivo o selecciona un flujo.');
   if (files.reduce((total, file) => total + file.size, 0) > 20971520) fail('Los archivos de una respuesta superan 20 MiB.');
-  return { id: text(value.id, 100, true), name: text(value.name, 160, true), enabled: boolean(value.enabled), match: value.match, keywords: value.match === 'fallback' ? [] : cleaned, text: body, media: files };
+  return { id: text(value.id, 100, true), name: text(value.name, 160, true), enabled: boolean(value.enabled), match: value.match, keywords: value.match === 'fallback' ? [] : cleaned, text: body, media: files, ...(flowId === undefined ? {} : {flowId}) };
 }
 function line(value) {
   if (!object(value)) fail();
@@ -58,6 +60,13 @@ export function cleanEngagementConfig(value) {
   const cleaned = { revision: integer(value.revision ?? 0, 0, Number.MAX_SAFE_INTEGER), lines: rows(value.lines ?? [], 5, line), bot: { enabled: boolean(value.bot.enabled), rules: rows(value.bot.rules ?? [], 50, rule), cooldownSeconds: integer(value.bot.cooldownSeconds ?? 60, 0, 86400), timezone: text(value.bot.timezone ?? 'America/Lima', 80, true), hours: hours(value.bot.hours) } };
   if (new Set(cleaned.lines.map(item => item.phone)).size !== cleaned.lines.length) fail('Ese teléfono ya está registrado en otra línea.');
   if (cleaned.bot.rules.filter(item => item.enabled && item.match === 'fallback').length > 1) fail('Solo puede haber una respuesta general activa.');
+  if (Object.hasOwn(value.bot, 'flows') || Object.hasOwn(value.bot, 'defaultFlowId') || cleaned.bot.rules.some(item => item.flowId)) {
+    cleaned.bot.flows = cleanBotFlows(value.bot.flows ?? []);
+    if (Object.hasOwn(value.bot, 'defaultFlowId')) cleaned.bot.defaultFlowId = text(value.bot.defaultFlowId, 100);
+    const ids = new Set(cleaned.bot.flows.map(item => item.id));
+    if (cleaned.bot.defaultFlowId && !ids.has(cleaned.bot.defaultFlowId) || cleaned.bot.rules.some(item => item.flowId && !ids.has(item.flowId))) fail('Selecciona un flujo existente para la regla o el inicio de conversación.');
+  }
+  if (Object.hasOwn(value.bot, 'conversationTtlMinutes')) cleaned.bot.conversationTtlMinutes = integer(value.bot.conversationTtlMinutes, 1, 1440);
   try { new Intl.DateTimeFormat('en', { timeZone: cleaned.bot.timezone }); } catch { fail('La zona horaria no es válida.'); }
   if (new TextEncoder().encode(JSON.stringify(cleaned)).length > 700000) fail('La configuración del chatbot supera el límite permitido.');
   return cleaned;

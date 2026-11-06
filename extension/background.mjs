@@ -699,6 +699,7 @@ async function execute(message, sender) {
     const {origin,windowId} = await campaignWindow(sender,message,message.type !== 'engagement.stop');
     if (message.type === 'engagement.status') return engagementRuntime.status(origin);
     if (message.type === 'engagement.select') return engagementRuntime.select(origin,message.input?.lineId);
+    if (message.type === 'engagement.background') return engagementRuntime.setBackground({origin,allowBackground:message.input?.allowBackground});
     if (message.type === 'engagement.stop') return engagementRuntime.stop(origin);
     if (message.type === 'engagement.start') return withCampaignLifecycle(async () => {
       const prior = (await storage.get(campaignKey(windowId)))[campaignKey(windowId)];
