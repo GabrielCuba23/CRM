@@ -348,6 +348,65 @@
     return normalized(plain(composer)) === normalized(expected);
   }
   const cancelledCampaigns = new Set();
+  let botArm = null, botTimer;
+  const botNodes = () => [...(main()?.querySelectorAll('[data-id]') || [])].filter(item => !item.closest('[data-testid="quoted-message"], .quoted-mention'));
+  function baselineBot(current) {
+    botArm.chatId = current.chatId;
+    botArm.name = current.name;
+    botArm.seen = new Set(botNodes().map(item => item.getAttribute('data-id')));
+    botArm.tail = botNodes().at(-1)?.getAttribute('data-id') || '';
+    botArm.eligible.clear();
+  }
+  function botStart(input = {}) {
+    if (!/^[a-f0-9]{32}$/.test(input.runId || '')) throw Error('La activación del chatbot no es válida.');
+    if (botArm && botArm.runId !== input.runId) throw Error('Detén el chatbot anterior antes de activarlo.');
+    if (botArm?.runId === input.runId) return { started: true };
+    botArm = { runId: input.runId, allowBackground: input.allowBackground === true, eligible: new Map() };
+    cancelledCampaigns.delete(input.runId);
+    baselineBot(context());
+    clearInterval(botTimer);
+    if (chrome.runtime.id) botTimer = setInterval(wakeBot, 20000);
+    return { started: true };
+  }
+  function botEnsure(input) { return botArm?.runId === input?.runId ? { started: true } : botStart(input); }
+  function botStop(input = {}) {
+    if (botArm && (!input.runId || input.runId === botArm.runId)) {
+      cancelledCampaigns.add(botArm.runId); botArm = null; clearInterval(botTimer);
+    }
+    return { stopped: true };
+  }
+  function botSnapshot(input = {}) {
+    if (!botArm || botArm.runId !== input.runId) throw Error('El chatbot está detenido.');
+    const current = context();
+    if (current.chatId !== botArm.chatId || current.name !== botArm.name || !current.chatId || current.isGroup || current.ambiguous) {
+      baselineBot(current); return { context: current, messages: [] };
+    }
+    if (!botArm.allowBackground && document.hidden) { baselineBot(current); return { context: current, messages: [] }; }
+    const nodes = botNodes(), oldTail = nodes.findIndex(item => item.getAttribute('data-id') === botArm.tail);
+    // Loading older rows above the previous tail is never a new inquiry.
+    if (botArm.tail && oldTail < 0) { baselineBot(current); return { context: current, messages: [] }; }
+    const messages = [];
+    for (const [index, item] of nodes.entries()) {
+      const id = item.getAttribute('data-id') || '';
+      if (botArm.seen.has(id)) continue;
+      botArm.seen.add(id);
+      if (index <= oldTail || !id.startsWith('false_') || !item.matches('.message-in') && !item.querySelector('.message-in')) continue;
+      const peer = /^(?:true|false)_([^_]+)_/.exec(id)?.[1];
+      if (!peer || 'wa:' + peer !== current.chatId || !current.phone) continue;
+      const body = [...item.querySelectorAll('[data-pre-plain-text] .selectable-text,[data-testid="msg-text"],.copyable-text .selectable-text')].filter(part => !part.closest('[data-testid="quoted-message"],.quoted-mention')).map(part => part.innerText || part.textContent || '').join('\n').trim().slice(0,8000);
+      if (!body) continue;
+      const message = { id, body, phone: current.phone, chatId: current.chatId };
+      messages.push(message); botArm.eligible.set(id, message);
+    }
+    botArm.tail = nodes.at(-1)?.getAttribute('data-id') || botArm.tail;
+    if (botArm.seen.size > 3000) baselineBot(current);
+    while (botArm.eligible.size > 50) botArm.eligible.delete(botArm.eligible.keys().next().value);
+    return { context: current, messages: messages.slice(-10) };
+  }
+  function wakeBot() {
+    if (!botArm || !chrome.runtime.id) return;
+    chrome.runtime.sendMessage({ channel: 'nexo', type: 'engagement.tick', input: { runId: botArm.runId } }).catch(() => {});
+  }
   function campaignCheck() {
     const editor = document.querySelector("#main footer [contenteditable='true']");
     if ((editor?.innerText || editor?.textContent || "").trim()) throw Error("WhatsApp ya tiene un borrador. Envíalo o guárdalo antes de iniciar la campaña.");
@@ -363,10 +422,14 @@
   }
   function campaignGuard(input) {
     if (cancelledCampaigns.has(input.runId)) throw Error("La campaña fue detenida.");
-    if (document.hidden || document.visibilityState === "hidden") throw Error("WhatsApp dejó de estar visible. La campaña está pausada.");
+    const botMessage = input.mode === 'bot' && botArm?.runId === input.runId ? botArm.eligible.get(input.incomingId) : null;
+    if (input.mode === 'bot' && (!botMessage || botMessage.phone !== input.phone)) throw Error('El chatbot no tiene un mensaje nuevo para responder.');
+    const background = botMessage && botArm.allowBackground && input.allowBackground === true;
+    if (!background && (document.hidden || document.visibilityState === "hidden")) throw Error("WhatsApp dejó de estar visible. La campaña está pausada.");
     const current = context();
     if (!current.chatId || current.isGroup || current.ambiguous || current.phone !== input.phone)
       throw Error("La conversación no coincide con el número seleccionado.");
+    if (botMessage && current.chatId !== botMessage.chatId) throw Error('La conversación del chatbot cambió.');
     return current;
   }
   const waitCampaign = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -425,7 +488,7 @@
       if (input.automatic !== true) return { status: "prepared", evidence: "Borrador y archivos preparados; envío pendiente de tu confirmación." };
       const button = scope && sendButton(scope);
       if (!button) throw Error("No se encontró un botón de envío verificable.");
-      const permit = await chrome.runtime.sendMessage({ channel: "nexo", type: "campaign.permit", input: { runId: input.runId, phone: input.phone } });
+      const permit = await chrome.runtime.sendMessage({ channel: "nexo", type: input.mode === 'bot' ? 'engagement.permit' : "campaign.permit", input: { runId: input.runId, phone: input.phone, ...(input.mode === 'bot' ? { claimId: input.claimId, claimToken: input.claimToken } : {}) } });
       if (!permit?.ok || permit.result?.allowed !== true) throw Error("La campaña está pausada, la barra se cerró o terminó la sesión.");
       campaignGuard(input); clicked = true; button.click();
       const until = Date.now() + 15000;
@@ -511,7 +574,7 @@
     incomplete = [...result.values()].filter(row => !row.phone).length;
     return { contacts: [...result.values()], incomplete, note: "Lista cargada de WhatsApp; no incluye números que WhatsApp no muestra ni contactos de otras cuentas." };
   }
-  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone, campaignCheck, campaignSend, exportContacts };
+  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone, campaignCheck, campaignSend, exportContacts, botStart, botEnsure, botStop, botSnapshot };
   const invalidateNativeNavigation = () => { navigationRevision++; openIntent = null; requestContextUpdate(); };
   document.addEventListener?.("pointerdown", event => {
     const target = event.target;
@@ -537,14 +600,14 @@
     }
     try {
       setScope(message.scope);
-      const actions = { context, capture, prepare, bind, unbind };
+      const actions = { context, capture, prepare, bind, unbind, botStart, botEnsure, botStop, botSnapshot };
       if (message.action === "campaignCancel") {
         if (cancelledCampaigns.size > 100) cancelledCampaigns.clear();
         if (typeof message.input?.runId === "string") cancelledCampaigns.add(message.input.runId);
         sendResponse({ ok: true, result: { stopped: true } }); return false;
       }
       if (["campaignSend", "exportContacts"].includes(message.action)) {
-        if (document.hidden) throw Error("Vuelve a la pestaña de WhatsApp.");
+        if (document.hidden && !(message.action === 'campaignSend' && message.input?.mode === 'bot')) throw Error("Vuelve a la pestaña de WhatsApp.");
         Promise.resolve(message.action === "campaignSend" ? campaignSend(message.input) : exportContacts(message.input))
           .then(result => sendResponse({ ok: true, result }), error => sendResponse({ ok: false, error: error.message }));
         return true;
@@ -568,6 +631,7 @@
       lastIdentity = identity;
       chrome.runtime.sendMessage({ channel: "nexo", type: "wa.contextChanged", context: next }).catch(() => {});
     }
+    wakeBot();
     // A quiet DOM still needs one update when the transition quarantine ends.
     if (identityTransition && !settleTimer) settleTimer = setTimeout(() => {
       settleTimer = undefined;
@@ -583,4 +647,5 @@
   };
   new MutationObserver(requestContextUpdate).observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["title", "data-id", "aria-selected", "hidden", "aria-hidden"] });
   update();
+  chrome.runtime.sendMessage({channel:'nexo',type:'engagement.documentReady'}).catch(() => {});
 })();

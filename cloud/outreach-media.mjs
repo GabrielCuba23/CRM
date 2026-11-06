@@ -187,12 +187,16 @@ export async function handleOutreachMedia(request, env) {
       const workspace = await db.prepare("SELECT body FROM workspace WHERE id=1").first();
       let campaigns = [];
       try { const outreach = JSON.parse(workspace?.body || "{}").growth?.outreach || {}; campaigns = [...(outreach.campaigns || []), ...(outreach.templates || [])]; } catch {}
+      const engagement=await db.prepare('SELECT body FROM engagement_config WHERE id=1').first();
+      if(engagement)campaigns.push(...(JSON.parse(engagement.body).bot?.rules||[]));
       if (campaigns.some(campaign => Array.isArray(campaign.media) && campaign.media.some(item => item.id === id)))
-        throw new MediaError("Este archivo está usado en una campaña o plantilla. Quítalo antes de eliminarlo.", 409);
-      await db.batch([
-        db.prepare("DELETE FROM outreach_media_chunks WHERE media_id=?").bind(id),
-        db.prepare("DELETE FROM outreach_media WHERE id=?").bind(id),
+        throw new MediaError("Este archivo está usado en una campaña, plantilla o chatbot. Quítalo antes de eliminarlo.", 409);
+      const unused="NOT EXISTS(SELECT 1 FROM workspace,json_tree(workspace.body,'$.growth.outreach') j WHERE j.key='id' AND j.value=? AND j.fullkey LIKE '%.media[%].id') AND NOT EXISTS(SELECT 1 FROM engagement_config,json_tree(engagement_config.body,'$.bot.rules') j WHERE j.key='id' AND j.value=? AND j.fullkey LIKE '%.media[%].id')";
+      const deleted=await db.batch([
+        db.prepare("DELETE FROM outreach_media_chunks WHERE media_id=? AND "+unused).bind(id,id,id),
+        db.prepare("DELETE FROM outreach_media WHERE id=? AND "+unused).bind(id,id,id),
       ]);
+      if(deleted[1].meta.changes!==1)throw new MediaError('El archivo ahora está usado. Actualiza su biblioteca.',409);
       return json({ ok: true });
     }
     if (action === "complete" && method === "POST") { await input(request); return await finish(db, id); }

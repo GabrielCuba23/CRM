@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
-import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN } from "../extension/policy.mjs";
+import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN, createEngagementRuntime } from "../extension/policy.mjs";
 
 const id = "a".repeat(32);
 const extensionUrl = `chrome-extension://${id}/`;
@@ -37,7 +37,7 @@ async function backgroundFixture() {
     offscreen: { async createDocument(input) { creates.push(input); await new Promise(setImmediate); documentExists = true; } },
     tabs: {}, action: { onClicked: { addListener() {} } },
   };
-  const context = vm.createContext({ chrome, URL, TextEncoder, crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN });
+  const context = vm.createContext({ chrome, URL, TextEncoder, crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN, createEngagementRuntime });
   vm.runInContext(source.replace(/^import[^\n]+\n/, ""), context);
   const invoke = (text, sender = app) => new Promise(resolve => listener({ channel: "nexo", type: "clipboard.copy", text }, sender, resolve));
   return { invoke, creates, writes, maximumWrites: () => maximumWrites, failNext: () => { failNext = true; } };

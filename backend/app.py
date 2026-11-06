@@ -13,10 +13,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from .storage import connect, initialize, read_workspace
 from .validation import validate_workspace
 from .outreach_media import register_outreach_media
+from .engagement import register_engagement
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_FILES = {'styles.css', 'login.js', 'icons.svg'}
-APP_FILES = {'supplier-overview.mjs','promotions.mjs','messaging.mjs','companion-ui.mjs','companion-ui.css','companions/conversations.mjs','companions/workspace.mjs','reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs','outreach.mjs','outreach-ui.mjs','outreach-ui.css','outreach-media-client.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
+APP_FILES = {'supplier-overview.mjs','promotions.mjs','messaging.mjs','companion-ui.mjs','companion-ui.css','companions/conversations.mjs','companions/workspace.mjs','reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs','outreach.mjs','outreach-ui.mjs','outreach-ui.css','outreach-media-client.mjs','engagement.mjs','engagement-ui.mjs','engagement-ui.css', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
 SESSION_SECONDS = 8 * 3600
 
 
@@ -95,6 +96,7 @@ def create_app(config=None):
         return response
 
     register_outreach_media(app, db_path)
+    register_engagement(app, db_path)
 
     @app.get('/healthz')
     def health():

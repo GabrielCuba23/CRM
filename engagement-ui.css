@@ -1,0 +1,59 @@
+.engagement-workspace{font:13px/1.5 system-ui,sans-serif;min-width:0;color:inherit}
+.engagement-workspace *,.engagement-dialog *{box-sizing:border-box}
+.engagement-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.engagement-heading h2,.engagement-heading h3{margin:0}
+.engagement-heading>p{width:100%;margin:0 0 12px}
+.engagement-muted{color:var(--muted,#667781);font-size:11px;line-height:1.65;overflow-wrap:anywhere}
+.engagement-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;margin:0 0 14px;border-radius:10px;background:#e7edef}
+.engagement-workspace button,.engagement-dialog button{border:0;border-radius:8px;min-height:34px;padding:8px 11px;font:600 11px/1.4 system-ui,sans-serif;cursor:pointer}
+.engagement-workspace button:disabled,.engagement-dialog button:disabled{opacity:.5;cursor:not-allowed}
+.engagement-workspace button:focus-visible,.engagement-dialog button:focus-visible{outline:2px solid #008069;outline-offset:2px}
+.engagement-tab{background:transparent;color:#5f747c}
+.engagement-tab.active{background:#fff;color:#008069;box-shadow:0 1px 4px #0001}
+.engagement-primary{background:#008069;color:#fff}
+.engagement-secondary{background:#edf2f4;color:#375560}
+.engagement-text{background:transparent;color:#008069;padding:5px!important}
+.engagement-danger{background:#fff1f2;color:#b94750}
+.engagement-actions{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin:10px 0}
+.engagement-card{border:1px solid #dfe7e9;border-radius:12px;background:var(--surface,#fff);padding:13px;margin:12px 0;min-width:0}
+.engagement-card h3{font-size:14px;margin:0 0 10px}
+.engagement-workspace summary,.engagement-dialog summary{cursor:pointer;font-weight:650}
+.engagement-workspace label,.engagement-dialog label{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:11px;font-weight:650}
+.engagement-workspace input,.engagement-workspace select,.engagement-workspace textarea,.engagement-dialog input,.engagement-dialog select,.engagement-dialog textarea{width:100%;min-width:0;max-width:100%;padding:10px;border:1px solid #d8e2e7;border-radius:8px;background:#fff;color:#18343d;font:13px/1.5 system-ui,sans-serif}
+.engagement-workspace textarea,.engagement-dialog textarea{resize:vertical}
+.engagement-workspace input[type=checkbox],.engagement-dialog input[type=checkbox]{width:17px;height:17px;padding:0;flex-shrink:0}
+.engagement-workspace .engagement-check,.engagement-dialog .engagement-check{flex-direction:row-reverse;justify-content:flex-end;align-items:flex-start;gap:9px}
+.engagement-check>span{flex:1}
+.engagement-check input{margin-top:1px}
+.engagement-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.engagement-days{display:flex;flex-wrap:wrap;gap:9px}
+.engagement-days .engagement-check{gap:4px!important;margin:5px 0}
+.engagement-days .engagement-check>span{flex:none}
+.engagement-notice{padding:10px;border:1px solid #c9e5d8;border-radius:8px;background:#e7f5ed;color:#216f53;font-size:12px;overflow-wrap:anywhere}
+.engagement-notice.is-error{border-color:#f1d6d5;background:#fff1f0;color:#a3434a}
+.engagement-notice[hidden],.engagement-workspace [hidden],.engagement-dialog [hidden]{display:none!important}
+.engagement-error{color:#b94750;white-space:pre-wrap;font-size:12px;overflow-wrap:anywhere}
+.engagement-empty{padding:20px 12px;color:#667781;border:1px dashed #cfdde2;border-radius:10px;text-align:center}
+.engagement-line{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid #e1e8eb}
+.engagement-line>div{min-width:0}
+.engagement-line strong,.engagement-line small{display:block;overflow-wrap:anywhere}
+.engagement-line small{color:#667781;font-size:11px}
+.engagement-pill{display:inline-block;font:600 10px/1.5 system-ui,sans-serif;padding:3px 7px;background:#edf2f4;color:#5c717b;border-radius:20px;margin-top:5px}
+.engagement-pill.is-online{color:#008069;background:#e1f4ed}
+.engagement-runtime-state{font-size:12px;font-weight:650;color:#667781}
+.engagement-runtime-state.is-running{color:#008069}
+.engagement-scope{font-size:11px;color:#506871;padding:10px;border-radius:8px;background:#edf5f3}
+.engagement-rule{border-top:1px solid #e1e8eb;padding:12px 0}
+.engagement-rule:first-of-type{border-top:0}
+.engagement-message{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+.engagement-dialog{width:min(560px,calc(100vw - 20px));max-height:calc(100dvh - 20px);overflow:auto;border:1px solid #d6e1e7;border-radius:14px;padding:18px;background:#fff;color:#18343d}
+.engagement-dialog::backdrop{background:#18343d55}
+.engagement-media-row{display:flex;gap:8px;align-items:center;margin:8px 0;font-size:11px}
+.engagement-media-row>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.engagement-history-item>.engagement-pill{margin-left:8px}
+.dark .engagement-card{background:#202c33;border-color:#34434b}
+.dark .engagement-tabs{background:#202c33}
+.dark .engagement-tab.active{background:#34434b;color:#d9fdd3}
+.dark .engagement-workspace input,.dark .engagement-workspace select,.dark .engagement-workspace textarea{background:#202c33;color:#e9edef;border-color:#34434b}
+.dark .engagement-secondary{background:#34434b;color:#d9fdd3}
+@media(max-width:380px){.engagement-grid{grid-template-columns:1fr}.engagement-card{padding:10px}.engagement-workspace button{font-size:10px}}

@@ -321,6 +321,46 @@ const PANEL_CONTEXT_ID = 'synthetic-native-panel-context';
       assert.equal(apiLoginCalls,loginCount);assert.equal(panelPage.url(),nativeUrl);
       assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
       assert(!panelCalls.some(item=>item.type==='open-options'),'No installation/login flow requires an extra options page.');
+      if(process.env.ENGAGEMENT_PANEL_ONLY==='1'){
+        await panelPage.locator('#compact-tab-engagement').click();
+        await panelPage.locator('#engagement-new-line').click();
+        await panelPage.locator('.engagement-dialog [name=name]').fill('Línea sintética');
+        await panelPage.locator('.engagement-dialog [name=phone]').fill('977777777');
+        await panelPage.locator('.engagement-dialog button[type=submit]').click();
+        await panelPage.locator('.engagement-dialog').waitFor({state:'hidden'});
+        await panelPage.locator('#engagement-tab-rules').click();
+        await panelPage.locator('#engagement-new-rule').click();
+        await panelPage.locator('.engagement-dialog [name=name]').fill('Saludo de prueba');
+        await panelPage.locator('.engagement-dialog [name=keywords]').fill('hola');
+        await panelPage.locator('.engagement-dialog [name=text]').fill('Hola {nombre}, respuesta sintética');
+        await panelPage.locator('.engagement-dialog button[type=submit]').click();
+        await panelPage.locator('.engagement-dialog').waitFor({state:'hidden'});
+        await panelPage.locator('#engagement-config-form [name=enabled]').check();
+        await panelPage.locator('#engagement-save-config').click();
+        await panelPage.locator('#engagement-notice').filter({hasText:'Configuración guardada. Inicia o vuelve a iniciar cada línea para aplicar sus respuestas.'}).waitFor();
+        await panelPage.locator('#engagement-tab-line').click();
+        const config=JSON.parse((await DB.prepare('SELECT body FROM engagement_config WHERE id=1').first()).body);
+        await panelPage.locator('#engagement-selected-line').selectOption(config.lines[0].id);
+        await panelPage.locator('#engagement-use-line').click();
+        await whatsapp.evaluate(()=>{
+          const send=document.createElement('button');send.setAttribute('aria-label','Enviar');send.textContent='Enviar';
+          send.onclick=()=>{const row=document.createElement('div');row.className='message-out';row.dataset.id='true_browser-fixture@lid_bot-sent';row.textContent=document.querySelector('footer [contenteditable]').innerText;document.querySelector('.history').append(row);document.querySelector('footer [contenteditable]').textContent='';};document.querySelector('footer').append(send);
+        });
+        await panelPage.locator('#engagement-start').click();
+        await until(()=>Promise.resolve(session.engagementRuntime?.active===true),'Chatbot did not arm through the real native router.');
+        assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM engagement_bot_attempts').first()).n,0,'activation cannot reply to historical text');
+        await whatsapp.evaluate(()=>{const row=document.createElement('div');row.className='message-in';row.dataset.id='false_browser-fixture@lid_new-bot';row.innerHTML='<div data-pre-plain-text="[12:00] Persona: "><span class="selectable-text">hola</span></div>';document.querySelector('.history').append(row);});
+        await until(async()=> (await DB.prepare('SELECT status FROM engagement_bot_attempts').first())?.status==='sent_observed','The full bot flow did not persist an observed synthetic reply.');
+        assert.match(await whatsapp.locator('[data-id="true_browser-fixture@lid_bot-sent"]').innerText(),/Hola.*respuesta sintética/);
+        await panelPage.locator('#engagement-stop').click();
+        await until(()=>Promise.resolve(session.engagementRuntime?.active===false),'Explicit stop did not revoke the local runtime.');
+        await until(async()=> (await DB.prepare('SELECT COUNT(*) AS n FROM engagement_leases').first()).n===0,'Explicit stop did not release the server lease.');
+        assert.equal(apiLoginCalls,loginCount,'Chatbot must use the inline CRM session, without another login page.');
+        await panelPage.setViewportSize({width:420,height:900});
+        assert.equal(await panelPage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Chatbot must fit the native side panel without horizontal overflow.');
+        await panelPage.screenshot({path:'/workspace/work/deliverables/engagement-panel-v1.6.0.png',fullPage:false});
+        console.log('Chatbot integration passed: actual packaged UI, background router, content adapter, private Worker and D1; new incoming synthetic message responded once, historical text ignored, lease released on explicit stop.');
+      }
 
       // A broadcast from another browser window cannot replace this recipient.
       await panelPage.evaluate(({id,origin})=>{for(const fn of window.__chromeListeners)fn({channel:'nexo.context',origin,context:{windowId:2,tabId:999,chatId:'wa:other-window@lid',name:'Wrong window',phone:'51988888888',active:true}},{id},()=>{});},{id:EXT_ID,origin:CRM});

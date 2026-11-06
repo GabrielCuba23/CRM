@@ -1,4 +1,4 @@
-import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN, DEFAULT_ORIGIN } from "./policy.mjs";
+import { crmOrigin, allowedApi, isExtensionPage, embeddedWhatsAppTab, isWhatsAppSender, safeContext, draftInput, WA_ORIGIN, DEFAULT_ORIGIN, createEngagementRuntime } from "./policy.mjs";
 
 const EXTENSION_ID = chrome.runtime.id;
 const storage = chrome.storage.session;
@@ -10,6 +10,29 @@ chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch
 chrome.storage.session.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
 const authModes = new Map();
 let authenticationEpoch = 0;
+const engagementRuntime = createEngagementRuntime({
+  local: chrome.storage.local, session: storage,
+  getOrigin: async () => (await configuration()).origin,
+  getSession: nativeSession,
+  getTab: async id => { try { return await chrome.tabs.get(id); } catch { return null; } },
+  activeTab: activeWhatsApp, epoch: () => authenticationEpoch,
+  panelActive: async run => (await chrome.runtime.getContexts({contextTypes:['SIDE_PANEL']})).some(item=>item.contextId===run.panelContextId),
+  mediaFiles: campaignMedia,
+  request: async (origin, path, method, body) => {
+    const response = await nativeRequest(origin, {path, method, ...(body === undefined ? {} : {body:JSON.stringify(body)})});
+    const value = replyData(response);
+    if (response.status < 200 || response.status >= 300) throw Error(value.error || 'No se pudo completar la operación del chatbot.');
+    return value;
+  },
+  sendContent: async (tabId, origin, action, input) => {
+    await assertOrigin(origin);
+    const tab = await chrome.tabs.get(tabId);
+    if (tabOrigin(tab) !== WA_ORIGIN) throw Error('La pestaña de WhatsApp cambió.');
+    const response = await chrome.tabs.sendMessage(tabId,{channel:'nexo.whatsapp',scope:origin,action,input},{frameId:0});
+    if (!response?.ok) throw Error(response?.error || 'Recarga WhatsApp para activar el chatbot.');
+    return response.result;
+  },
+});
 
 function tabOrigin(tab) {
   try { return new URL(tab?.url || "").origin; } catch { return ""; }
@@ -270,7 +293,9 @@ async function authStatus(origin, fresh = false) {
   return value;
 }
 async function nativeRequest(origin, request) {
-  if (request.path === "/api/logout" || request.path === "/api/password") authenticationEpoch++;
+  if (request.path === "/api/logout" || request.path === "/api/password") {
+    authenticationEpoch++; void engagementRuntime.invalidate().catch(() => {});
+  }
   const session = await nativeSession(origin);
   if (!session) return { status: 401, body: JSON.stringify({ error: "Inicia sesión con tu correo y contraseña." }), headers: { "Content-Type": "application/json" } };
   const reply = await nativeHttp(origin, request.path, { ...request, token: session.token });
@@ -289,6 +314,7 @@ async function nativeLogin(origin, input) {
   if (typeof input?.email !== "string" || input.email.length > 254 || typeof input?.password !== "string" || !input.password || input.password.length > 1024)
     throw Error("Introduce tu correo y contraseña.");
   const epoch = ++authenticationEpoch;
+  void engagementRuntime.invalidate().catch(() => {});
   const status = await authStatus(origin, true);
   if (status.authProvider !== "password") throw Error("Este CRM conserva el acceso anterior. Abre su sesión desde las opciones avanzadas.");
   if (!status.configured) throw Error("Crea primero tu contraseña desde el enlace privado de activación.");
@@ -617,6 +643,9 @@ async function campaignMedia(origin, media = []) {
 async function execute(message, sender) {
   if (message?.type === "panel.open") return openNativePanel(sender);
   if (isWhatsAppSender(sender, EXTENSION_ID)) {
+    if (message.type === 'engagement.tick') return engagementRuntime.tick(sender,message.input);
+    if (message.type === 'engagement.permit') return engagementRuntime.permit(sender,message.input);
+    if (message.type === 'engagement.documentReady') { await engagementRuntime.resumeDocument(sender); return {accepted:true}; }
     if (message.type === "campaign.permit") {
       const tab = await chrome.tabs.get(sender.tab.id), key = campaignKey(tab.windowId), run = (await storage.get(key))[key];
       const livePanels = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"] });
@@ -648,10 +677,24 @@ async function execute(message, sender) {
     return { accepted: true };
   }
   if (!isExtensionPage(sender, EXTENSION_ID)) throw Error("Origen de extensión no autorizado.");
+  if (message.type?.startsWith('engagement.')) {
+    const {origin,windowId} = await campaignWindow(sender,message,message.type !== 'engagement.stop');
+    if (message.type === 'engagement.status') return engagementRuntime.status(origin);
+    if (message.type === 'engagement.select') return engagementRuntime.select(origin,message.input?.lineId);
+    if (message.type === 'engagement.stop') return engagementRuntime.stop(origin);
+    if (message.type === 'engagement.start') return withCampaignLifecycle(async () => {
+      const prior = (await storage.get(campaignKey(windowId)))[campaignKey(windowId)];
+      if (prior && prior.expires > Date.now() && prior.authEpoch === authenticationEpoch) throw Error('Pausa la campaña antes de activar el chatbot.');
+      const tab = await whatsappTab(undefined,windowId);
+      return engagementRuntime.start({origin,windowId,tabId:tab.id,panelContextId:message.panelContextId,lineId:message.input?.lineId,allowBackground:message.input?.allowBackground === true});
+    });
+    throw Error('Operación de chatbot no permitida.');
+  }
   if (message.type?.startsWith("campaign.")) {
     const input = message.input || {};
     if (message.type === "campaign.start") return withCampaignLifecycle(async () => {
       const { origin, windowId, authEpoch } = await campaignWindow(sender, message);
+      if ((await engagementRuntime.status(origin)).running) throw Error('Detén el chatbot antes de iniciar una campaña en este perfil.');
       if (typeof input.campaignId !== "string" || !input.campaignId || input.campaignId.length > 100) throw Error("Selecciona una campaña guardada.");
       const key = campaignKey(windowId), previous = (await storage.get(key))[key];
       if (previous && previous.origin === origin && previous.authEpoch === authEpoch && previous.expires > Date.now()) {
@@ -750,6 +793,7 @@ async function execute(message, sender) {
       await chrome.storage.local.set({ crmOrigin: origin });
       if (previous.crmOrigin !== origin) {
         authenticationEpoch++;
+        void engagementRuntime.invalidate().catch(() => {});
         if (previous.crmOrigin) await forgetNativeSession(previous.crmOrigin);
         await forgetNativeSession(origin);
         authModes.clear();

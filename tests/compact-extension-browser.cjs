@@ -385,8 +385,8 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       await notes.fill(value);
     }
     assert.equal(await embedded.locator('body').evaluate(node => node.classList.contains('nexo-compact')), true);
-    for (const id of ["chat", "clients", "accounts", "campaigns"]) await embedded.locator(`#compact-tab-${id}`).waitFor({ state: "visible" });
-    assert.equal(await embedded.locator('[id^="compact-tab-"]:visible').count(), 4);
+    for (const id of ["chat", "clients", "accounts", "campaigns", "engagement"]) await embedded.locator(`#compact-tab-${id}`).waitFor({ state: "visible" });
+    assert.equal(await embedded.locator('[id^="compact-tab-"]:visible').count(), 5);
     assert.equal(await embedded.locator('#nexo-module-select:visible').count(), 0, "El menú de catorce módulos no debe aparecer en la extensión compacta.");
     assert.equal(await embedded.locator('#summary:visible, .mode-banner:visible, .hero:visible, .crm-sidebar:visible').count(), 0, "La extensión no debe mostrar el tablero, los avisos y la navegación de la web completa.");
     if (process.env.INITIAL_LOAD_FAILURE_ONLY === '1') {
@@ -1310,7 +1310,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     assert.ok(writes >= 9, "Las acciones compactas deben haberse confirmado en el backend compartido.");
     assert.equal(await embedded.locator('body').evaluate(node => node.scrollWidth <= innerWidth + 1), true, "El panel debe caber sin desplazamiento horizontal.");
     assert.deepEqual(errors, []);
-    console.log("Compact packaged extension: four tabs, automatic verified-phone ficha, multi-service renewal/edit/add/delete, shared backend/CAS, accounts with nested profiles, opt-in capture, private clipboard, drafts and stale-chat rejection passed.");
+    console.log("Compact packaged extension: five tabs, automatic verified-phone ficha, multi-service renewal/edit/add/delete, shared backend/CAS, accounts with nested profiles, opt-in capture, private clipboard, drafts and stale-chat rejection passed.");
     console.log("Real MV3 installation and real WhatsApp still require the owner's Chrome; this test preserves the managed-browser install policy.");
     console.log('Synthetic compact UI preview:', screenshot);
   } finally { await browser.close(); delete global.chrome; fs.rmSync(temporary, { recursive: true, force: true }); }

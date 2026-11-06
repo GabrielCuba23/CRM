@@ -176,10 +176,14 @@ def register_outreach_media(app, db_path):
                 return complete(media_id)
             with closing(connect(db_path)) as db:
                 if not action and request.method == 'DELETE':
+                    db.execute('BEGIN IMMEDIATE')
                     _row(db, media_id)
                     workspace = db.execute('SELECT body FROM workspace WHERE id=1').fetchone()
                     outreach = json.loads(workspace['body']).get('growth', {}).get('outreach', {}) if workspace else {}
                     campaigns = outreach.get('campaigns', []) + outreach.get('templates', [])
+                    config = db.execute('SELECT body FROM engagement_config WHERE id=1').fetchone()
+                    if config:
+                        campaigns += json.loads(config['body']).get('bot', {}).get('rules', [])
                     if any(any(item.get('id') == media_id for item in campaign.get('media', [])) for campaign in campaigns):
                         raise MediaError('Este archivo está usado en una campaña o plantilla. Quítalo antes de eliminarlo.', 409)
                     db.execute('DELETE FROM outreach_media_chunks WHERE media_id=?', (media_id,))

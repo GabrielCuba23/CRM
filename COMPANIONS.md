@@ -29,7 +29,7 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión con acceso directo 1.4.1](https://drive.google.com/file/d/17hrXeWEx2JRedLuwF2w8qeRPs6p2vSC2/view)
+1. Descarga la [extensión Nexo 1.6.0](https://drive.google.com/file/d/1schKsp9Jl1gA0_VqHAK8EaL_sv3XwSX8/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -62,10 +62,11 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
 
 ## Trabajar sin salir de WhatsApp Web
 
-La revisión de campañas 1.5.0 está preparada y probada, pero su servidor todavía
-no se ha publicado por un error de autorización del conector Cloudflare. Mantén
-la 1.4.1 instalada hasta terminar esa publicación. Funciones, límites y resultados
-de las pruebas: [OUTREACH.md](OUTREACH.md).
+Campañas y archivos privados ya están publicados. La 1.6.0 añade Chatbot y
+coordinación de hasta cinco líneas, con un perfil de Chrome independiente por
+número. Actualiza los archivos de la extensión en su misma carpeta, pulsa
+Recargar y vuelve a cargar WhatsApp. Funciones y límites:
+[Campañas](OUTREACH.md) y [Chatbot y líneas](ENGAGEMENT.md).
 
 - **Chat actual** muestra automáticamente las fichas del teléfono identificado
   en WhatsApp. Al cambiar de conversación se descarta la selección anterior.
@@ -86,6 +87,11 @@ de las pruebas: [OUTREACH.md](OUTREACH.md).
 - **Cuentas** contiene sus perfiles libres y ocupados. Desde allí puedes crear
   o editar cuentas y confirmar una nueva capacidad. Los perfiles ocupados no
   desaparecen al vencer un servicio; requieren liberarlo o eliminar su ficha.
+- **Chatbot** permite registrar hasta cinco líneas, configurar respuestas por
+  reglas y horarios y activarlas por perfil. Responde textos nuevos del chat
+  individual abierto. El modo en segundo plano requiere confirmación explícita;
+  no se activa ningún número al registrar sus datos. La web también permite
+  detener todas las líneas.
 - Los precios son opcionales. Marca **Registrar como cobrado** únicamente si
   recibiste el pago; guardar o renovar sin marcarlo no crea un movimiento.
 - **Mensaje** abre el editor y las plantillas dentro de la ficha.

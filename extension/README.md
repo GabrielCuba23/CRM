@@ -1,8 +1,8 @@
 # Nexo CRM para WhatsApp Web
 
 Extensión Manifest V3 para Chrome de computadora. Presenta una interfaz compacta
-en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.5.0 del código tiene cuatro entradas:
-**Chat actual**, **Clientes**, **Cuentas** y **Campañas**. Las herramientas avanzadas siguen
+en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.6.0 del código tiene cinco entradas:
+**Chat actual**, **Clientes**, **Cuentas**, **Campañas** y **Chatbot**. Las herramientas avanzadas siguen
 disponibles desde **Abrir CRM**.
 Pulsa **Nexo** en WhatsApp o el icono de la extensión para abrir la barra. Una vez
 abierta permanece visible al cambiar de pestaña en esa ventana, también en otros
@@ -145,6 +145,15 @@ La ficha elegida y el chat abierto deben corresponder a la misma persona antes
 de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destinatario.
 
 ## Campañas, fotos, videos y contactos en 1.5.0
+
+La 1.6.0 conserva estas funciones y añade **Chatbot**: hasta cinco líneas
+independientes, reglas de texto exacto/contiene/respuesta general, horario de
+Lima y fotos/videos. Cada número necesita su perfil de Chrome y su WhatsApp
+vinculado. Crea sus respuestas, selecciona la línea y confirma **Iniciar chatbot**.
+Se responde solo a textos nuevos del chat individual abierto, sin recorrer otros
+chats ni el historial. Para trabajar con cinco perfiles a la vez, autoriza segundo
+plano en cada línea y al iniciar cada perfil. **Detener todas las líneas** está
+disponible desde la extensión y la web. No se contrata una API de IA ni una tienda.
 
 **Campañas** contiene cuatro apartados: **Campañas**, **Contactos**, **Plantillas**
 e **Informes**. La web y la extensión guardan estas listas, mensajes y resultados

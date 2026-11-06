@@ -1,4 +1,5 @@
 export const DEFAULT_ORIGIN = "https://nexo-crm.acxelcubaaraoz.workers.dev";
+export { createEngagementRuntime } from './engagement-runtime.mjs';
 export const WA_ORIGIN = "https://web.whatsapp.com";
 export const API_METHODS = Object.freeze({
   "/api/session": ["GET"],
@@ -9,6 +10,9 @@ export const API_METHODS = Object.freeze({
   "/api/report-status": ["GET"],
   "/api/logout": ["POST"],
   "/api/password": ["POST"],
+  "/api/engagement": ["GET", "PUT"],
+  "/api/engagement/history": ["GET"],
+  "/api/engagement/stop": ["POST"],
 });
 export function crmOrigin(value) {
   let parsed;

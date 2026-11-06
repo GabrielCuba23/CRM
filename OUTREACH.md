@@ -1,9 +1,8 @@
 # Campañas y revisión de Nexo · 1.5.0
 
-Estado: código implementado y probado localmente. **La publicación del servidor
-está pendiente de restablecer la autorización del conector Cloudflare.** El ZIP
-de esta versión depende de esa publicación para guardar campañas y adjuntos.
-No sustituir el paquete instalado hasta terminar ese paso.
+Estado: campañas y archivos privados publicados en el CRM principal después de
+restablecer Cloudflare. La versión 1.6.0 incorpora estas funciones y añade el
+[chatbot y las cinco líneas](ENGAGEMENT.md). Usa su paquete de extensión actualizado.
 
 ## Funciones implementadas
 
@@ -71,8 +70,9 @@ guardado y la cola para conservar los cambios de otra sesión.
 Las capturas identifican ApeMasivo / AprendeloPe EIRL. Se usaron como referencia
 funcional; no se copió su código ni se afirma equivalencia con un catálogo privado.
 Su publicidad también menciona chatbot, IA, cinco líneas simultáneas, equipos,
-embudos y API. Esta entrega no incorpora un bot de IA, un centro de agentes,
-cinco sesiones simultáneas ni un proveedor de mensajes permanente en el servidor.
+embudos y API. La versión 1.6.0 añade un chatbot por reglas y coordinación de hasta
+cinco perfiles independientes, con el alcance descrito en ENGAGEMENT.md. No se
+incluye un bot de IA, un centro de agentes ni un proveedor permanente en el servidor.
 La automatización oficial ya existente necesita su propia configuración y no se
 activa al crear una campaña de la extensión.
 

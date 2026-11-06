@@ -1,5 +1,6 @@
 import { matchContact, importVisibleMessages, normalizeCompanionPhone } from "./companions/conversations.mjs";
 import { initializeOutreach } from "./outreach-ui.mjs";
+import { initializeEngagement } from "./engagement-ui.mjs";
 import { availableProfiles, cents, fillTemplate, formatDate, money, normalizePhone, subscriptionStatus, todayLima } from "./crm.mjs";
 
 // A focused extension surface. The web CRM continues to own its full interface;
@@ -37,6 +38,14 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     content.append(outreachHost);
     outreachUI ||= initializeOutreach({ root: outreachHost, getState, commit, transport: outreachTransport || companion, notify });
     outreachUI.refresh();
+  }
+  const engagementHost = node("section");
+  engagementHost.id = "compact-engagement";
+  let engagementUI = null;
+  function engagement() {
+    content.append(engagementHost);
+    engagementUI ||= initializeEngagement({ root: engagementHost, getState, transport: outreachTransport || companion, notify });
+    engagementUI.refresh();
   }
   content.id = "compact-content";
   root.append(toolbar, navigation, status, content);
@@ -152,7 +161,8 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     if (tab === "chat") renderChat();
     else if (tab === "clients") renderClients();
     else if (tab === "accounts") renderAccounts();
-    else campaigns();
+    else if (tab === "campaigns") campaigns();
+    else engagement();
   }
   function changeTab(next) {
     if (tab !== next) visibilityVersion++;
@@ -161,7 +171,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     setStatus("");
     render();
   }
-  for (const [key, label] of [["chat", "Chat actual"], ["clients", "Clientes"], ["accounts", "Cuentas"], ["campaigns", "Campañas"]]) {
+  for (const [key, label] of [["chat", "Chat actual"], ["clients", "Clientes"], ["accounts", "Cuentas"], ["campaigns", "Campañas"], ["engagement", "Chatbot"]]) {
     const item = button(label, () => changeTab(key), "compact-tab", "compact-tab-" + key);
     tabs.set(key, item);
     navigation.append(item);
@@ -986,5 +996,5 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   }, 1200);
   window.addEventListener("pagehide", () => { destroyed = true; clearInterval(contextTimer); autoCapture = false; drafts.clear(); }, { once: true });
   render();
-  return { refresh: () => preserveFocus(render), isBusy: () => localBusy || capturing || Boolean(outreachUI?.isBusy()), openCampaigns: () => changeTab("campaigns") };
+  return { refresh: () => preserveFocus(render), isBusy: () => localBusy || capturing || Boolean(outreachUI?.isBusy()) || Boolean(engagementUI?.isBusy()), openCampaigns: () => changeTab("campaigns") };
 }

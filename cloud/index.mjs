@@ -19,6 +19,7 @@ import {
 } from "./native-auth.mjs";
 import { emptyState, cleanState } from "./state.mjs";
 import { handleOutreachMedia } from "./outreach-media.mjs";
+import { handleEngagement } from "./engagement.mjs";
 import { normalizePhone, formatDate, todayLima } from "../crm.mjs";
 
 const publicAssets = new Set(["/styles.css", "/icons.svg"]);
@@ -45,6 +46,9 @@ const privateAssets = new Set([
   "/outreach-ui.mjs",
   "/outreach-ui.css",
   "/outreach-media-client.mjs",
+  "/engagement.mjs",
+  "/engagement-ui.mjs",
+  "/engagement-ui.css",
   "/vendor/exceljs-4.4.0.min.js",
   "/login.js",
   "/sw.js",
@@ -184,6 +188,8 @@ export async function handleRequest(request, env, options = {}) {
   }
   const mediaResponse = await handleOutreachMedia(request, env);
   if (mediaResponse) return headers(mediaResponse);
+  const engagementResponse = await handleEngagement(request, env);
+  if (engagementResponse) return headers(engagementResponse);
   if (path === "/api/session" && request.method === "GET")
     return json(passwordMode ? publicNativeSession(user) : { ...user, mode: "server", authProvider: "cloudflare-access" });
   if (path === "/companion" && ["GET", "HEAD"].includes(request.method))

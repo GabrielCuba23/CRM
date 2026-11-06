@@ -97,6 +97,16 @@ continuar.
 
 ## Controles del usuario
 
+El chatbot por reglas se activa expresamente por línea y perfil de Chrome. Lee
+textos nuevos cargados en el chat individual abierto, conserva un registro del
+intento y puede pulsar Enviar para la respuesta configurada. No responde al
+historial anterior ni recorre otros chats o grupos. El modo en segundo plano
+requiere autorización adicional al configurar e iniciar esa línea; permite
+seguir usando su pestaña de WhatsApp mientras otra ventana está en primer plano.
+El registro compartido admite hasta cinco líneas, con reservas exclusivas que
+caducan. El número de cada línea lo declara el propietario; registrarlo no inicia
+ni certifica una cuenta de WhatsApp. Detener todas las líneas revoca las reservas.
+
 El usuario puede cerrar sesión, cambiar su contraseña, quitar un vínculo de chat,
 detener la captura de textos y gestionar los registros mediante el CRM. Quitar
 el vínculo no borra la ficha. Archivar o eliminar un servicio no elimina

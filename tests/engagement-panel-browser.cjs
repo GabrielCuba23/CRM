@@ -1,0 +1,3 @@
+process.env.PERSISTENT_PANEL_ONLY = '1';
+process.env.ENGAGEMENT_PANEL_ONLY = '1';
+require('./password-browser.cjs');

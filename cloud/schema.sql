@@ -51,3 +51,21 @@ CREATE TABLE IF NOT EXISTS outreach_media_chunks (
   part INTEGER NOT NULL CHECK(part BETWEEN 0 AND 39), data BLOB NOT NULL,
   PRIMARY KEY(media_id,part)
 );
+
+CREATE TABLE IF NOT EXISTS engagement_config (
+  id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, body TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS engagement_leases (
+  line_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, token_hash TEXT NOT NULL,
+  phone TEXT NOT NULL, expires INTEGER NOT NULL, updated INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS engagement_bot_attempts (
+  id TEXT PRIMARY KEY, dedupe_key TEXT NOT NULL UNIQUE, line_id TEXT NOT NULL,
+  phone TEXT NOT NULL, incoming_id TEXT NOT NULL, rule_id TEXT NOT NULL,
+  rule_name TEXT NOT NULL, rule_body TEXT NOT NULL, config_revision INTEGER NOT NULL,
+  token_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending','sent_observed','failed','uncertain')),
+  created INTEGER NOT NULL, updated INTEGER NOT NULL,
+  evidence TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS engagement_bot_attempts_recent ON engagement_bot_attempts(line_id,phone,created);

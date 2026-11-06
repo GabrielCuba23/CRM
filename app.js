@@ -20,6 +20,7 @@ import { emptyGrowth } from "./growth.mjs";
 import { initializeGrowth } from "./growth-ui.mjs";
 import { initializeOutreach } from "./outreach-ui.mjs";
 import { createMediaClient } from "./outreach-media-client.mjs";
+import { initializeEngagement } from "./engagement-ui.mjs";
 import {
   prepareClientImport,
   parseCSV,
@@ -60,6 +61,7 @@ let rules = [],
 let supplierOverviewPage = 1;
 let companionUI = null;
 let outreachWebUI = null;
+let engagementWebUI = null;
 let promotions = emptyPromotions();
 let inboxClientId = "";
 let reports = { ...defaultReports };
@@ -134,7 +136,8 @@ const labels = {
   none: "Sin fecha",
 };
 function notify(text) {
-  $("#status").textContent = text;
+  const statusNode = $("#status");
+  if (statusNode) statusNode.textContent = text;
 }
 function snapshot(overrides = {}) {
   return {
@@ -399,6 +402,7 @@ function render() {
   renderRules();
   companionUI?.refresh();
   outreachWebUI?.refresh();
+  engagementWebUI?.refresh();
 }
 function editClient(c = {}) {
   delete $("#client-form").dataset.reactivate;
@@ -3252,16 +3256,18 @@ async function commitCompanionCommand(command, input) {
   adoptWorkspace(next); refreshAccountOptions(); render();
   return snapshot();
 }
-const outreachTransport = {
-  ...(globalThis.NexoCompanion || {}),
-  ...createMediaClient(async (path, options = {}) => {
+async function companionResponse(path, options = {}) {
     const response = await (globalThis.NexoCompanion?.fetch || fetch)(path, {
       ...options, credentials: "same-origin",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, ...options.headers },
     });
     if (response.status === 401) redirectToLogin();
     return response;
-  }),
+}
+const outreachTransport = {
+  ...(globalThis.NexoCompanion || {}),
+  fetch: companionResponse,
+  ...createMediaClient(companionResponse),
 };
 companionUI = initializeCompanion({
   companion: globalThis.NexoCompanion,
@@ -3276,6 +3282,9 @@ companionUI = initializeCompanion({
 });
 if (!globalThis.NexoCompanion && document.querySelector("#outreach-workspace")) {
   outreachWebUI = initializeOutreach({ root: document.querySelector("#outreach-workspace"), getState: snapshot, commit: commitCompanionCommand, transport: outreachTransport, notify });
+}
+if (!globalThis.NexoCompanion && secureMode && document.querySelector("#engagement-workspace")) {
+  engagementWebUI = initializeEngagement({ root: document.querySelector("#engagement-workspace"), getState: snapshot, transport: outreachTransport, notify });
 }
 if (globalThis.NexoCompanion) {
   const timer = setInterval(() => {
