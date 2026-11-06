@@ -565,9 +565,71 @@ async function openWhatsAppDock(candidate, action = "open") {
   }
   return { tabId: tab.id };
 }
+const campaignKey = windowId => "outreachRun:" + windowId;
+const delayCampaign = ms => new Promise(resolve => setTimeout(resolve, ms));
+let campaignLifecycle = Promise.resolve();
+function withCampaignLifecycle(action) {
+  const operation = campaignLifecycle.then(action);
+  campaignLifecycle = operation.catch(() => {});
+  return operation;
+}
+async function campaignWindow(sender, message, requireSession = true) {
+  const origin = await assertOrigin(message.expectedOrigin);
+  const epoch = authenticationEpoch;
+  const windowId = await nativePanelWindow(sender, message.panelContextId, message.panelWindowId, message.panelInstance);
+  if (requireSession && (!(await nativeSession(origin)) || epoch !== authenticationEpoch)) throw Error("Inicia sesión aquí antes de enviar una campaña.");
+  return { origin, windowId, authEpoch: epoch };
+}
+async function campaignRun(sender, message) {
+  const context = await campaignWindow(sender, message), key = campaignKey(context.windowId);
+  const run = (await storage.get(key))[key];
+  if (!run || run.origin !== context.origin || run.runId !== message.input?.runId || run.panelContextId !== message.panelContextId || run.authEpoch !== authenticationEpoch || run.expires < Date.now()) throw Error("La campaña está detenida. Iníciala o reanúdala desde Nexo.");
+  return { ...context, run, key };
+}
+async function campaignMedia(origin, media = []) {
+  if (!Array.isArray(media) || media.length > 10 || media.reduce((n, x) => n + (x.size || 0), 0) > 20971520) throw Error("El mensaje supera 10 adjuntos o 20 MB.");
+  const files = [];
+  async function read(path) {
+    const response = await nativeRequest(origin, { path, method: "GET" });
+    const value = JSON.parse(response.body);
+    if (response.status !== 200) throw Error(value.error || "No se pudo descargar el adjunto.");
+    return value;
+  }
+  for (const item of media) {
+    if (!/^[a-f0-9]{32}$/.test(item.id || "")) throw Error("El adjunto no es válido.");
+    const base = "/api/outreach/media/" + item.id, info = await read(base + "/metadata"), m = info.media;
+    if (!m || m.sha256 !== item.sha256 || m.size !== item.size || m.type !== item.type || m.size > 20971520 || info.chunks > 40) throw Error("El archivo cambió. Revisa los adjuntos de la campaña.");
+    const bytes = new Uint8Array(m.size);
+    for (let part = 0; part < info.chunks; part++) {
+      const chunk = await read(base + "/chunks/" + part);
+      const decoded = Uint8Array.from(atob(chunk.data), c => c.charCodeAt(0));
+      const offset = part * info.chunkSize;
+      if (chunk.part !== part || decoded.length !== Math.min(info.chunkSize, m.size - offset)) throw Error("El adjunto está incompleto.");
+      bytes.set(decoded, offset);
+    }
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("");
+    if (hash !== m.sha256) throw Error("No se pudo verificar el adjunto.");
+    let encoded = ""; for (let i = 0; i < bytes.length; i += 8192) encoded += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    files.push({ name: m.name, type: m.type, data: btoa(encoded) });
+  }
+  return files;
+}
 async function execute(message, sender) {
   if (message?.type === "panel.open") return openNativePanel(sender);
   if (isWhatsAppSender(sender, EXTENSION_ID)) {
+    if (message.type === "campaign.permit") {
+      const tab = await chrome.tabs.get(sender.tab.id), key = campaignKey(tab.windowId), run = (await storage.get(key))[key];
+      const livePanels = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"] });
+      const allowed = Boolean(run && run.runId === message.input?.runId && run.phone === message.input?.phone &&
+        run.tabId === tab.id && run.expires > Date.now() && run.authEpoch === authenticationEpoch &&
+        (await configuration()).origin === run.origin && await activeWhatsApp(tab) &&
+        await nativeSession(run.origin) && livePanels.some(panel => panel.contextId === run.panelContextId));
+      // A stop, logout or CRM switch may arrive while Chrome/session reads await.
+      // Never authorize the stale snapshot that preceded those operations.
+      const latest = (await storage.get(key))[key];
+      return { allowed: Boolean(allowed && latest?.runId === run.runId && latest?.phone === run.phone &&
+        latest?.tabId === tab.id && run.authEpoch === authenticationEpoch && (await configuration()).origin === run.origin) };
+    }
     if (message?.type === "configuration.open") { await rememberWhatsAppReturn(sender.tab); await chrome.runtime.openOptionsPage(); return { opened: true }; }
     if (message?.type !== "wa.contextChanged") throw Error("Operación no permitida desde esta página.");
     await storage.set({ waTabId: sender.tab.id });
@@ -586,7 +648,78 @@ async function execute(message, sender) {
     return { accepted: true };
   }
   if (!isExtensionPage(sender, EXTENSION_ID)) throw Error("Origen de extensión no autorizado.");
+  if (message.type?.startsWith("campaign.")) {
+    const input = message.input || {};
+    if (message.type === "campaign.start") return withCampaignLifecycle(async () => {
+      const { origin, windowId, authEpoch } = await campaignWindow(sender, message);
+      if (typeof input.campaignId !== "string" || !input.campaignId || input.campaignId.length > 100) throw Error("Selecciona una campaña guardada.");
+      const key = campaignKey(windowId), previous = (await storage.get(key))[key];
+      if (previous && previous.origin === origin && previous.authEpoch === authEpoch && previous.expires > Date.now()) {
+        const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"] });
+        if (contexts.some(context => context.contextId === previous.panelContextId)) {
+          if (previous.panelContextId === message.panelContextId && previous.campaignId === input.campaignId) return { runId: previous.runId };
+          throw Error("Ya hay una campaña en ejecución. Pausa la anterior.");
+        }
+      }
+      const runId = crypto.randomUUID().replaceAll("-", "");
+      await storage.set({ [key]: { runId, campaignId: input.campaignId, origin, windowId, panelContextId: message.panelContextId, authEpoch, expires: Date.now() + 28800000 } });
+      return { runId };
+    });
+    if (message.type === "campaign.stop") return withCampaignLifecycle(async () => {
+      // Stopping only revokes a permit; it remains available after session expiry.
+      const { origin, windowId } = await campaignWindow(sender, message, false), key = campaignKey(windowId);
+      const run = (await storage.get(key))[key];
+      if (!run || run.origin !== origin || run.runId !== input.runId || run.panelContextId !== message.panelContextId)
+        throw Error("La campaña ya está detenida o pertenece a otra barra lateral.");
+      await storage.remove(key);
+      if (Number.isInteger(run.tabId)) await chrome.tabs.sendMessage(run.tabId, { channel: "nexo.whatsapp", scope: origin, action: "campaignCancel", input: { runId: run.runId } }, { frameId: 0 }).catch(() => {});
+      return { stopped: true };
+    });
+    const { origin, windowId, run, key } = await campaignRun(sender, message);
+    const phone = String(input.phone || "").replace(/[\s()+.-]/g, "");
+    if (!/^[1-9]\d{6,14}$/.test(phone)) throw Error("Revisa el teléfono del destinatario.");
+    let tab = await whatsappTab(undefined, windowId);
+    if (!await activeWhatsApp(tab)) throw Error("Vuelve a WhatsApp para continuar la campaña.");
+    if (message.type === "campaign.select") {
+      const before = await waRequest("context", undefined, sender, origin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
+      if (before.phone === phone && (!before.chatId || before.isGroup || before.ambiguous)) throw Error("No se pudo verificar una conversación individual para ese número.");
+      if (before.phone !== phone) {
+        await waRequest("campaignCheck", undefined, sender, origin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
+        await chrome.tabs.update(tab.id, { url: WA_ORIGIN + "/send?phone=" + phone });
+        const limit = Date.now() + 45000; let revealed = false, current;
+        while (Date.now() < limit) {
+          await campaignRun(sender, message);
+          if (!await activeWhatsApp(tab)) throw Error("La campaña se pausó porque WhatsApp dejó de estar activo.");
+          try {
+            current = await waRequest("context", undefined, sender, origin, tab.id, message.panelContextId, message.panelWindowId, message.panelInstance);
+            if (current.phone === phone && current.chatId && !current.isGroup && !current.ambiguous) break;
+            if (current.name && current.chatId && !revealed) {
+              await waRequest("campaignReveal", undefined, sender, origin, tab.id, message.panelContextId, message.panelWindowId, message.panelInstance); revealed = true;
+            }
+          } catch { /* WhatsApp is replacing its document. */ }
+          await delayCampaign(300);
+        }
+        if (current?.phone !== phone || current.isGroup || current.ambiguous) throw Error("No se pudo verificar el número en WhatsApp. Revisa el contacto antes de reintentar.");
+      }
+      return withCampaignLifecycle(async () => {
+        const latest = await campaignRun(sender, message);
+        await storage.set({ [key]: { ...latest.run, tabId: tab.id, phone } });
+        return { selected: true, phone, tabId: tab.id };
+      });
+    }
+    if (!["campaign.send", "campaign.preview"].includes(message.type) || run.phone !== phone || run.tabId !== tab.id) throw Error("Selecciona y verifica el destinatario antes de enviar.");
+    const text = typeof input.text === "string" ? input.text : "";
+    if (text.length > 8000 || !text.trim() && !input.media?.length) throw Error("Escribe un mensaje o selecciona un archivo.");
+    const files = await campaignMedia(origin, input.media || []);
+    await campaignRun(sender, message);
+    return waRequest("campaignSend", { input: { runId: run.runId, phone, text, files, automatic: message.type === "campaign.send" } }, sender, origin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
+  }
   switch (message?.type) {
+    case "wa.contacts": {
+      const input = message.input || {};
+      if (!["visible", "archived", "group"].includes(input.source) || input.scan !== undefined && typeof input.scan !== "boolean") throw Error("Selecciona una lista de contactos válida.");
+      return waRequest("exportContacts", { input }, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
+    }
     case "configuration.get": {
       const values = await chrome.storage.local.get("crmOrigin");
       let origin = values.crmOrigin || "";

@@ -19,7 +19,9 @@ export function crmOrigin(value) {
   return parsed.origin;
 }
 export function allowedApi(path, method = "GET", body) {
-  if (typeof path !== "string" || !API_METHODS[path]?.includes(method)) throw Error("Operación no permitida por la extensión.");
+  const media = typeof path === "string" && /^\/api\/outreach\/media(?:\/[a-f0-9]{32}(?:\/(?:metadata|complete|chunks\/\d{1,3}))?)?$/.test(path);
+  const mediaMethods = path === "/api/outreach/media" ? ["GET", "POST"] : /\/chunks\/\d+$/.test(path || "") ? ["GET", "PUT"] : /\/complete$/.test(path || "") ? ["POST"] : /\/metadata$/.test(path || "") ? ["GET"] : ["GET", "DELETE"];
+  if (typeof path !== "string" || !(API_METHODS[path]?.includes(method) || media && mediaMethods.includes(method))) throw Error("Operación no permitida por la extensión.");
   if (body !== undefined && (typeof body !== "string" || new TextEncoder().encode(body).length > 1100000)) throw Error("La operación supera el tamaño permitido.");
   if (["GET", "HEAD"].includes(method) && body !== undefined) throw Error("Solicitud no válida.");
   return { path, method, ...(body === undefined ? {} : { body }) };

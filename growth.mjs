@@ -1,4 +1,5 @@
 import { isFormer } from "./lifecycle.mjs";
+import { validateOutreach } from "./outreach.mjs";
 export const networks = [
   "Facebook",
   "Instagram",
@@ -134,6 +135,7 @@ export function validateGrowth(g) {
     ],
   };
   return Object.fromEntries([
+    ...(g.outreach === undefined ? [] : [["outreach", validateOutreach(g.outreach)]]),
     ...Object.entries(keys).map(([k, fields]) => [
       k,
       g[k].map((r) => Object.fromEntries(fields.map((f) => [f, r[f]]))),

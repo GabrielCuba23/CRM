@@ -12,7 +12,7 @@ Fecha de entrada en vigor: **[completar]**.
 
 Nexo muestra un panel de CRM en la barra lateral de Chrome, conectado a WhatsApp
 Web. La barra puede seguir abierta al visitar otras pestañas, sin leer esas páginas. Permite consultar y
-gestionar contactos, fichas de servicios, cuentas, perfiles, cobros y mensajes
+gestionar contactos, fichas de servicios, cuentas, perfiles, cobros, campañas y mensajes
 utilizando la misma base que la web del CRM. El CRM principal está preconfigurado;
 el usuario puede autorizar otra instancia en las opciones avanzadas.
 
@@ -29,8 +29,22 @@ el usuario puede autorizar otra instancia en las opciones avanzadas.
   usuario solicite guardar. El registro periódico requiere activación expresa y
   se detiene al cambiar de conversación o cerrar el panel. No se descarga el
   historial completo ni los archivos, audios o conversaciones ocultas.
-- **Mensajes preparados:** texto que el usuario edita, copia o prepara como
-  borrador en WhatsApp. La extensión no pulsa el botón de envío.
+- **Mensajes y adjuntos:** texto que el usuario edita, copia o prepara como
+  borrador, y fotos o videos que selecciona para enviar a uno o varios
+  destinatarios. Los borradores individuales de texto requieren que el usuario
+  confirme su envío en WhatsApp. Al iniciar y confirmar expresamente una campaña
+  o un mensaje desde el editor de fotos y videos, el usuario autoriza a la
+  extensión a abrir los destinatarios y pulsar Enviar para esa cola.
+- **Listas de contactos:** nombres, teléfonos visibles, etiquetas y columnas
+  personalizadas que el usuario importe desde Excel o CSV, seleccione del CRM o
+  solicite leer de la lista cargada de WhatsApp, chats archivados o participantes
+  del grupo abierto. La lectura puede ser parcial. Si WhatsApp no muestra un
+  número, se conserva vacío; no se deduce por el nombre.
+- **Campañas e informes:** destinatarios, mensaje, referencias a archivos,
+  plantilla, programación, ritmo, intentos y resultados de la cola. Una salida
+  observada en WhatsApp no confirma que el destinatario haya recibido o leído el
+  mensaje. Los resultados inciertos y las confirmaciones manuales se registran
+  por separado.
 
 Estos datos se usan para realizar las operaciones del CRM solicitadas por el
 usuario y asociarlas con la conversación correcta. La extensión no incorpora
@@ -42,6 +56,14 @@ Las solicitudes se transmiten por HTTPS a la instancia de CRM configurada.
 El CRM principal usa infraestructura de Cloudflare para su servidor y base de
 datos. Al autorizar otra instancia, las operaciones se dirigen a ese servidor;
 su administrador controla la base del negocio.
+
+Los archivos que el usuario selecciona se guardan en la biblioteca privada del
+CRM. El CRM principal usa su base D1 existente para almacenar fragmentos y
+verificar su tamaño, tipo y huella SHA-256. Se admiten hasta diez fotos o videos
+y **20 MiB en total por mensaje**, con un límite de **200 MiB para la biblioteca**.
+Descargar esos archivos exige una sesión autorizada; no se crean enlaces públicos
+a los adjuntos ni se envían a un proveedor de publicidad. La implementación no
+activa un servicio de almacenamiento de pago adicional.
 
 La extensión guarda localmente en Chrome el dominio elegido y los vínculos de
 conversaciones que el usuario confirme. Los vínculos con una identidad estable
@@ -63,6 +85,15 @@ mantiene en memoria durante su uso; no crea una base de clientes independiente
 en `chrome.storage`. Una exportación solicitada por el usuario sí puede producir
 un archivo privado en su equipo. Los textos que se copian se escriben en el
 portapapeles únicamente a petición del usuario; la extensión no lee su contenido.
+Los archivos y contactos exportados, incluyendo informes CSV o Excel, quedan
+bajo el control del usuario en su equipo.
+
+La programación de campañas se ejecuta en la extensión mientras Chrome y
+WhatsApp Web permanecen abiertos y activos. Al ocultar el panel o cambiar de
+pestaña se pausa la cola. Cerrar o interrumpir la extensión no inicia una
+reanudación automática al volver a entrar. El registro del intento se conserva
+en el CRM para que el usuario pueda revisar un resultado incierto antes de
+continuar.
 
 ## Controles del usuario
 
@@ -70,6 +101,13 @@ El usuario puede cerrar sesión, cambiar su contraseña, quitar un vínculo de c
 detener la captura de textos y gestionar los registros mediante el CRM. Quitar
 el vínculo no borra la ficha. Archivar o eliminar un servicio no elimina
 necesariamente sus pagos e historial anteriores.
+
+También puede revisar destinatarios, exclusiones, texto y archivos antes de
+iniciar una campaña, pausarla o cancelarla y exportar sus resultados. La
+biblioteca permite borrar explícitamente archivos sin referencias y subidas
+incompletas. Si una campaña o plantilla usa un archivo, debe quitarse esa
+referencia antes de eliminarlo. No se eliminan automáticamente archivos antiguos
+ni datos del negocio para liberar espacio.
 
 Desinstalar la extensión elimina su almacenamiento de Chrome, pero no borra los
 datos del negocio guardados en el servidor ni los respaldos que el usuario haya
@@ -84,5 +122,8 @@ conversación visible, y acceso al CRM para autenticar y guardar operaciones. El
 permiso opcional para otros sitios solo se solicita al seleccionar otra instancia
 de CRM, para su dominio concreto. El código de la extensión se incluye en su
 paquete; las respuestas del CRM son datos, no actualizaciones de código remoto.
+La instalación local descomprimida no necesita una suscripción ni un registro de
+pago en Chrome Web Store. Cambiar el código del paquete requiere reemplazarlo y
+recargarlo; esa instalación no utiliza un actualizador de código remoto.
 
 Nexo es un producto independiente y no está afiliado con WhatsApp ni Meta.

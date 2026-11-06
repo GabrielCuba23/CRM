@@ -18,6 +18,8 @@ import { emptyProcurement, accountMargin } from "./procurement.mjs";
 import { initializeProcurement } from "./procurement-ui.mjs";
 import { emptyGrowth } from "./growth.mjs";
 import { initializeGrowth } from "./growth-ui.mjs";
+import { initializeOutreach } from "./outreach-ui.mjs";
+import { createMediaClient } from "./outreach-media-client.mjs";
 import {
   prepareClientImport,
   parseCSV,
@@ -57,6 +59,7 @@ let rules = [],
   externalCompleted = new Set();
 let supplierOverviewPage = 1;
 let companionUI = null;
+let outreachWebUI = null;
 let promotions = emptyPromotions();
 let inboxClientId = "";
 let reports = { ...defaultReports };
@@ -395,6 +398,7 @@ function render() {
   renderModules();
   renderRules();
   companionUI?.refresh();
+  outreachWebUI?.refresh();
 }
 function editClient(c = {}) {
   delete $("#client-form").dataset.reactivate;
@@ -1607,9 +1611,13 @@ function fillAutomationForm() {
   $("#automation-parameters").value = automation.parameters.join(", ");
 }
 async function refreshAutomationStatus() {
-  if (!secureMode) return;
+  const automationForm = $("#automation-form");
+  if (!secureMode || !automationForm) return;
   try {
     const result = await api("/api/automation-status");
+    // Revocation can replace this document's CRM contents with inline login
+    // while the request is pending. Never update the removed application.
+    if (!automationForm.isConnected) return;
     const recent =
       result.worker &&
       Date.now() / 1000 - result.worker.checked <
@@ -1658,10 +1666,12 @@ async function refreshAutomationStatus() {
       $("#reminder-history").append(row);
     }
   } catch (error) {
-    $("#worker-status").textContent = error.message;
+    if (automationForm.isConnected && $("#worker-status"))
+      $("#worker-status").textContent = error.message;
   }
 }
 async function initializeSecurity() {
+  const securityPanel = $("#server-security");
   $("#logout").hidden = !secureMode;
   $("#server-security").hidden = !secureMode;
   $("#local-migration").hidden = !secureMode;
@@ -1678,7 +1688,13 @@ async function initializeSecurity() {
       "Los registros y plantillas se guardan en el servidor.";
     $("#storage-footer").textContent =
       "Nexo CRM · Sesión privada · Datos en el servidor.";
-    const session = await api("/api/session");
+    let session;
+    try { session = await api("/api/session"); }
+    catch (error) {
+      if (securityPanel.isConnected) $("#security-description").textContent = error.message;
+      return;
+    }
+    if (!securityPanel.isConnected) return;
     $("#owner-identity").textContent = `Administrador: ${session.email}`;
     if (session.authProvider === "cloudflare-access") {
       $("#password-form").hidden = true;
@@ -1699,7 +1715,7 @@ async function initializeSecurity() {
     for (const input of $("#automation-form").elements) input.disabled = true;
     $("#refresh-automation").disabled = true;
     $("#automation-availability").textContent =
-      "El envío automático necesita un servidor activo y la API oficial de WhatsApp. GitHub Pages permite mensajes manuales mediante wa.me.";
+      "Las campañas se envían desde la extensión con WhatsApp abierto. El envío desde el servidor usa la API oficial y se configura por separado.";
     $("#worker-status").textContent =
       "No hay trabajador de recordatorios en el modo local.";
   } else await refreshAutomationStatus();
@@ -3228,6 +3244,25 @@ async function reloadCompanionWorkspace({ automatic = false } = {}) {
   try { return await companionRefresh; }
   finally { companionRefresh = null; }
 }
+async function commitCompanionCommand(command, input) {
+  if (saveInFlight) throw Error("Espera a que termine el cambio anterior.");
+  if (!available) throw Error(workspaceLoadError || "Carga los datos del CRM antes de guardar cambios.");
+  const next = applyWorkspaceCommand(snapshot(), command, input);
+  if (!(await persistState(next))) throw Error($("#status").textContent || "No se guardaron los cambios. Actualiza el CRM y vuelve a intentarlo.");
+  adoptWorkspace(next); refreshAccountOptions(); render();
+  return snapshot();
+}
+const outreachTransport = {
+  ...(globalThis.NexoCompanion || {}),
+  ...createMediaClient(async (path, options = {}) => {
+    const response = await (globalThis.NexoCompanion?.fetch || fetch)(path, {
+      ...options, credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, ...options.headers },
+    });
+    if (response.status === 401) redirectToLogin();
+    return response;
+  }),
+};
 companionUI = initializeCompanion({
   companion: globalThis.NexoCompanion,
   getState: snapshot,
@@ -3236,17 +3271,12 @@ companionUI = initializeCompanion({
   notify,
   reloadWorkspace: reloadCompanionWorkspace,
   openWebCRM: () => globalThis.NexoCompanion?.openWebCRM?.(),
-  commit: async (command, input) => {
-    if (saveInFlight) throw Error("Espera a que termine el cambio anterior.");
-    if (!available) throw Error(workspaceLoadError || "Carga los datos del CRM antes de guardar cambios.");
-    const next = applyWorkspaceCommand(snapshot(), command, input);
-    if (!(await persistState(next))) throw Error($("#status").textContent || "No se guardaron los cambios. Sincroniza el CRM y vuelve a intentarlo.");
-    adoptWorkspace(next);
-    refreshAccountOptions();
-    render();
-    return snapshot();
-  },
+  outreachTransport,
+  commit: commitCompanionCommand,
 });
+if (!globalThis.NexoCompanion && document.querySelector("#outreach-workspace")) {
+  outreachWebUI = initializeOutreach({ root: document.querySelector("#outreach-workspace"), getState: snapshot, commit: commitCompanionCommand, transport: outreachTransport, notify });
+}
 if (globalThis.NexoCompanion) {
   const timer = setInterval(() => {
     if (document.hidden || globalThis.NexoCompanion.isVisible?.() === false ||

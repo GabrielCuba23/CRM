@@ -138,7 +138,7 @@ const PANEL_CONTEXT_ID = 'synthetic-native-panel-context';
       scripting:{async executeScript({target,files}){for(const name of files)await pageFor(target.tabId).evaluate(fs.readFileSync(path.join(unpacked,name),'utf8'));}},
     };
     await import(path.join(root,'extension/background.mjs'));
-    browserContext.on('page', page=>{page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());});
+    browserContext.on('page', page=>{page.on('pageerror',error=>{errors.push(error.message);console.error('Browser error:',error.stack);});page.on('dialog',dialog=>dialog.accept());});
     await browserContext.exposeBinding('nexoToBackground',async({page,frame},message)=>{
       const embedded=frame.url().startsWith(EXT)&&frame!==page.mainFrame();
       const sender={id:EXT_ID,frameId:embedded?1:0,url:frame.url()};

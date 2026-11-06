@@ -1,9 +1,10 @@
 import { matchContact, importVisibleMessages, normalizeCompanionPhone } from "./companions/conversations.mjs";
+import { initializeOutreach } from "./outreach-ui.mjs";
 import { availableProfiles, cents, fillTemplate, formatDate, money, normalizePhone, subscriptionStatus, todayLima } from "./crm.mjs";
 
 // A focused extension surface. The web CRM continues to own its full interface;
 // every operation here uses the same validated workspace and revision transport.
-export function initializeCompanion({ companion, getState, commit, notify, isBusy = () => false, getLoadError = () => "", reloadWorkspace, openWebCRM }) {
+export function initializeCompanion({ companion, getState, commit, notify, isBusy = () => false, getLoadError = () => "", reloadWorkspace, openWebCRM, outreachTransport }) {
   if (!companion) return;
   const node = (tag, text = "", className = "") => {
     const item = document.createElement(tag);
@@ -29,6 +30,14 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   const navigation = node("nav", "", "compact-tabs");
   navigation.setAttribute("aria-label", "Secciones del CRM");
   const content = node("div", "", "compact-content");
+  const outreachHost = node("section");
+  outreachHost.id = "compact-outreach";
+  let outreachUI = null;
+  function campaigns() {
+    content.append(outreachHost);
+    outreachUI ||= initializeOutreach({ root: outreachHost, getState, commit, transport: outreachTransport || companion, notify });
+    outreachUI.refresh();
+  }
   content.id = "compact-content";
   root.append(toolbar, navigation, status, content);
   document.querySelector("main").prepend(root);
@@ -142,7 +151,8 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     syncLabel.textContent = "Conectado al CRM";
     if (tab === "chat") renderChat();
     else if (tab === "clients") renderClients();
-    else renderAccounts();
+    else if (tab === "accounts") renderAccounts();
+    else campaigns();
   }
   function changeTab(next) {
     if (tab !== next) visibilityVersion++;
@@ -151,7 +161,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     setStatus("");
     render();
   }
-  for (const [key, label] of [["chat", "Chat actual"], ["clients", "Clientes"], ["accounts", "Cuentas"]]) {
+  for (const [key, label] of [["chat", "Chat actual"], ["clients", "Clientes"], ["accounts", "Cuentas"], ["campaigns", "Campañas"]]) {
     const item = button(label, () => changeTab(key), "compact-tab", "compact-tab-" + key);
     tabs.set(key, item);
     navigation.append(item);
@@ -523,6 +533,12 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       text.value = draft.text;
     });
     const actions = node("div", "", "compact-compose-actions");
+    actions.append(button("Foto / video", () => {
+      const phone = contactPhone(client.phone);
+      if (!phone) throw Error("Completa el teléfono del cliente antes de preparar un adjunto.");
+      changeTab("campaigns");
+      outreachUI.openComposer({ name: "Mensaje a " + client.name, body: text.value, recipients: [{ name: client.name, phone, fields: { servicio: client.service || "", perfil: client.profile || "", vence: client.expires || "" } }] });
+    }, "compact-secondary", "compact-compose-media"));
     actions.append(button("Copiar", async () => {
       if (!draft.text.trim()) throw Error("Escribe un mensaje antes de copiarlo.");
       await companion.copyText(draft.text);
@@ -970,5 +986,5 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   }, 1200);
   window.addEventListener("pagehide", () => { destroyed = true; clearInterval(contextTimer); autoCapture = false; drafts.clear(); }, { once: true });
   render();
-  return { refresh: () => preserveFocus(render), isBusy: () => localBusy || capturing };
+  return { refresh: () => preserveFocus(render), isBusy: () => localBusy || capturing || Boolean(outreachUI?.isBusy()), openCampaigns: () => changeTab("campaigns") };
 }

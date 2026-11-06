@@ -10,7 +10,7 @@
 .nexo-compact .compact-toolbar { display:flex; align-items:center; gap:12px; padding:1px 0 12px; }
 .nexo-compact .compact-sync-label { font-size:10px; color:var(--compact-muted); flex:1; }
 .nexo-compact .compact-sync-label::before { content:""; display:inline-block; height:5px; width:5px; border-radius:50%; background:#20a67a; margin-right:5px; vertical-align:2px; }
-.nexo-compact .compact-tabs { display:grid; grid-template-columns:1fr 1fr 1fr; padding:4px; gap:3px; background:#e7edee; border-radius:10px; margin:0 0 17px; }
+.nexo-compact .compact-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:4px; gap:3px; background:#e7edee; border-radius:10px; margin:0 0 17px; }
 .nexo-compact .compact-tab { border:0; background:transparent; box-shadow:none; border-radius:7px; padding:9px 4px; color:#60727a; font-size:12px; font-weight:650; }
 .nexo-compact .compact-tab.active { color:#066a59; background:var(--compact-card); box-shadow:0 1px 3px #172b3212; }
 .nexo-compact .compact-content { min-width:0; }

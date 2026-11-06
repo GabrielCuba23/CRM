@@ -190,6 +190,12 @@ globalThis.NexoCompanion = Object.freeze({
     return new Response(result.body, { status: result.status, headers: result.headers });
   },
   getContext: readContext,
+  startCampaign: input => rpc("campaign.start", { input, expectedOrigin: configuredOrigin }),
+  stopCampaign: input => rpc("campaign.stop", { input, expectedOrigin: configuredOrigin }),
+  selectRecipient: input => rpc("campaign.select", { input, expectedOrigin: configuredOrigin }),
+  sendCampaign: input => rpc("campaign.send", { input, expectedOrigin: configuredOrigin }),
+  prepareMedia: input => rpc("campaign.preview", { input, expectedOrigin: configuredOrigin }),
+  exportWhatsAppContacts: input => rpc("wa.contacts", { input, expectedOrigin: configuredOrigin }),
   bindConversation: input => rpc("wa.bind", { input, expectedOrigin: configuredOrigin }),
   unbindConversation: input => rpc("wa.unbind", { input, expectedOrigin: configuredOrigin }),
   captureVisibleMessages: () => {

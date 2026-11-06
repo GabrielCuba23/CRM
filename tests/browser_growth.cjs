@@ -22,6 +22,7 @@ const assert = require("node:assert/strict");
       () => !document.querySelector("#client-dialog").open,
     );
     await page.locator("nav [data-view=marketing]").click();
+    await page.locator("#marketing-legacy-tools > summary").click();
     await page.locator("#segment-form [name=name]").fill("Mi lista");
     await page.locator("#segment-form [name=minScore]").fill("10");
     await page
@@ -53,7 +54,7 @@ const assert = require("node:assert/strict");
     await page.waitForFunction(() =>
       document
         .querySelector("#message-text")
-        .value.includes("Contacto Marketing"),
+        .value === "Hola Contacto Marketing 👋 oferta & personalizada",
     );
     assert.equal(
       new URL(

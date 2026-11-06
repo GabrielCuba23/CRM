@@ -38,3 +38,16 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
   bucket TEXT PRIMARY KEY, window_started INTEGER NOT NULL, attempts INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS auth_attempts_window ON auth_attempts(window_started);
+
+CREATE TABLE IF NOT EXISTS outreach_media (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL,
+  size INTEGER NOT NULL CHECK(size BETWEEN 1 AND 20971520),
+  sha256 TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('uploading','validating','ready')),
+  created INTEGER NOT NULL, lease TEXT, validation_started INTEGER
+);
+CREATE INDEX IF NOT EXISTS outreach_media_created ON outreach_media(created);
+CREATE TABLE IF NOT EXISTS outreach_media_chunks (
+  media_id TEXT NOT NULL REFERENCES outreach_media(id) ON DELETE CASCADE,
+  part INTEGER NOT NULL CHECK(part BETWEEN 0 AND 39), data BLOB NOT NULL,
+  PRIMARY KEY(media_id,part)
+);

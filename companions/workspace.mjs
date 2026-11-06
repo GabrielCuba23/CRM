@@ -8,6 +8,8 @@ import {
   validateWorkspace,
 } from "../crm.mjs";
 import { archiveContact } from "../lifecycle.mjs";
+import { emptyGrowth } from "../growth.mjs";
+import { validateOutreach } from "../outreach.mjs";
 
 const owns = (object, field) => Object.hasOwn(object, field);
 const clientTextFields = ["name", "phone", "whatsappUsername", "email", "service", "profile", "expires", "notes", "accountId", "pin"];
@@ -213,6 +215,9 @@ export function applyWorkspaceCommand(state, command, input = {}, options = {}) 
     if (next.clients.some(row => row.accountId === input.id))
       throw Error("Libera o reasigna los perfiles ocupados antes de eliminar la cuenta.");
     next.accounts = next.accounts.filter(row => row.id !== input.id);
+  } else if (command === "saveOutreach") {
+    next.growth ||= emptyGrowth();
+    next.growth.outreach = validateOutreach(input.outreach);
   } else if (command === "saveGrowth") {
     next.growth = structuredClone(input.growth);
   } else {

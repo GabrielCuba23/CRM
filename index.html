@@ -792,9 +792,11 @@
         <p class="eyebrow">CONOCE A TUS CONTACTOS</p>
         <h2>Marketing</h2>
         <p>
-          Segmentos dinámicos, puntuación configurable y borradores de campañas.
-          El envío externo está pendiente de conexión.
+          Campañas con texto, fotos y videos, listas de contactos e informes.
+          Configura aquí y envía desde Nexo en WhatsApp.
         </p>
+        <div id="outreach-workspace"></div>
+        <details id="marketing-legacy-tools"><summary>Segmentos y borradores anteriores</summary>
         <div class="form-grid">
           <form id="segment-form" class="inset">
             <h3>Crear segmento / lista</h3>
@@ -914,6 +916,8 @@
             se recopilan visitas desde esta pantalla.
           </p>
         </div>
+
+        </details>
       </section>
       <section id="social" class="view panel" hidden>
         <p class="eyebrow">RELACIONES EN UN SOLO LUGAR</p>
@@ -999,14 +1003,12 @@
       <section id="integrations" class="view panel" hidden>
         <div class="inset">
           <h3>WhatsApp: conexión de la bandeja</h3>
-          <span class="pill none">API de conversaciones pendiente</span>
+          <span class="pill active">Extensión de WhatsApp Web</span>
           <p>
-            La bandeja actual funciona con wa.me y registros manuales. WhatsApp
-            Web se abre en otra pestaña; no se incrusta ni se sincroniza con el
-            CRM. Para recibir y responder directamente aquí falta configurar
-            WhatsApp Business Platform, sus webhooks y las credenciales del
-            servidor privado. Tener un token de recordatorios no activa una
-            bandeja bidireccional.
+            La extensión de Nexo conecta este CRM con WhatsApp Web y mantiene
+            clientes, campañas y cuentas en la misma base. Inicia sesión dentro
+            de su barra lateral. El envío desde el servidor con WhatsApp Business
+            Platform es una integración adicional, independiente de la extensión.
           </p>
           <a href="#messages" class="button secondary">Ir a conversaciones</a>
         </div>

@@ -1,4 +1,5 @@
 from .promotions import validate_promotions
+from .outreach import validate_outreach
 import datetime as dt
 import re
 
@@ -194,6 +195,8 @@ def validate_workspace(state):
         if 'nextRenewal' in original: cleaned['nextRenewal'] = original['nextRenewal']
     clean['growth'] = {key: [{k: r[k] for k in fields} for r in growth[key]] for key, fields in growth_keys.items()}
     clean['growth']['scoring'] = {k: growth['scoring'][k] for k in ['email','phone','active','paid']}
+    if 'outreach' in growth:
+        clean['growth']['outreach'] = validate_outreach(growth['outreach'])
     clean['rules'] = [{k: r[k] for k in ['id', 'name', 'templateId', 'delivery', 'enabled', 'daysBefore', 'hour', 'services']} | ({'audience':r['audience']} if 'audience' in r else {}) | {'meta': {k: r['meta'][k] for k in ['templateName', 'language', 'parameters']}} for r in rules]
     clean['taskReceipts'] = [{k: r[k] for k in ['id', 'signature', 'completedAt']} for r in receipts]
     for collection, allowed in keys.items():

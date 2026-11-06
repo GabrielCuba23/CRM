@@ -347,7 +347,171 @@
     };
     return normalized(plain(composer)) === normalized(expected);
   }
-  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone };
+  const cancelledCampaigns = new Set();
+  function campaignCheck() {
+    const editor = document.querySelector("#main footer [contenteditable='true']");
+    if ((editor?.innerText || editor?.textContent || "").trim()) throw Error("WhatsApp ya tiene un borrador. Envíalo o guárdalo antes de iniciar la campaña.");
+    if (document.querySelector("[data-testid='media-editor'],[data-testid='media-caption-input-container']")) throw Error("Cierra el adjunto que ya está abierto en WhatsApp.");
+    return { ready: true };
+  }
+  function campaignReveal() {
+    const header = document.querySelector("#main header");
+    const target = header?.querySelector("[title]") || header;
+    if (!target) throw Error("Abre la información del contacto para verificar su número.");
+    if (typeof PointerEvent === "function") target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    target.click(); return { opened: true };
+  }
+  function campaignGuard(input) {
+    if (cancelledCampaigns.has(input.runId)) throw Error("La campaña fue detenida.");
+    if (document.hidden || document.visibilityState === "hidden") throw Error("WhatsApp dejó de estar visible. La campaña está pausada.");
+    const current = context();
+    if (!current.chatId || current.isGroup || current.ambiguous || current.phone !== input.phone)
+      throw Error("La conversación no coincide con el número seleccionado.");
+    return current;
+  }
+  const waitCampaign = ms => new Promise(resolve => setTimeout(resolve, ms));
+  function sendButton(scope) {
+    return [...scope.querySelectorAll("button,[role='button']")].find(item =>
+      /^(enviar|send)( mensaje| message)?$/i.test(item.getAttribute("aria-label") || item.getAttribute("title") || "") || item.querySelector("[data-icon='send']"));
+  }
+  async function campaignSend(input) {
+    let clicked = false;
+    try {
+      if (!input || !/^[a-f0-9]{32}$/.test(input.runId || "") || !Array.isArray(input.files) || input.files.length > 10 || typeof input.text !== "string" || input.text.length > 8000) throw Error("El mensaje de campaña no es válido.");
+      campaignGuard(input); campaignCheck();
+      const root = document.querySelector("#main");
+      const before = new Set([...root.querySelectorAll("[data-id]")].map(x => x.getAttribute("data-id")));
+      let scope = root.querySelector("footer");
+      if (input.files.length) {
+        let fileInput = [...document.querySelectorAll("input[type=file]")].find(el => /image|video/i.test(el.accept));
+        if (!fileInput) {
+          const attach = root.querySelector("[aria-label='Adjuntar'],[aria-label='Attach'],[title='Adjuntar'],[data-icon='plus-rounded']");
+          (attach?.closest("button,[role=button]") || attach)?.click();
+          await waitCampaign(200);
+          fileInput = [...document.querySelectorAll("input[type=file]")].find(el => /image|video/i.test(el.accept));
+        }
+        if (!fileInput) throw Error("WhatsApp cambió su selector de archivos. Abre Adjuntar → Fotos y videos y vuelve a intentar.");
+        const transfer = new DataTransfer(); let total = 0;
+        for (const file of input.files) {
+          if (!/^(image\/(png|jpeg|webp|gif)|video\/(mp4|webm))$/.test(file.type || "") || typeof file.data !== "string") throw Error("El archivo adjunto no es válido.");
+          const binary = atob(file.data); total += binary.length;
+          if (total > 20971520) throw Error("Los adjuntos superan 20 MB.");
+          transfer.items.add(new File([Uint8Array.from(binary, c => c.charCodeAt(0))], String(file.name).slice(0, 200), { type: file.type }));
+        }
+        campaignGuard(input);
+        fileInput.files = transfer.files; fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+        const limit = Date.now() + 20000;
+        while (Date.now() < limit) {
+          campaignGuard(input);
+          scope = document.querySelector("[data-testid='media-editor'],[role='dialog']");
+          if (!scope) {
+            const caption = document.querySelector("[data-testid='media-caption-input-container']");
+            scope = caption?.parentElement?.parentElement;
+          }
+          if (scope?.querySelector("img,video") && sendButton(scope)) break;
+          await waitCampaign(150);
+        }
+        if (!scope?.querySelector("img,video") || !sendButton(scope)) throw Error("No se pudo verificar la vista previa del adjunto. Revísalo en WhatsApp.");
+        if (input.text) {
+          const caption = scope.querySelector("[contenteditable='true']");
+          if (!caption || (caption.innerText || "").trim()) throw Error("No se pudo preparar el pie del archivo sin sobrescribir otro texto.");
+          caption.focus(); if (!document.execCommand("insertText", false, input.text) || !editorMatches(caption, input.text)) throw Error("No se pudo verificar el pie del archivo.");
+        }
+      } else {
+        const prepared = prepare({ phone: input.phone, text: input.text });
+        if (!prepared.prepared) throw Error(prepared.reason || "No se pudo preparar el mensaje.");
+      }
+      campaignGuard(input);
+      if (input.automatic !== true) return { status: "prepared", evidence: "Borrador y archivos preparados; envío pendiente de tu confirmación." };
+      const button = scope && sendButton(scope);
+      if (!button) throw Error("No se encontró un botón de envío verificable.");
+      const permit = await chrome.runtime.sendMessage({ channel: "nexo", type: "campaign.permit", input: { runId: input.runId, phone: input.phone } });
+      if (!permit?.ok || permit.result?.allowed !== true) throw Error("La campaña está pausada, la barra se cerró o terminó la sesión.");
+      campaignGuard(input); clicked = true; button.click();
+      const until = Date.now() + 15000;
+      const normalize = value => String(value || "").replace(/\s+/g, " ").trim();
+      while (Date.now() < until) {
+        campaignGuard(input);
+        const outgoing = [...document.querySelectorAll("#main [data-id]")].find(el => {
+          const id = el.getAttribute("data-id") || "";
+          return !before.has(id) && (id.startsWith("true_") || el.matches(".message-out") || el.querySelector(".message-out")) &&
+            (!input.text || normalize(el.innerText).includes(normalize(input.text))) && (!input.files.length || el.querySelector("img,video"));
+        });
+        if (outgoing) return { status: "sent_observed", evidence: "Mensaje saliente observado: " + outgoing.getAttribute("data-id"), sentAt: new Date().toISOString() };
+        await waitCampaign(150);
+      }
+      return { status: "uncertain", error: "Se pulsó Enviar, pero no se pudo comprobar el resultado. Revisa la conversación antes de reintentar." };
+    } catch (error) { return { status: clicked ? "uncertain" : "failed", error: error.message }; }
+  }
+  async function exportContacts(input = {}) {
+    const visible = el => el.getClientRects().length && !el.closest("[hidden],[aria-hidden='true'],nexo-whatsapp-dock");
+    let list;
+    if (input.source === "group") {
+      const current = context();
+      if (!current.isGroup) throw Error("Abre un grupo y su lista de participantes en WhatsApp.");
+      list = document.querySelector("[data-testid='group-info-drawer'],[data-testid='contact-info-drawer'],[data-testid='drawer-right'],#app [role='dialog']");
+      const identity = list && [...list.querySelectorAll('h1,h2,[dir=auto],[title]')].some(node => visible(node) && (node.getAttribute('title') || node.textContent || '').trim() === current.name);
+      const participants = list && (/\b(participantes|participants|members)\b/i.test(list.innerText || '') || list.querySelector('[data-testid*=participant]'));
+      if (!list || !identity || !participants) throw Error("Abre la información de este grupo y sus participantes.");
+    } else {
+      list = document.querySelector("#pane-side,#side,[data-testid='chat-list']");
+      if (!list) throw Error("Abre tu lista de chats en WhatsApp.");
+      if (input.source === "archived") {
+        // The normal list already contains an Archivados shortcut. Require an
+        // actual archived view, never label the ordinary list by that shortcut.
+        const archived = document.querySelector("[data-testid='archived-chats'],[data-testid='archived-chats-drawer']");
+        const heading = [...document.querySelectorAll('#app header h1,#app header h2,#app header [dir=auto],[data-testid=archived-chats-header]')].find(node => visible(node) && !node.closest('#main') && /^(archivados|archivadas|archived|archived chats)$/i.test((node.innerText || node.textContent || '').trim()));
+        if (!archived && !heading) throw Error("Abre Archivados antes de exportar esa lista.");
+        if (archived) list = archived;
+      }
+    }
+    const result = new Map(), began = Date.now(); let incomplete = 0, previous = -1;
+    let scanProfiles = Boolean(input.scan && input.source !== "group");
+    try { campaignCheck(); } catch { scanProfiles = false; }
+    const collect = async () => {
+      for (const row of list.querySelectorAll("[role='listitem'],[role='row'],[data-testid*='participant'],[data-testid='cell-frame-container']")) {
+        if (!visible(row)) continue;
+        const title = [...row.querySelectorAll("span[title]")].find(visible);
+        const name = (title?.getAttribute("title") || row.querySelector("[dir='auto']")?.textContent || "").trim().slice(0, 160);
+        if (!name) continue;
+        const source = [name, ...[...row.querySelectorAll("[title],[aria-label]")].map(n => n.getAttribute("title") || n.getAttribute("aria-label"))].filter(Boolean);
+        const number = source.find(value => /^\+?[\d\s().-]{7,25}$/.test(value.trim()));
+        const peer = (row.getAttribute("data-id") || "").match(/(\d{7,15})@(c\.us|s\.whatsapp\.net)/);
+        let phoneValue = number ? number.replace(/\D/g, "") : peer ? peer[1] : "";
+        if (!phoneValue && scanProfiles && Date.now() - began < 30000 && row.isConnected) {
+          const before = context(), selected = row.getAttribute("aria-selected") === "true" || Boolean(row.querySelector("[aria-selected='true']"));
+          if (typeof PointerEvent === "function") row.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          row.click();
+          const deadline = Date.now() + 1500;
+          let opened = false;
+          while (Date.now() < deadline) {
+            if (document.hidden) throw Error("Vuelve a WhatsApp para terminar la lectura de contactos.");
+            const current = context();
+            if (current.name === name && current.chatId && !current.isGroup && !current.ambiguous && (current.chatId !== before.chatId || selected)) {
+              if (current.phone) { phoneValue = current.phone; break; }
+              if (!opened) { campaignReveal(); opened = true; }
+            }
+            await waitCampaign(100);
+          }
+        }
+        const key = phoneValue || row.getAttribute("data-id") || name;
+        if (!result.has(key)) result.set(key, { name, phone: phoneValue, source: "whatsapp", labels: input.source === "group" ? ["Grupo"] : input.source === "archived" ? ["Archivado"] : [] });
+        if (result.size >= 500) return;
+      }
+    };
+    for (;;) {
+      if (document.hidden) throw Error("Vuelve a WhatsApp para leer sus contactos.");
+      await collect();
+      if (!input.scan || result.size >= 500 || Date.now() - began > 30000) break;
+      const scroller = [list, ...list.querySelectorAll("div")].find(el => visible(el) && el.scrollHeight > el.clientHeight + 20 && el.clientHeight > 100);
+      if (!scroller || scroller.scrollTop === previous) break;
+      previous = scroller.scrollTop; scroller.scrollTop += Math.max(200, scroller.clientHeight - 40);
+      await waitCampaign(250);
+    }
+    incomplete = [...result.values()].filter(row => !row.phone).length;
+    return { contacts: [...result.values()], incomplete, note: "Lista cargada de WhatsApp; no incluye números que WhatsApp no muestra ni contactos de otras cuentas." };
+  }
+  globalThis.__nexoWhatsAppAdapter = { context, bind, unbind, setScope, capture, prepare, phone, campaignCheck, campaignSend, exportContacts };
   const invalidateNativeNavigation = () => { navigationRevision++; openIntent = null; requestContextUpdate(); };
   document.addEventListener?.("pointerdown", event => {
     const target = event.target;
@@ -374,6 +538,19 @@
     try {
       setScope(message.scope);
       const actions = { context, capture, prepare, bind, unbind };
+      if (message.action === "campaignCancel") {
+        if (cancelledCampaigns.size > 100) cancelledCampaigns.clear();
+        if (typeof message.input?.runId === "string") cancelledCampaigns.add(message.input.runId);
+        sendResponse({ ok: true, result: { stopped: true } }); return false;
+      }
+      if (["campaignSend", "exportContacts"].includes(message.action)) {
+        if (document.hidden) throw Error("Vuelve a la pestaña de WhatsApp.");
+        Promise.resolve(message.action === "campaignSend" ? campaignSend(message.input) : exportContacts(message.input))
+          .then(result => sendResponse({ ok: true, result }), error => sendResponse({ ok: false, error: error.message }));
+        return true;
+      }
+      actions.campaignCheck = campaignCheck;
+      actions.campaignReveal = campaignReveal;
       if (!Object.hasOwn(actions, message.action)) throw Error("Operación no permitida.");
       // A native browser panel can stay visible while this WhatsApp tab is
       // hidden. Check again in the document at the instant of the operation.

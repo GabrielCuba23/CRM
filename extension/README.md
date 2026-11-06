@@ -1,8 +1,8 @@
 # Nexo CRM para WhatsApp Web
 
 Extensión Manifest V3 para Chrome de computadora. Presenta una interfaz compacta
-en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. Tiene tres entradas:
-**Chat actual**, **Clientes** y **Cuentas**. Las herramientas avanzadas siguen
+en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.5.0 del código tiene cuatro entradas:
+**Chat actual**, **Clientes**, **Cuentas** y **Campañas**. Las herramientas avanzadas siguen
 disponibles desde **Abrir CRM**.
 Pulsa **Nexo** en WhatsApp o el icono de la extensión para abrir la barra. Una vez
 abierta permanece visible al cambiar de pestaña en esa ventana, también en otros
@@ -39,7 +39,7 @@ CRM; este requisito no se aplica al CRM principal con contraseña.
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.4.1. Conserva la
+Reemplaza los archivos de la carpeta original por los del nuevo paquete construido. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
@@ -134,13 +134,79 @@ otros chats en segundo plano. La captura se inicia desde el panel; cualquier
 actualización periódica debe activarse expresamente para ese cliente. WhatsApp
 puede cambiar su estructura y requerir actualizar el adaptador.
 
-Al preparar una respuesta, el adaptador verifica el chat y teléfono otra vez.
+Al preparar una respuesta individual de texto, el adaptador verifica el chat y teléfono otra vez.
 Rechaza grupos y destinatarios diferentes. Si el editor no está disponible o ya
 contiene otro borrador, conserva el borrador y copia el mensaje para pegarlo.
-**El envío final lo confirmas tú en WhatsApp**. Capturar un texto enviado no
+**El envío final de ese borrador lo confirmas tú en WhatsApp**. Las campañas y el
+editor de fotos o videos usan el inicio explícito descrito a continuación.
+Capturar un texto enviado no
 demuestra que el destinatario lo haya recibido.
 La ficha elegida y el chat abierto deben corresponder a la misma persona antes
 de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destinatario.
+
+## Campañas, fotos, videos y contactos en 1.5.0
+
+**Campañas** contiene cuatro apartados: **Campañas**, **Contactos**, **Plantillas**
+e **Informes**. La web y la extensión guardan estas listas, mensajes y resultados
+en la misma base del CRM. La web permite configurarlos; iniciar una cola de envío
+requiere la extensión y WhatsApp Web activos.
+
+- Importa Excel XLSX o CSV, selecciona las columnas de nombre y teléfono y revisa
+  la vista previa. Los números peruanos de nueve dígitos reciben el código +51
+  predeterminado. Cada número aparece una sola vez por campaña; las exclusiones
+  se aplican al preparar la lista y antes de enviar.
+- Selecciona contactos guardados, clientes del CRM, una lista manual o contactos
+  leídos de WhatsApp. Puedes filtrar por servicio, etiqueta o autorización para
+  campañas y guardar plantillas con campos como `{nombre}` y columnas del Excel.
+- Adjunta fotos PNG, JPEG, GIF o WebP y videos MP4 o WebM. Una campaña admite hasta
+  diez archivos y **20 MiB en total por mensaje**. El editor de **Foto / video**
+  de una ficha abre el mismo flujo para ese contacto.
+- Configura intervalos, cantidad de mensajes por lote, pausas entre lotes y una
+  fecha local de inicio. La vista previa muestra el texto personalizado antes de
+  confirmar.
+
+Guardar una campaña, recargar el CRM o volver a abrir Chrome no inicia envíos.
+Al pulsar **Iniciar campaña** o **Continuar campaña** y confirmar, autorizas a la
+extensión a abrir los destinatarios y pulsar Enviar para esa cola de texto y
+adjuntos. Puedes pausarla o cancelarla. Un borrador existente o un destinatario
+que WhatsApp no confirme impiden continuar ese intento sin la comprobación
+correspondiente. El adaptador no usa un grupo como destino de una campaña.
+
+La programación es local: necesita Chrome, la extensión y WhatsApp Web abiertos
+y activos. Al ocultar el panel o cambiar a otra pestaña, la cola se pausa; la barra
+del CRM puede seguir visible. Cerrar Chrome o interrumpir una operación requiere
+recuperar la campaña y revisar sus resultados antes de continuar. No hay un envío
+programado en el servidor ni una reanudación automática al volver a entrar.
+
+El intento se guarda antes de pulsar Enviar. **Salida observada en WhatsApp**
+significa que el adaptador observó el mensaje saliente; no confirma entrega ni
+lectura. Un resultado **Revisar** pausa la cola y no se reintenta automáticamente.
+Puedes comprobarlo en WhatsApp y marcarlo como enviado u omitido. Los informes
+distinguen esos casos, los errores y las confirmaciones manuales, y se exportan
+como CSV o Excel.
+
+**Descargar contactos de WhatsApp** lee la lista cargada de chats, la vista de
+archivados o los participantes del grupo abierto. El recorrido y la comprobación
+opcional de teléfonos son limitados; una lectura parcial se indica en pantalla.
+Los nombres cuyo número no está visible se conservan con teléfono vacío: puedes
+exportarlos o completar el dato después, pero no se añaden automáticamente como
+destinatarios. El nombre por sí solo no permite adivinar un teléfono ni vincular
+una ficha del CRM.
+
+Los archivos seleccionados se suben mediante la API privada autenticada. El CRM
+principal usa fragmentos en su **D1 existente**, con una biblioteca limitada a
+**200 MiB en total**; no se crea un servicio R2 ni se activa facturación adicional.
+El servidor comprueba el tamaño, el tipo y la huella SHA-256 antes de permitir su
+uso. No hay enlaces públicos a los adjuntos. La biblioteca permite eliminar
+explícitamente archivos no usados y subidas incompletas; un archivo referenciado
+por una campaña o plantilla debe quitarse de ella antes de borrarlo. No se borran
+archivos antiguos automáticamente para liberar espacio.
+
+La instalación descomprimida no requiere una suscripción ni pagar el registro de
+Chrome Web Store. Sus cambios de código siguen necesitando reemplazar el paquete
+y recargar la extensión; la base compartida permanece en el servidor. Estas
+instrucciones describen el código de esta versión y no certifican un despliegue
+ni una instalación en un navegador concreto.
 
 Los registros se guardan en el CRM mediante su API privada. El almacenamiento
 local de Chrome contiene la URL de configuración y los vínculos confirmados de
@@ -156,6 +222,9 @@ de respaldo que solicites expresamente.
 
 ```sh
 node --test tests/extension.test.mjs tests/side-panel.test.mjs tests/extension-password.test.mjs tests/native-auth.test.mjs tests/companion-workspace.test.mjs tests/whatsapp-identity.test.mjs
+node --test tests/outreach.test.mjs tests/outreach-media.test.mjs
+node tests/outreach-browser.cjs
+python3 -m unittest tests.test_outreach_media
 NODE_PATH=/ruta/a/node_modules node tests/persistent-panel-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/password-browser.cjs
 NODE_PATH=/ruta/a/node_modules node tests/extension-browser.cjs

@@ -18,6 +18,7 @@ import {
   publicNativeSession,
 } from "./native-auth.mjs";
 import { emptyState, cleanState } from "./state.mjs";
+import { handleOutreachMedia } from "./outreach-media.mjs";
 import { normalizePhone, formatDate, todayLima } from "../crm.mjs";
 
 const publicAssets = new Set(["/styles.css", "/icons.svg"]);
@@ -40,6 +41,10 @@ const privateAssets = new Set([
   "/procurement-ui.mjs",
   "/growth.mjs",
   "/growth-ui.mjs",
+  "/outreach.mjs",
+  "/outreach-ui.mjs",
+  "/outreach-ui.css",
+  "/outreach-media-client.mjs",
   "/vendor/exceljs-4.4.0.min.js",
   "/login.js",
   "/sw.js",
@@ -55,7 +60,7 @@ const securityHeaders = {
   "Referrer-Policy": "no-referrer",
   "Strict-Transport-Security": "max-age=31536000",
   "Content-Security-Policy":
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
 };
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -67,9 +72,11 @@ function json(body, status = 200) {
   });
 }
 function headers(response) {
+  const merged = new Headers(response.headers);
+  for (const [name, value] of Object.entries(securityHeaders)) merged.set(name, value);
   return new Response(response.body, {
     status: response.status,
-    headers: { ...Object.fromEntries(response.headers), ...securityHeaders },
+    headers: merged,
   });
 }
 async function workspace(db) {
@@ -175,6 +182,8 @@ export async function handleRequest(request, env, options = {}) {
     )
       return json({ error: "Origen o sesión no válidos." }, 403);
   }
+  const mediaResponse = await handleOutreachMedia(request, env);
+  if (mediaResponse) return headers(mediaResponse);
   if (path === "/api/session" && request.method === "GET")
     return json(passwordMode ? publicNativeSession(user) : { ...user, mode: "server", authProvider: "cloudflare-access" });
   if (path === "/companion" && ["GET", "HEAD"].includes(request.method))

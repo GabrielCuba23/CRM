@@ -12,10 +12,11 @@ from flask import Flask, jsonify, make_response, redirect, request, send_from_di
 from werkzeug.security import check_password_hash, generate_password_hash
 from .storage import connect, initialize, read_workspace
 from .validation import validate_workspace
+from .outreach_media import register_outreach_media
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_FILES = {'styles.css', 'login.js', 'icons.svg'}
-APP_FILES = {'supplier-overview.mjs','promotions.mjs','messaging.mjs','companion-ui.mjs','companion-ui.css','companions/conversations.mjs','companions/workspace.mjs','reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
+APP_FILES = {'supplier-overview.mjs','promotions.mjs','messaging.mjs','companion-ui.mjs','companion-ui.css','companions/conversations.mjs','companions/workspace.mjs','reports.mjs', 'report-config.mjs', 'app.js', 'crm.mjs', 'automation.mjs', 'bulk.mjs','lifecycle.mjs','procurement.mjs','procurement-ui.mjs','growth.mjs','growth-ui.mjs','outreach.mjs','outreach-ui.mjs','outreach-ui.css','outreach-media-client.mjs', 'vendor/exceljs-4.4.0.min.js', 'index.html', 'sw.js', 'manifest.webmanifest', 'app-icon.svg','app-icon-192.png','app-icon-512.png'}
 SESSION_SECONDS = 8 * 3600
 
 
@@ -88,10 +89,12 @@ def create_app(config=None):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'no-referrer'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         if secure:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         return response
+
+    register_outreach_media(app, db_path)
 
     @app.get('/healthz')
     def health():

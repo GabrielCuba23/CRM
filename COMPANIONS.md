@@ -62,6 +62,11 @@ consideran una venta gratuita ni se calculan márgenes completos con esos datos.
 
 ## Trabajar sin salir de WhatsApp Web
 
+La revisión de campañas 1.5.0 está preparada y probada, pero su servidor todavía
+no se ha publicado por un error de autorización del conector Cloudflare. Mantén
+la 1.4.1 instalada hasta terminar esa publicación. Funciones, límites y resultados
+de las pruebas: [OUTREACH.md](OUTREACH.md).
+
 - **Chat actual** muestra automáticamente las fichas del teléfono identificado
   en WhatsApp. Al cambiar de conversación se descarta la selección anterior.
   Si WhatsApp no lo detecta, pulsa **Vincular contacto existente**, busca por
