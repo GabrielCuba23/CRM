@@ -19,15 +19,66 @@ function nativePanelPage(sender) {
   try { const url = new URL(sender.url); return url.pathname === "/app/index.html" && url.searchParams.get("panel") === "1"; }
   catch { return false; }
 }
-async function nativePanelWindow(sender) {
-  // A query-string window number is not an authority. Derive the containing
-  // Chrome window from this actual extension document instead.
-  if (!nativePanelPage(sender) || sender.tab || typeof sender.documentId !== "string" || !sender.documentId || !chrome.runtime.getContexts)
+let nativePanelRegistrations = Promise.resolve();
+function panelDocumentBase(value) {
+  try {
+    const url = new URL(value);
+    // A renderer may cache sender.url before history.replaceState gives this
+    // panel its unique instance. No other URL component may be normalized away.
+    url.searchParams.delete("panelInstance");
+    return url.href;
+  } catch { return ""; }
+}
+async function nativePanelWindow(sender, panelContextId, panelWindowId, panelInstance) {
+  // Chrome omits frame/document sender fields for non-tab extension views, and
+  // SIDE_PANEL contexts can report windowId=-1. Our isolated panel reads its own
+  // containing window via windows.getCurrent(), then supplies the live context
+  // ID and window. Content scripts and ordinary extension tabs cannot register.
+  if (!nativePanelPage(sender) || sender.tab || !chrome.runtime.getContexts)
     throw Error("Abre Nexo desde la barra lateral de Chrome para continuar.");
-  const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"], documentIds: [sender.documentId] });
-  const matches = contexts.filter(item => item.contextType === "SIDE_PANEL" && item.documentId === sender.documentId && item.documentUrl === sender.url && Number.isInteger(item.windowId) && item.windowId >= 0);
-  if (matches.length !== 1) throw Error("No se pudo identificar esta barra lateral. Vuelve a abrir Nexo en Chrome.");
-  return matches[0].windowId;
+  const documentId = typeof sender.documentId === "string" && sender.documentId ? sender.documentId : undefined;
+  if (panelContextId !== undefined && (typeof panelContextId !== "string" || !panelContextId || panelContextId.length > 200))
+    throw Error("No se pudo identificar esta barra lateral. Vuelve a abrir Nexo en Chrome.");
+  if (panelInstance !== undefined && (typeof panelInstance !== "string" || !/^[a-f0-9]{32}$/.test(panelInstance)))
+    throw Error("No se pudo identificar esta barra lateral. Vuelve a abrir Nexo en Chrome.");
+  if (!documentId && (!panelContextId || !panelInstance))
+    throw Error("No se pudo identificar esta barra lateral. Reintenta la conexión con WhatsApp desde Nexo.");
+  const operation = nativePanelRegistrations.then(async () => {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"],
+      ...(documentId ? { documentIds: [documentId] } : {}), ...(panelContextId ? { contextIds: [panelContextId] } : {}) });
+    const senderBase = panelDocumentBase(sender.url);
+    const matches = contexts.filter(item => {
+      if (item.contextType !== "SIDE_PANEL" || !senderBase || panelDocumentBase(item.documentUrl) !== senderBase ||
+          documentId && item.documentId !== documentId || panelContextId && item.contextId !== panelContextId) return false;
+      if (!panelInstance) return true; // Legacy strong-document identity path.
+      const instances = new URL(item.documentUrl).searchParams.getAll("panelInstance");
+      return instances.length === 1 && instances[0] === panelInstance;
+    });
+    if (matches.length !== 1)
+      throw Error("No se pudo identificar esta barra lateral. Reintenta la conexión con WhatsApp desde Nexo.");
+    const context = matches[0];
+    const authoritativeWindow = Number.isInteger(context.windowId) && context.windowId >= 0 ? context.windowId : undefined;
+    if (panelWindowId !== undefined && (!Number.isInteger(panelWindowId) || panelWindowId < 0))
+      throw Error("La ventana de esta barra lateral no es válida.");
+    if (authoritativeWindow !== undefined && panelWindowId !== undefined && authoritativeWindow !== panelWindowId)
+      throw Error("La ventana de esta barra lateral cambió. Vuelve a abrir Nexo.");
+    const windowId = authoritativeWindow ?? panelWindowId;
+    if (!Number.isInteger(windowId) || windowId < 0 || !chrome.windows?.get)
+      throw Error("No se pudo conectar esta ventana con WhatsApp. Reintenta desde Nexo.");
+    const browserWindow = await chrome.windows.get(windowId);
+    if (!browserWindow || browserWindow.id !== windowId)
+      throw Error("La ventana de esta barra lateral ya no está disponible.");
+    const identity = context.contextId || (documentId && context.documentId);
+    if (!identity) throw Error("No se pudo identificar esta barra lateral. Vuelve a abrir Nexo.");
+    const key = "nativePanelWindow:" + identity;
+    const previous = (await storage.get(key))[key];
+    if (previous !== undefined && previous !== windowId)
+      throw Error("Esta barra lateral ya está conectada a otra ventana. Vuelve a abrir Nexo.");
+    if (previous === undefined) await storage.set({ [key]: windowId });
+    return windowId;
+  });
+  nativePanelRegistrations = operation.catch(() => {});
+  return operation;
 }
 const windowWhatsAppKey = windowId => "panelWhatsApp:" + windowId;
 let windowSelectionWrites = Promise.resolve();
@@ -421,19 +472,19 @@ function changeChatLinks(change) {
   return operation;
 }
 let whatsappOperations = Promise.resolve();
-async function waRequest(action, input, sender, expectedOrigin, explicitTabId) {
+async function waRequest(action, input, sender, expectedOrigin, explicitTabId, panelContextId, panelWindowId, panelInstance) {
   const { origin } = await configuration();
   if (crmOrigin(expectedOrigin) !== origin) throw Error("Cambió el CRM conectado. Recarga el panel antes de vincular o enviar mensajes.");
-  const panelWindowId = nativePanelPage(sender) ? await nativePanelWindow(sender) : undefined;
+  const nativeWindowId = nativePanelPage(sender) ? await nativePanelWindow(sender, panelContextId, panelWindowId, panelInstance) : undefined;
   let tab;
-  try { tab = await whatsappTab(explicitTabId ?? embeddedWhatsAppTab(sender, EXTENSION_ID), panelWindowId); }
+  try { tab = await whatsappTab(explicitTabId ?? embeddedWhatsAppTab(sender, EXTENSION_ID), nativeWindowId); }
   catch (error) {
-    if (Number.isInteger(panelWindowId) && action === "context")
-      return { ...safeContext({}, undefined), windowId: panelWindowId, active: false };
+    if (Number.isInteger(nativeWindowId) && action === "context")
+      return { ...safeContext({}, undefined), windowId: nativeWindowId, active: false };
     throw error;
   }
-  const guard = Number.isInteger(panelWindowId) ? async () => {
-    const selected = await whatsappTab(undefined, panelWindowId);
+  const guard = Number.isInteger(nativeWindowId) ? async () => {
+    const selected = await whatsappTab(undefined, nativeWindowId);
     if (selected.id !== tab.id) throw Error("Cambió la pestaña de WhatsApp. Revisa el contacto antes de continuar.");
     if (action !== "context" && !await activeWhatsApp(tab))
       throw Error("Vuelve a la pestaña de WhatsApp antes de vincular, guardar textos o preparar un mensaje.");
@@ -444,11 +495,11 @@ async function waRequest(action, input, sender, expectedOrigin, explicitTabId) {
   // an older restore with another tab's changed recipient. No prompt or CRM
   // network request runs inside this queue.
   const operation = whatsappOperations.then(async () => {
-    const result = await waRequestOnTab(action, input, origin, tab, guard, Number.isInteger(panelWindowId) && action !== "context");
-    if (Number.isInteger(panelWindowId) && ["context", "bind", "unbind"].includes(action)) {
+    const result = await waRequestOnTab(action, input, origin, tab, guard, Number.isInteger(nativeWindowId) && action !== "context");
+    if (Number.isInteger(nativeWindowId) && ["context", "bind", "unbind"].includes(action)) {
       const active = await activeWhatsApp(tab);
       await guard();
-      return { ...result, windowId: panelWindowId, active };
+      return { ...result, windowId: nativeWindowId, active };
     }
     return result;
   });
@@ -541,10 +592,14 @@ async function execute(message, sender) {
       let origin = values.crmOrigin || "";
       if (!origin) try { origin = (await configuration()).origin; } catch { /* Other hosts need a one-time grant in advanced options. */ }
       if (nativePanelPage(sender)) {
-        const panelWindowId = await nativePanelWindow(sender);
-        let waTabId;
-        try { waTabId = (await whatsappTab(undefined, panelWindowId)).id; } catch { /* CRM works without an open WhatsApp. */ }
-        return { origin, panelWindowId, waTabId };
+        // Authentication and CRM operations do not depend on WhatsApp routing.
+        // Missing optional Chrome sender metadata must never hide inline login.
+        const result = { origin, ...(origin === DEFAULT_ORIGIN ? { authProvider: "password" } : {}) };
+        try {
+          result.panelWindowId = await nativePanelWindow(sender, message.panelContextId, message.panelWindowId, message.panelInstance);
+          try { result.waTabId = (await whatsappTab(undefined, result.panelWindowId)).id; } catch { /* CRM works without an open WhatsApp. */ }
+        } catch (error) { result.panelRoutingError = error?.message || "No se pudo conectar esta ventana con WhatsApp."; }
+        return result;
       }
       return { origin, waTabId: embeddedWhatsAppTab(sender, EXTENSION_ID) };
     }
@@ -614,7 +669,7 @@ async function execute(message, sender) {
     }
     case "wa.open": {
       if (nativePanelPage(sender)) {
-        const windowId = await nativePanelWindow(sender);
+        const windowId = await nativePanelWindow(sender, message.panelContextId, message.panelWindowId, message.panelInstance);
         let tab;
         try { tab = await whatsappTab(undefined, windowId); }
         catch {
@@ -635,22 +690,22 @@ async function execute(message, sender) {
       await rememberWhatsAppReturn(await chrome.tabs.get(result.tabId));
       return result;
     }
-    case "wa.context": return waRequest("context", undefined, sender, message.expectedOrigin);
-    case "wa.capture": return waRequest("capture", undefined, sender, message.expectedOrigin);
+    case "wa.context": return waRequest("context", undefined, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
+    case "wa.capture": return waRequest("capture", undefined, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
     case "wa.bind": {
       const phone = String(message.input?.phone || "").replace(/[\s()+.-]/g, "");
       const chatId = message.input?.chatId;
       const name = message.input?.name;
       if (!/^\d{7,15}$/.test(phone) || typeof chatId !== "string" || chatId.length > 300 || typeof name !== "string" || !name || name.length > 160) throw Error("Confirma el teléfono y la conversación a vincular.");
-      return waRequest("bind", { input: { phone, chatId, name } }, sender, message.expectedOrigin);
+      return waRequest("bind", { input: { phone, chatId, name } }, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
     }
     case "wa.unbind": {
       const chatId = message.input?.chatId;
       const name = message.input?.name;
       if (typeof chatId !== "string" || !chatId || chatId.length > 300 || typeof name !== "string" || !name || name.length > 160) throw Error("Revisa la conversación que deseas desvincular.");
-      return waRequest("unbind", { input: { chatId, name } }, sender, message.expectedOrigin);
+      return waRequest("unbind", { input: { chatId, name } }, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
     }
-    case "wa.prepare": return waRequest("prepare", { input: draftInput(message.input) }, sender, message.expectedOrigin);
+    case "wa.prepare": return waRequest("prepare", { input: draftInput(message.input) }, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
     default: throw Error("Operación desconocida.");
   }
 }

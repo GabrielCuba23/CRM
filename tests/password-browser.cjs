@@ -25,6 +25,7 @@ const MIME = { '.html':'text/html; charset=utf-8', '.css':'text/css', '.mjs':'te
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const PERSISTENT_PANEL = process.env.PERSISTENT_PANEL_ONLY === '1';
 const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
+const PANEL_CONTEXT_ID = 'synthetic-native-panel-context';
 
 (async () => {
   const root = path.resolve(__dirname, '..');
@@ -63,6 +64,8 @@ const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
   const local = {}, session = {};
   let nextTabId = 1, whatsapp, clipboardReady = false, panelPage, activeBrowserTabId;
   const panelCalls = [];
+  let panelRoutingUnavailable = PERSISTENT_PANEL;
+  let nativeConfigurationFailures = PERSISTENT_PANEL ? 1 : 0, rejectedNativeConfigurations = 0;
   const tab = page => ({id:pages.get(page),windowId:1,active:PERSISTENT_PANEL?pages.get(page)===activeBrowserTabId:page===whatsapp,url:page.url(),status:'complete'});
   const pageFor = id => [...pages].find(([,value])=>value===id)?.[0];
   const api = async (url, init={}) => {
@@ -113,7 +116,7 @@ const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
   try {
     global.chrome={
       runtime:{id:EXT_ID,getURL:suffix=>EXT_ORIGIN+suffix,onMessage:{addListener:listener=>backgroundListeners.push(listener)},onInstalled:{addListener(){}},async openOptionsPage(){panelCalls.push({type:'open-options'});},async getContexts(filter={}){
-        if(filter.contextTypes?.includes('SIDE_PANEL'))return panelPage?[{contextType:'SIDE_PANEL',documentId:PANEL_DOCUMENT_ID,documentUrl:EXT_ORIGIN+'app/index.html?panel=1',windowId:1}]:[];
+        if(filter.contextTypes?.includes('SIDE_PANEL')){const live=panelPage&&panelPage.url().startsWith(EXT)?new URL(panelPage.url()):null;return live&&!panelRoutingUnavailable?[{contextType:'SIDE_PANEL',contextId:PANEL_CONTEXT_ID,documentId:PANEL_DOCUMENT_ID,documentUrl:EXT_ORIGIN+live.pathname.slice(1)+live.search,windowId:-1,tabId:-1}]:[];}
         return clipboardReady?[{}]:[];
       },async sendMessage(message){
         broadcasts.push(structuredClone(message));
@@ -140,13 +143,20 @@ const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
       const embedded=frame.url().startsWith(EXT)&&frame!==page.mainFrame();
       const sender={id:EXT_ID,frameId:embedded?1:0,url:frame.url()};
       if(frame.url().startsWith(EXT)){const parsed=new URL(frame.url());sender.url=EXT_ORIGIN+parsed.pathname.slice(1)+parsed.search;if(embedded)sender.tab=tab(page);}else sender.tab=tab(page);
-      if(PERSISTENT_PANEL&&page===panelPage&&frame===page.mainFrame())sender.documentId=PANEL_DOCUMENT_ID;
+      // Chrome extension pages can omit both sender fields, while SIDE_PANEL
+      // getContexts entries can have no associated tab/window (-1).
+      if(PERSISTENT_PANEL&&page===panelPage&&frame===page.mainFrame()){delete sender.frameId;const cached=new URL(sender.url);cached.searchParams.delete('panelInstance');sender.url=cached.href;if(message.type==='configuration.get'&&nativeConfigurationFailures>0){nativeConfigurationFailures--;rejectedNativeConfigurations++;return{ok:false,error:'Abre Nexo desde la barra lateral de Chrome para continuar.'};}}
       return dispatch(message,sender);
+    });
+    await browserContext.exposeBinding('nexoPanelContexts',({page},filter={})=>{
+      if(!PERSISTENT_PANEL||page!==panelPage||panelRoutingUnavailable)return [];
+      const entry={contextType:'SIDE_PANEL',contextId:PANEL_CONTEXT_ID,documentId:PANEL_DOCUMENT_ID,documentUrl:page.url(),windowId:-1,tabId:-1};
+      return (!filter.contextTypes||filter.contextTypes.includes(entry.contextType))&&(!filter.documentUrls||filter.documentUrls.includes(entry.documentUrl))?[entry]:[];
     });
     await browserContext.addInitScript(({id,fixtureExtension,persistentPanel})=>{
       globalThis.__chromeListeners=[];
       globalThis.chrome={permissions:{request:async()=>true},runtime:{id,getURL:suffix=>fixtureExtension+suffix,sendMessage:message=>globalThis.nexoToBackground(message),onMessage:{addListener:listener=>globalThis.__chromeListeners.push(listener),removeListener:listener=>{globalThis.__chromeListeners=globalThis.__chromeListeners.filter(item=>item!==listener);}}},storage:{onChanged:{addListener(){}}}};
-      if(persistentPanel)chrome.runtime.getManifest=()=>({side_panel:{default_path:'app/index.html?panel=1'}});
+      if(persistentPanel){chrome.runtime.getManifest=()=>({side_panel:{default_path:'app/index.html?panel=1'}});chrome.runtime.getContexts=filter=>window.nexoPanelContexts(filter);chrome.windows={getCurrent:async()=>({id:1,focused:true})};}
       const nativeSetInterval=window.setInterval.bind(window);
       window.setInterval=(callback,delay,...args)=>{if(delay===20000)window.__nexoWorkspacePoll=callback;return nativeSetInterval(callback,delay,...args);};
     },{id:EXT_ID,fixtureExtension:EXT,persistentPanel:PERSISTENT_PANEL});
@@ -226,15 +236,54 @@ const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
       panelPage=await browserContext.newPage();pages.set(panelPage,nextTabId++);
       await panelPage.setViewportSize({width:420,height:850});
       await panelPage.goto(EXT+'app/index.html?panel=1');
+      // Native window routing is an optional messaging capability, not a gate
+      // for credentials or CRM access. Missing Chrome context metadata must
+      // never send this page back to the legacy connection/configuration card.
       await panelPage.locator('#nexo-login-form').waitFor({state:'visible',timeout:25000});
+      assert.equal(rejectedNativeConfigurations,1,'The inline form must also survive a startup configuration RPC failure, matching the reported screenshot.');
       assert.equal(await panelPage.locator('#nexo-login-form [type=url]').count(),0);
+      assert.equal(await panelPage.getByRole('button',{name:'Configurar CRM',exact:true}).count(),0);
+      assert.equal(await panelPage.getByRole('link',{name:'Configurar CRM',exact:true}).count(),0);
+      assert.equal(await panelPage.getByRole('button',{name:'Ya inicié sesión: conectar aquí',exact:true}).count(),0);
+      assert.equal(await panelPage.locator('a[href*=\"options.html\"]').count(),0,'Main CRM login must not link out to a separate configuration/login page.');
+      assert(!(await panelPage.locator('body').innerText()).includes('Abre Nexo desde la barra lateral de Chrome'),'A routing error must not instruct an already-open panel to reopen itself.');
+      fs.mkdirSync('/workspace/work/deliverables',{recursive:true});
+      await panelPage.screenshot({path:'/workspace/work/deliverables/panel-inline-login-v1.4.1.png',fullPage:false});
       assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
+      await panelPage.locator('#nexo-login-form [name=email]').fill(OWNER);
+      await panelPage.locator('#nexo-login-form [name=password]').fill('Incorrect native panel fixture password');
+      await panelPage.locator('#nexo-login-submit').click();
+      await until(async()=>/correo|contraseña|credencial/i.test(await panelPage.locator('#status').innerText()),'Bad native panel credentials must show an inline error despite unavailable window routing.');
+      assert.equal(await panelPage.locator('#companion-workspace').count(),0);
+      await panelPage.locator('#nexo-login-form [name=password]').fill(PASSWORD);
+      await panelPage.locator('#nexo-login-submit').click();
+      await panelPage.locator('#companion-workspace').waitFor({state:'visible',timeout:25000});
+      assert.equal(new URL(await panelPage.evaluate(()=>NexoCompanion.loginUrl)).searchParams.get('panel'),'1');
+      assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
+      const authenticatedWhileRoutingUnavailable=apiLoginCalls;
+      await panelPage.reload();
+      await panelPage.locator('#companion-workspace').waitFor({state:'visible',timeout:25000});
+      assert.equal(await panelPage.locator('#nexo-login-form').count(),0,'An authenticated session must open the CRM even when WhatsApp window routing cannot be verified.');
+      assert.equal(apiLoginCalls,authenticatedWhileRoutingUnavailable);
+      await DB.prepare("DELETE FROM auth_sessions WHERE kind='extension'").run();
+      // A concurrent session probe may already have replaced the workspace
+      // with inline login; either path must converge on the same form.
+      await panelPage.evaluate(()=>document.querySelector('#compact-refresh')?.click());
+      await panelPage.locator('#nexo-login-form').waitFor({state:'visible',timeout:25000});
+      assert.equal(await panelPage.getByRole('button',{name:'Configurar CRM',exact:true}).count(),0);
+      assert.equal(await panelPage.getByRole('link',{name:'Configurar CRM',exact:true}).count(),0);
+      assert.equal(await panelPage.getByRole('button',{name:'Ya inicié sesión: conectar aquí',exact:true}).count(),0);
       await panelPage.locator('#nexo-login-form [name=email]').fill(OWNER);
       await panelPage.locator('#nexo-login-form [name=password]').fill(PASSWORD);
       await panelPage.locator('#nexo-login-submit').click();
       await panelPage.locator('#companion-workspace').waitFor({state:'visible',timeout:25000});
+      assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
+      // Match real Chromium metadata: no sender documentId/frameId, a live
+      // SIDE_PANEL contextId with windowId/tabId -1 and UI windows.getCurrent.
+      panelRoutingUnavailable=false;
+      await panelPage.reload();
+      await panelPage.locator('#companion-workspace').waitFor({state:'visible',timeout:25000});
       await panelPage.locator('#compact-chat-name').filter({hasText:'Cliente de prueba'}).waitFor({state:'visible'});
-      assert.equal(new URL(await panelPage.evaluate(()=>NexoCompanion.loginUrl)).searchParams.get('panel'),'1');
       assert.equal((await panelPage.evaluate(()=>NexoCompanion.getContext())).active,true);
       const loginCount=apiLoginCalls, nativeUrl=panelPage.url();
       await panelPage.evaluate(()=>{window.__persistentPanelSentinel='document-kept-with-unsaved-form';});
@@ -265,10 +314,10 @@ const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
       assert.equal(saved.revision,2);assert.equal(JSON.parse(saved.body).clients[0].name,'Contacto editado con otra pestaña abierta');
       assert.equal(activeBrowserTabId,pages.get(other),'Editing the CRM must not steal focus from the other website.');
       fs.mkdirSync('/workspace/work/deliverables',{recursive:true});
-      await panelPage.screenshot({path:'/workspace/work/deliverables/persistent-panel-v1.4.0.png',fullPage:false});
+      await panelPage.screenshot({path:'/workspace/work/deliverables/persistent-panel-v1.4.1.png',fullPage:false});
       await panelPage.locator('#nexo-return-to-whatsapp').click();
       await until(()=>Promise.resolve(activeBrowserTabId===pages.get(whatsapp)),'Explicit return must select the same window WhatsApp tab.');
-      assert.equal((await panelPage.evaluate(()=>NexoCompanion.getContext())).active,true);
+      await until(async()=>(await panelPage.evaluate(()=>NexoCompanion.getContext())).active===true,'The panel must observe the explicitly selected WhatsApp after concurrent activation wakeups settle.');
       assert.equal(apiLoginCalls,loginCount);assert.equal(panelPage.url(),nativeUrl);
       assert.equal(createdTabs,0);assert.equal(bridgeCalls,0);
       assert(!panelCalls.some(item=>item.type==='open-options'),'No installation/login flow requires an extra options page.');
@@ -286,7 +335,7 @@ const PANEL_DOCUMENT_ID = 'synthetic-native-panel-document';
       assert(!privateState.includes(PASSWORD));
       for(const value of issuedTokens){assert(!JSON.stringify(local).includes(value));assert(!JSON.stringify(broadcasts).includes(value));}
       assert.deepEqual(errors.filter(message=>!/No se pudo verificar la sesión privada|Tu sesión caducó|Sesión no válida|401|Service Worker/i.test(message)),[]);
-      console.log('Persistent panel passed: real packaged top-level CRM, inline password login, global window-scoped open, no WhatsApp iframe duplicate, active-tab change preserves the same document/form/session, off-WhatsApp CRM D1 write without focus stealing, capture/draft blocked, exact-window return, foreign-window identity ignored and CRM usable after WhatsApp closes.');
+      console.log('Persistent panel passed: optional sender document/frame fields absent and live Chrome SIDE_PANEL window/tab metadata -1, inline auth/session reuse/revocation despite unavailable routing, no legacy configuration card or auxiliary login page, real packaged top-level CRM, global window-scoped open, no WhatsApp iframe duplicate, active-tab change preserves the same document/form/session, off-WhatsApp CRM D1 write without focus stealing, capture/draft blocked, exact-window return, foreign-window identity ignored and CRM usable after WhatsApp closes.');
       console.log('Chrome sidePanel/window APIs and WhatsApp are mocked; real Worker/D1, packaged UI and background router run. This does not install MV3 or test the owner Chrome.');
       return;
     }

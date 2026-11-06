@@ -1,7 +1,11 @@
 import { DEFAULT_ORIGIN } from "./policy.mjs";
 
 async function rpc(type, input = {}) {
-  const reply = await chrome.runtime.sendMessage({ channel: "nexo", type, ...input });
+  // Authentication does not depend on WhatsApp or Chrome's optional sender
+  // metadata. Routing hints are used only to associate this native panel.
+  let panel = {};
+  if (nativePanel) try { panel = await nativePanelIdentity(); } catch {}
+  const reply = await chrome.runtime.sendMessage({ channel: "nexo", type, ...input, ...panel });
   if (!reply?.ok) throw Error(reply?.error || "La extensión no pudo completar la operación.");
   return reply.result;
 }
@@ -21,6 +25,39 @@ async function copyText(text) {
 const parameters = new URLSearchParams(location.search);
 const embedded = parameters.get("embedded") === "1";
 const nativePanel = parameters.get("panel") === "1" && !embedded;
+let panelInstance = "", panelIdentityPending;
+if (nativePanel) {
+  try {
+    // Chrome reports -1 as the window of SIDE_PANEL contexts, and can omit
+    // documentId from MessageSender. Give this live document a unique URL so
+    // getContexts can distinguish two identical panels in different windows.
+    panelInstance = crypto.randomUUID().replaceAll("-", "");
+    const ownUrl = new URL(location.href);
+    ownUrl.searchParams.set("panelInstance", panelInstance);
+    history.replaceState(history.state, "", ownUrl.href);
+  } catch { panelInstance = ""; }
+}
+async function nativePanelIdentity() {
+  if (!chrome.windows?.getCurrent || !chrome.runtime.getContexts)
+    throw Error("No se pudo identificar esta ventana de WhatsApp.");
+  if (panelIdentityPending) return panelIdentityPending;
+  const pending = (async () => {
+    const [ownWindow, contexts] = await Promise.all([
+      chrome.windows.getCurrent(),
+      chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"], documentUrls: [location.href] }),
+    ]);
+    if (!Number.isInteger(ownWindow?.id) || ownWindow.id < 0)
+      throw Error("No se pudo identificar esta ventana de WhatsApp.");
+    const matches = contexts.filter(context => context.contextType === "SIDE_PANEL" &&
+      context.documentUrl === location.href && typeof context.contextId === "string" && context.contextId &&
+      (context.windowId === -1 || context.windowId === ownWindow.id));
+    if (matches.length !== 1) throw Error("No se pudo identificar esta barra de WhatsApp.");
+    return { panelContextId: matches[0].contextId, panelWindowId: ownWindow.id, panelInstance };
+  })();
+  panelIdentityPending = pending;
+  try { return await pending; }
+  finally { if (panelIdentityPending === pending) panelIdentityPending = null; }
+}
 const optionsUrl = chrome.runtime.getURL("options.html");
 const workspaceUrl = new URL(chrome.runtime.getURL("app/index.html"));
 if (embedded) workspaceUrl.searchParams.set("embedded", "1");
@@ -28,7 +65,8 @@ if (nativePanel) workspaceUrl.searchParams.set("panel", "1");
 const login = new URL(workspaceUrl);
 login.searchParams.set("setup", "1");
 const loginUrl = login.href;
-let configuredOrigin = "", configuredWaTabId, configuredPanelWindowId, authenticationProvider = "", passwordConfigured = true;
+let configuredOrigin = nativePanel ? DEFAULT_ORIGIN : "", configuredWaTabId, configuredPanelWindowId;
+let authenticationProvider = nativePanel ? "password" : "", passwordConfigured = true;
 let nativeChatActive = false;
 let nativeContextRead = 0, lastNativeContext = null;
 let embeddedVisible = !embedded;
@@ -107,6 +145,10 @@ function nativeChatNotice(message) {
 }
 function recordNativeContext(context) {
   if (!nativePanel) return context;
+  // The configuration can precede Chrome's live-context registration. A later
+  // verified background response establishes the window without another login.
+  if (!Number.isInteger(configuredPanelWindowId) && Number.isInteger(context?.windowId) && context.windowId >= 0)
+    configuredPanelWindowId = context.windowId;
   if (!Number.isInteger(configuredPanelWindowId) || context?.windowId !== configuredPanelWindowId)
     throw Error("Actualiza el panel para volver a conectar esta ventana de WhatsApp.");
   configuredWaTabId = context.tabId;
@@ -135,7 +177,7 @@ async function readContext() {
 globalThis.NexoCompanion = Object.freeze({
   compact: true,
   loginUrl,
-  showLogin: message => setupCard(message || "Inicia sesión en tu CRM para volver a consultar y guardar tus operaciones."),
+  showLogin: message => setupCard(message || "Inicia sesión aquí para volver a consultar y guardar tus operaciones."),
   isVisible: visible,
   copyText,
   async fetch(path, options = {}) {
@@ -191,7 +233,8 @@ globalThis.NexoCompanion = Object.freeze({
 });
 
 function setupCard(message) {
-  if (authenticationProvider === "password") return nativeSetupCard(message);
+  if (authenticationProvider === "password" || (nativePanel && (!configuredOrigin || configuredOrigin === DEFAULT_ORIGIN)))
+    return nativeSetupCard(message);
   phase = "setup";
   embeddedVisible = false;
   announceVisibility();
@@ -311,7 +354,9 @@ function nativeSetupCard(message) {
   advanced.textContent = "Usar otro CRM"; advanced.className = "nexo-setup-note";
   const note = document.createElement("p");
   note.className = "nexo-setup-note"; note.textContent = "Usa las mismas credenciales que en la web.";
-  main.append(logo, label, title, description, form, status, advanced, note);
+  main.append(logo, label, title, description, form, status);
+  if (!nativePanel || configuredOrigin !== DEFAULT_ORIGIN) main.append(advanced);
+  main.append(note);
   document.body.append(main); document.body.hidden = false;
   nativePanelShell();
   form.addEventListener("submit", async event => {
@@ -442,7 +487,7 @@ async function refreshConnection() {
     // a stale revision from an earlier session. Setup contains no unsaved forms.
     location.replace(workspaceUrl.href);
   } catch (error) {
-    setupStatus(error?.message || "Completa el ingreso en tu CRM y vuelve a este panel.");
+    setupStatus(error?.message || "No se pudo verificar tu sesión. Vuelve a intentarlo aquí.");
   } finally {
     verifyingOrigin = "";
     connectionCheckRunning = false;
@@ -504,7 +549,12 @@ try {
     try { sessionStorage.removeItem(recoveryKey); } catch {}
   }
 } catch (error) {
-  setupCard(error?.message || "No se pudo conectar con tu CRM. Revisa la configuración y vuelve a intentarlo.");
+  if (nativePanel && configuredOrigin === DEFAULT_ORIGIN) {
+    nativeSetupCard();
+    setupStatus("No se pudo verificar la sesión. Introduce tu correo y contraseña aquí.");
+  } else {
+    setupCard(error?.message || "No se pudo conectar con tu CRM. Revisa la configuración y vuelve a intentarlo.");
+  }
 } finally {
   bootComplete = true;
   if (connectionCheckPending) scheduleConnectionCheck();

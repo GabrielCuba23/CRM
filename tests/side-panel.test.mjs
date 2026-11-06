@@ -6,7 +6,12 @@ import * as policy from "../extension/policy.mjs";
 
 const id = "a".repeat(32), origin = "https://crm.example";
 const ext = `chrome-extension://${id}/`;
-const native = { id, url: ext + "app/index.html?panel=1", frameId: 0, documentId: "native-panel-document" };
+const panelContextId = "native-panel-context", panelDocumentId = "native-panel-document";
+const panelInstance = "0123456789abcdef0123456789abcdef";
+const panelUrl = ext + "app/index.html?panel=1&panelInstance=" + panelInstance;
+// Extension-page MessageSender metadata is optional: real Chrome side panels
+// do not consistently include the tab/document fields supplied by old mocks.
+const native = { id, url: ext + "app/index.html?panel=1" };
 
 async function fixture() {
   const calls = [], local = { crmOrigin: origin }, session = { "panelWhatsApp:1": 11, "panelWhatsApp:2": 21 };
@@ -20,7 +25,7 @@ async function fixture() {
     name: `Contacto ${tab.id}`, phone: tab.id === 11 ? "51999999999" : tab.id === 13 ? "51988888888" : "51977777777", chatId: `wa:peer-${tab.id}@lid`, phoneSource: "visible",
   }]));
   let listener, actionListener, activationListener, removalListener, focusedWindow = 1, beforeAdapterReply, beforeTabGet;
-  let contexts = [{ contextType: "SIDE_PANEL", documentId: native.documentId, documentUrl: native.url, windowId: 1 }];
+  let contexts = [{ contextType: "SIDE_PANEL", contextId: panelContextId, documentId: panelDocumentId, documentUrl: panelUrl, windowId: -1, tabId: -1 }];
   const area = values => ({
     async get(key) { calls.push({ type: "storage-read", key }); return { [key]: structuredClone(values[key]) }; },
     async set(update) { Object.assign(values, structuredClone(update)); },
@@ -33,7 +38,7 @@ async function fixture() {
       getManifest: () => ({ side_panel: { default_path: "app/index.html?panel=1" } }),
       onMessage: { addListener(fn) { listener = fn; } }, onInstalled: { addListener() {} },
       async openOptionsPage() { calls.push({ type: "open-options" }); },
-      async getContexts(filter) { calls.push({ type: "get-contexts", filter }); return contexts.filter(item => (!filter.documentIds || filter.documentIds.includes(item.documentId)) && (!filter.contextTypes || filter.contextTypes.includes(item.contextType))); },
+      async getContexts(filter = {}) { calls.push({ type: "get-contexts", filter }); return contexts.filter(item => (!filter.documentIds || filter.documentIds.includes(item.documentId)) && (!filter.contextIds || filter.contextIds.includes(item.contextId)) && (!filter.contextTypes || filter.contextTypes.includes(item.contextType)) && (!filter.documentUrls || filter.documentUrls.includes(item.documentUrl)) && (!filter.windowIds || filter.windowIds.includes(item.windowId))); },
       async sendMessage(message) { calls.push({ type: "broadcast", message: structuredClone(message) }); },
     },
     sidePanel: {
@@ -45,7 +50,7 @@ async function fixture() {
     permissions: { async contains() { return true; } },
     action: { onClicked: { addListener(fn) { actionListener = fn; } } },
     windows: {
-      async get(windowId) { return { id: windowId, focused: focusedWindow === windowId }; },
+      async get(windowId) { if (![1, 2].includes(windowId)) throw Error("Closed window"); return { id: windowId, focused: focusedWindow === windowId }; },
       async update(windowId, input) { if (input.focused) focusedWindow = windowId; calls.push({ type: "window-update", windowId, input }); return { id: windowId, focused: focusedWindow === windowId }; },
     },
     tabs: {
@@ -78,7 +83,7 @@ async function fixture() {
   vm.runInNewContext(source.replace(/^import[^\n]+\n/, ""), { chrome, ...policy, URL, TextEncoder, TextDecoder, setTimeout, clearTimeout, AbortController });
   await new Promise(setImmediate);
   const invoke = (message, sender = native) => new Promise(resolve => {
-    assert.equal(listener({ channel: "nexo", expectedOrigin: origin, ...message }, sender, resolve), true);
+    assert.equal(listener({ channel: "nexo", expectedOrigin: origin, panelContextId, panelWindowId: 1, panelInstance, ...message }, sender, resolve), true);
   });
   async function activate(tabId) { const tab = tabs.get(tabId); for (const item of tabs.values()) if (item.windowId === tab.windowId) item.active = item.id === tabId; activationListener?.({ tabId, windowId: tab.windowId }); await new Promise(setImmediate); }
   return { invoke, calls, local, session, tabs, peers, chrome, activate, beforeReply: value => { beforeAdapterReply = value; }, beforeGet: value => { beforeTabGet = value; }, focus: value => { focusedWindow = value; }, contexts: value => { contexts = value; }, action: tab => actionListener(tab), remove: async tabId => { const windowId = tabs.get(tabId)?.windowId; tabs.delete(tabId); removalListener?.(tabId, { windowId, isWindowClosing: false }); await new Promise(setImmediate); } };
@@ -130,16 +135,16 @@ test("A native panel retains only its window's WhatsApp target when another webs
 test("Native panel identity comes from a verified SIDE_PANEL document, never query parameters or content senders", async () => {
   const f = await fixture();
   for (const sender of [
-    { ...native, documentId: undefined },
     { ...native, documentId: "unverified-document" },
+    { ...native, tab: { ...f.tabs.get(11) } },
     { ...native, frameId: 7, tab: { ...f.tabs.get(11) } },
     { ...native, id: "b".repeat(32) },
     { id, url: policy.WA_ORIGIN + "/", frameId: 0, tab: { ...f.tabs.get(11) } },
   ]) assert.equal((await f.invoke({ type: "wa.context", windowId: 1 }, sender)).ok, false);
-  f.contexts([{ contextType: "TAB", documentId: native.documentId, documentUrl: native.url, windowId: 1 }]);
+  f.contexts([{ contextType: "TAB", contextId: panelContextId, documentId: panelDocumentId, documentUrl: panelUrl, windowId: 1 }]);
   assert.equal((await f.invoke({ type: "wa.context" })).ok, false);
-  f.contexts([{ contextType: "SIDE_PANEL", documentId: native.documentId, documentUrl: ext + "app/index.html?panel=1", windowId: 2 }]);
-  const otherWindow = await f.invoke({ type: "wa.context", windowId: 1 });
+  f.contexts([{ contextType: "SIDE_PANEL", contextId: panelContextId, documentId: panelDocumentId, documentUrl: panelUrl, windowId: 2 }]);
+  const otherWindow = await f.invoke({ type: "wa.context", windowId: 1, panelWindowId: 2 });
   assert.equal(otherWindow.result.windowId, 2); assert.equal(otherWindow.result.tabId, 21);
 });
 
@@ -214,4 +219,94 @@ test("An unfocused window cannot read message bodies or draft, and stale CRM vie
   f.local.crmOrigin = "https://different-crm.example";
   const stale = await f.invoke({ type: "wa.context", expectedOrigin: origin });
   assert.equal(stale.ok, false); assert.match(stale.error, /CRM|Recarga/);
+});
+
+
+
+test("Native CRM configuration and inline authentication remain available when sender document metadata is omitted", async () => {
+  const f = await fixture();
+  for (const sender of [native, { ...native, frameId: 0 }, { ...native, documentId: panelDocumentId }]) {
+    const configuration = await f.invoke({ type: "configuration.get" }, sender);
+    assert.equal(configuration.ok, true, "Optional Chrome document metadata must not prevent the inline login from loading.");
+    assert.equal(configuration.result.origin, origin);
+    assert.equal(configuration.result.panelWindowId, 1);
+    const context = await f.invoke({ type: "wa.context" }, sender);
+    assert.equal(context.ok, true); assert.equal(context.result.windowId, 1); assert.equal(context.result.tabId, 11);
+  }
+  f.contexts([{ contextType: "SIDE_PANEL", contextId: panelContextId, documentUrl: panelUrl, windowId: 1, tabId: -1 }]);
+  assert.equal((await f.invoke({ type: "wa.context" })).result.windowId, 1, "A live browser context ID is sufficient when its optional documentId is absent too.");
+});
+
+test("Panel context hints must identify a live exact-URL SIDE_PANEL and cannot guess a window", async () => {
+  const f = await fixture();
+  const first = { contextType: "SIDE_PANEL", contextId: panelContextId, documentId: panelDocumentId, documentUrl: panelUrl, windowId: 1, tabId: -1 };
+  const second = { ...first, contextId: "other-panel-context", documentId: "other-panel-document", windowId: 2 };
+  f.contexts([first, second]);
+  const missing = await f.invoke({ type: "wa.context", panelContextId: undefined, windowId: 1 });
+  assert.equal(missing.ok, false, "Multiple live panels cannot be resolved from a raw requested window or by choosing the first one.");
+  for (const hint of ["unknown-context", "", 1, null]) {
+    assert.equal((await f.invoke({ type: "wa.context", panelContextId: hint, windowId: 1 })).ok, false);
+  }
+  const firstWindow = await f.invoke({ type: "wa.context", windowId: 2 });
+  assert.equal(firstWindow.result.windowId, 1); assert.equal(firstWindow.result.tabId, 11);
+  const secondWindow = await f.invoke({ type: "wa.context", panelContextId: second.contextId, panelWindowId: 2, windowId: 1 });
+  assert.equal(secondWindow.result.windowId, 2); assert.equal(secondWindow.result.tabId, 21);
+  assert.equal((await f.invoke({ type: "wa.context", panelContextId: second.contextId }, { ...native, documentId: panelDocumentId })).ok, false, "Provided sender document metadata must agree with the selected live context.");
+  f.contexts([{ ...first, documentUrl: ext + "options.html" }]);
+  assert.equal((await f.invoke({ type: "wa.context" })).ok, false);
+  f.contexts([{ ...first, windowId: undefined }]);
+  assert.equal((await f.invoke({ type: "wa.context" })).result.windowId, 1, "Optional context window metadata can use the validated browser UI window hint.");
+  f.contexts([{ ...first, contextType: "TAB", tabId: 11 }]);
+  assert.equal((await f.invoke({ type: "wa.context" })).ok, false);
+});
+
+test("Panel routing failure does not block CRM configuration but still blocks WhatsApp operations", async () => {
+  const f = await fixture();
+  f.contexts([]);
+  const configuration = await f.invoke({ type: "configuration.get" });
+  assert.equal(configuration.ok, true);
+  assert.equal(configuration.result.origin, origin);
+  assert.equal(configuration.result.panelWindowId, undefined);
+  assert.equal(typeof configuration.result.panelRoutingError, "string");
+  for (const type of ["wa.context", "wa.open", "wa.capture", "wa.prepare"]) {
+    const response = await f.invoke({ type, input: { phone: "51999999999", text: "Do not cross a missing context" } });
+    assert.equal(response.ok, false, type);
+  }
+  assert(!f.calls.some(item => item.type === "adapter" || item.type === "tab-create" || item.type === "tab-update" || item.type === "open-options"));
+});
+
+
+test("Real Chrome unassociated SIDE_PANEL window metadata uses only a validated browser UI window hint", async () => {
+  const f = await fixture();
+  const nativeChrome = { contextType: "SIDE_PANEL", contextId: panelContextId, documentUrl: panelUrl, windowId: -1, tabId: -1 };
+  f.contexts([nativeChrome]);
+  const first = await f.invoke({ type: "wa.context" });
+  assert.equal(first.ok, true); assert.equal(first.result.windowId, 1); assert.equal(first.result.tabId, 11);
+  for (const panelWindowId of [undefined, -1, "1", 999, null]) {
+    assert.equal((await f.invoke({ type: "wa.context", panelWindowId })).ok, false, String(panelWindowId));
+  }
+  assert.equal((await f.invoke({ type: "wa.context", panelContextId: undefined })).ok, false, "A window hint without a live SIDE_PANEL identity cannot authorize WhatsApp routing.");
+  const rebound = await f.invoke({ type: "wa.context", panelWindowId: 2 });
+  assert.equal(rebound.ok, false, "A live context already bound to one Chrome window cannot be rebound to another.");
+  f.contexts([nativeChrome, { ...nativeChrome, contextId: "actual-second-context" }]);
+  const second = await f.invoke({ type: "wa.context", panelContextId: "actual-second-context", panelWindowId: 2 });
+  assert.equal(second.ok, true); assert.equal(second.result.windowId, 2); assert.equal(second.result.tabId, 21);
+});
+
+
+test("Unassociated native contexts are selected by their per-document URL nonce rather than array order", async () => {
+  const f = await fixture();
+  const otherInstance = "abcdef0123456789abcdef0123456789";
+  const first = { contextType: "SIDE_PANEL", contextId: panelContextId, documentUrl: panelUrl, windowId: -1, tabId: -1 };
+  const other = { ...first, contextId: "other-live-instance", documentUrl: native.url + "&panelInstance=" + otherInstance };
+  f.contexts([other, first]);
+  const own = await f.invoke({ type: "wa.context" });
+  assert.equal(own.ok, true); assert.equal(own.result.windowId, 1); assert.equal(own.result.tabId, 11);
+  for (const input of [
+    { panelInstance: undefined }, { panelInstance: "" }, { panelInstance: "unknown" },
+    { panelInstance: otherInstance }, { panelContextId: other.contextId },
+    { panelContextId: "missing-context", panelInstance: otherInstance },
+  ]) assert.equal((await f.invoke({ type: "wa.context", ...input })).ok, false, JSON.stringify(input));
+  const second = await f.invoke({ type: "wa.context", panelContextId: other.contextId, panelInstance: otherInstance, panelWindowId: 2 });
+  assert.equal(second.ok, true); assert.equal(second.result.windowId, 2); assert.equal(second.result.tabId, 21);
 });

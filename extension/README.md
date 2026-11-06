@@ -39,7 +39,7 @@ CRM; este requisito no se aplica al CRM principal con contraseña.
 
 ### Actualizar una instalación anterior
 
-Reemplaza los archivos de la carpeta original por los del ZIP 1.4.0. Conserva la
+Reemplaza los archivos de la carpeta original por los del ZIP 1.4.1. Conserva la
 misma ruta para mantener la configuración. En `chrome://extensions` pulsa
 **Recargar** en Nexo y después recarga WhatsApp Web. La pestaña antigua que empieza
 por `chrome-extension://` ya no es necesaria para trabajar. Mantén una sola
@@ -54,6 +54,13 @@ Fuera de WhatsApp puedes consultar y gestionar clientes, servicios y cuentas;
 para leer textos o preparar un borrador debes volver a su pestaña. No se leen
 otras páginas por tener la barra abierta. El permiso `sidePanel` solo permite
 mostrar esta interfaz persistente del navegador.
+
+La versión 1.4.1 corrige el reconocimiento del panel en Chrome, donde los datos
+del remitente pueden omitir el documento y los contextos laterales indican una
+ventana `-1`. El acceso al CRM funciona con **Correo**, **Contraseña** e
+**Iniciar sesión** dentro de la propia barra, aunque todavía no se pueda
+asociar su pestaña de WhatsApp. El CRM principal no vuelve a mostrar
+**Configurar CRM** ni **Ya inicié sesión: conectar aquí** por ese fallo.
 
 La versión 1.3.1 permite **Crear ficha nueva** desde **Chat actual**, junto a
 **Vincular contacto existente**. Completa los datos de la conversación, comprueba

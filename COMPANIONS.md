@@ -29,7 +29,7 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión con barra persistente 1.4.0](https://drive.google.com/file/d/1ONr2jnlfHO_U9kn7Wy3CeFbcLWHyyVup/view)
+1. Descarga la [extensión con acceso directo 1.4.1](https://drive.google.com/file/d/17hrXeWEx2JRedLuwF2w8qeRPs6p2vSC2/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -45,6 +45,10 @@ Si ya instalaste una versión anterior, reemplaza los archivos en la misma carpe
 pulsa **Recargar** en la tarjeta de Nexo en `chrome://extensions` y recarga
 WhatsApp Web. Así conservas la dirección del CRM configurada.
 Conserva una sola instalación de Nexo activa para que no compitan varios paneles.
+
+La 1.4.1 corrige el fallo de la 1.4.0 que podía mostrar **Configurar CRM** dentro
+de una barra ya abierta. El inicio de sesión con correo y contraseña permanece
+en esa misma barra y funciona aunque la pestaña de WhatsApp aún no esté asociada.
 
 El ZIP sirve para instalación local. Esta entrega no es una publicación en
 Chrome Web Store. La sesión con contraseña caduca a las ocho horas y requiere
