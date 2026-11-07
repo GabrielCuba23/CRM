@@ -158,7 +158,7 @@ html.nexo-native-panel { min-width: 0; width: 100%; overflow-x: hidden; }
 body.nexo-native-panel { min-width: 0; width: 100%; margin: 0; }
 #nexo-native-panel-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
@@ -168,7 +168,7 @@ body.nexo-native-panel { min-width: 0; width: 100%; margin: 0; }
   font: 13px/1.4 system-ui, sans-serif;
 }
 #nexo-native-panel-header > strong { font-size: 15px; }
-#nexo-return-to-whatsapp {
+#nexo-return-to-whatsapp, #nexo-change-password {
   border: 0;
   border-radius: 7px;
   padding: 7px 9px;
@@ -177,10 +177,21 @@ body.nexo-native-panel { min-width: 0; width: 100%; margin: 0; }
   font: 600 11px/1.4 system-ui, sans-serif;
   cursor: pointer;
 }
-#nexo-return-to-whatsapp:focus-visible { outline: 2px solid #008069; outline-offset: 2px; }
+#nexo-return-to-whatsapp:focus-visible, #nexo-change-password:focus-visible { outline: 2px solid #008069; outline-offset: 2px; }
 #nexo-return-to-whatsapp:disabled { opacity: .6; cursor: wait; }
 #nexo-native-chat-notice { grid-column: 1 / -1; margin: 0; font-size: 11px; line-height: 1.5; color: #526b60; }
 #nexo-native-chat-notice[hidden] { display: none; }
 .dark #nexo-native-panel-header { background: #202c33; border-color: #34434b; color: #e9edef; }
 .dark #nexo-return-to-whatsapp { background: #34434b; color: #d9fdd3; }
 .dark #nexo-native-chat-notice { color: #aebac1; }
+#nexo-change-password[hidden] { display:none; }
+#nexo-password-dialog { box-sizing:border-box; color:#173a2e; background:#fff; border:1px solid #d5e1dc; border-radius:12px; font:14px/1.5 system-ui,sans-serif; }
+#nexo-password-dialog::backdrop { background:#111b2166; }
+#nexo-password-dialog h2 { margin:0 0 12px; }
+#nexo-password-form, #nexo-password-form label { display:grid; gap:8px; }
+#nexo-password-form { gap:16px; }
+#nexo-password-form input { box-sizing:border-box; width:100%; min-width:0; padding:10px; border:1px solid #cad6da; border-radius:8px; font:inherit; }
+#nexo-password-form button { padding:10px 12px; border:0; border-radius:8px; font:inherit; cursor:pointer; }
+#nexo-password-form button[type=submit] { background:#008069; color:#fff; }
+.nexo-password-actions { display:flex; gap:8px; flex-wrap:wrap; }
+#nexo-password-status { color:#b42332; margin:0; }

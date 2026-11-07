@@ -1,6 +1,6 @@
 # Chatbot, flujos y cinco líneas · Nexo 1.7.0
 
-Publicado en el CRM principal. Descarga la [extensión 1.7.0](https://drive.google.com/file/d/1nvrSId8VEoJNKbp7qmK88WtRsu_6KPNG/view)
+Publicado en el CRM principal. Descarga la [extensión 1.8.0](https://drive.google.com/file/d/1vL-NuTV0AEfr4zLvod25-NBhXpb7sdvX/view)
 y actualiza los archivos en la misma carpeta instalada; después pulsa Recargar
 en `chrome://extensions` y recarga WhatsApp Web. Conserva una sola instalación
 de Nexo activa. Las líneas y reglas existentes se conservan. Los nuevos flujos requieren guardar su configuración.

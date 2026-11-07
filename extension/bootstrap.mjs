@@ -1,4 +1,5 @@
 import { DEFAULT_ORIGIN } from "./policy.mjs";
+import { openPasswordDialog } from "./account.mjs";
 
 async function rpc(type, input = {}) {
   // Authentication does not depend on WhatsApp or Chrome's optional sender
@@ -110,11 +111,23 @@ document.addEventListener("visibilitychange", announceVisibility);
 function nativePanelShell() {
   if (!nativePanel) return null;
   let header = document.querySelector("#nexo-native-panel-header");
-  if (header) return header;
+  if (header) {
+    header.querySelector('#nexo-change-password').hidden = phase !== 'active' || authenticationProvider !== 'password';
+    return header;
+  }
   header = document.createElement("header");
   header.id = "nexo-native-panel-header";
   const brand = document.createElement("strong");
   brand.textContent = "Nexo CRM";
+  const account = document.createElement("button");
+  account.type = "button";
+  account.id = "nexo-change-password";
+  account.textContent = "Contraseña";
+  account.hidden = phase !== "active" || authenticationProvider !== "password";
+  account.addEventListener("click", () => openPasswordDialog({
+    request: (path, options) => globalThis.NexoCompanion.fetch(path, options),
+    onChanged: message => setupCard(message),
+  }));
   const open = document.createElement("button");
   open.type = "button";
   open.id = "nexo-return-to-whatsapp";
@@ -133,7 +146,7 @@ function nativePanelShell() {
   notice.setAttribute("role", "status");
   notice.setAttribute("aria-live", "polite");
   notice.hidden = true;
-  header.append(brand, open, notice);
+  header.append(brand, account, open, notice);
   document.body.prepend(header);
   return header;
 }

@@ -20,10 +20,10 @@ el usuario puede autorizar otra instancia en las opciones avanzadas.
 
 - **Acceso:** correo y contraseña de la cuenta Nexo para iniciar sesión y una
   credencial temporal para autenticar las operaciones posteriores.
-- **Datos del CRM:** nombres, teléfonos, correos, servicios contratados, fechas,
+- **Datos del CRM:** nombres, teléfonos, usuarios de WhatsApp, correos, servicios contratados, fechas,
   perfiles, notas, precios, cobros y otros registros que el administrador guarde
   en el negocio. Las cuentas pueden incluir correos y contraseñas de servicios.
-- **Conversación abierta:** nombre, teléfono cuando es visible e identificador
+- **Conversación abierta:** nombre, teléfono o @usuario cuando son visibles e identificador
   de conversación cuando WhatsApp lo expone, para mostrar la ficha correcta.
 - **Textos de conversaciones:** solo los textos cargados y visibles que el
   usuario solicite guardar. El registro periódico requiere activación expresa y
@@ -66,7 +66,7 @@ a los adjuntos ni se envían a un proveedor de publicidad. La implementación no
 activa un servicio de almacenamiento de pago adicional.
 
 La extensión guarda localmente en Chrome el dominio elegido y los vínculos de
-conversaciones que el usuario confirme. Los vínculos con una identidad estable
+conversaciones que el usuario confirme. Los vínculos por teléfono o usuario con una identidad estable
 se separan por CRM; los que solo identifican la conversación abierta no se
 recuerdan como vínculos estables tras navegar a otro chat.
 El almacenamiento de sesión también conserva el identificador de la pestaña de

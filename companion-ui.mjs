@@ -1,4 +1,5 @@
 import { matchContact, importVisibleMessages, normalizeCompanionPhone } from "./companions/conversations.mjs";
+import { canonicalUsername, contactKey, contactUsername } from "./companions/contact-identity.mjs";
 import { initializeOutreach } from "./outreach-ui.mjs";
 import { initializeEngagement } from "./engagement-ui.mjs";
 import { availableProfiles, cents, fillTemplate, formatDate, money, normalizePhone, subscriptionStatus, todayLima } from "./crm.mjs";
@@ -75,12 +76,16 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   function clientById(id) { return getState().clients.find(item => item.id === id); }
   function accountById(id) { return getState().accounts.find(item => item.id === id); }
   function contactPhone(value) { try { return normalizePhone(value); } catch { return ""; } }
-  function groupKey(client) { const phone = contactPhone(client.phone); return phone ? "phone:" + phone : "client:" + client.id; }
+  function username(value) { try { return canonicalUsername(value); } catch { return ""; } }
+  function groupKey(client) { return contactKey(getState().clients, client); }
+  function contactLabel(group) { return [group.phone ? "+" + group.phone : "", group.username || ""].filter(Boolean).join(" · ") || "Sin teléfono ni usuario"; }
   function groups() {
     const result = new Map();
     for (const client of getState().clients) {
       const key = groupKey(client);
-      if (!result.has(key)) result.set(key, { key, phone: contactPhone(client.phone), clients: [] });
+      if (!result.has(key)) result.set(key, { key, phone: contactPhone(client.phone), username: contactUsername(client), clients: [] });
+      if (!result.get(key).phone) result.get(key).phone = contactPhone(client.phone);
+      if (!result.get(key).username) result.get(key).username = contactUsername(client);
       result.get(key).clients.push(client);
     }
     for (const group of result.values()) group.clients.sort((a, b) => Number(Boolean(a.archived)) - Number(Boolean(b.archived)) || a.name.localeCompare(b.name, "es"));
@@ -90,7 +95,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   function chatIdentified() { return Boolean(currentContext?.chatId && !currentContext.isGroup && !currentContext.ambiguous); }
   function clientBelongsToChat(client) {
     const match = matchedChat();
-    return chatIdentified() && Boolean(match.phone) && match.matches.some(item => item.id === client?.id);
+    return chatIdentified() && match.matches.some(item => item.id === client?.id);
   }
   async function run(action, button) {
     if (localBusy || isBusy()) return;
@@ -192,7 +197,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     name.id = "compact-chat-name";
     const phone = node("p", "", "compact-muted");
     phone.id = "compact-chat-phone";
-    phone.textContent = match.phone ? "+" + match.phone : "";
+    phone.textContent = contactLabel({ phone: match.phone, username: match.username || username(currentContext?.username) });
     if (match.matches.length && currentContext?.name && currentContext.name !== match.matches[0].name && !contactPhone(currentContext.name))
       phone.textContent += " · WhatsApp: " + currentContext.name;
     heading.append(name, phone);
@@ -211,20 +216,20 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       content.append(box);
       return;
     }
-    if (!match.phone) {
+    if (!match.phone && !match.username) {
       const box = empty("Conecta su ficha", "Vincula un contacto del CRM o crea su primera ficha desde este chat.");
       box.append(linkContactButton(), newChatClientButton());
       content.append(box);
       return;
     }
     if (!match.matches.length) {
-      const box = empty("Sin ficha para este número", "Si ya registraste a esta persona, busca su contacto antes de crear otro.");
+      const box = empty(match.reason === "ambiguous-username" || match.reason === "identity-conflict" ? "Revisa la identidad del contacto" : "Sin ficha para este contacto", "Si ya registraste a esta persona, busca su contacto antes de crear otro.");
       box.append(linkContactButton());
       box.append(newChatClientButton());
       content.append(box);
       return;
     }
-    if (currentContext.phoneSource === "manual") {
+    if (currentContext.phoneSource === "manual" || currentContext.usernameSource === "manual") {
       const linked = details("Chat vinculado", "manual-link");
       linked.classList.add("compact-link-tools");
       linked.append(node("p", "Este chat usa la ficha que elegiste. Sus datos y servicios siguen guardados en el CRM.", "compact-muted"),
@@ -232,7 +237,8 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
         button("Desvincular chat", () => unbindPhone(), "compact-text-button", "compact-unbind"));
       content.append(linked);
     }
-    renderClientDetail({ key: "phone:" + match.phone, phone: match.phone, clients: match.matches }, true);
+    const group = groups().find(item => item.clients.some(client => client.id === match.matches[0].id));
+    renderClientDetail(group, true);
   }
   function linkContactButton() {
     return button("Vincular contacto existente", () => {
@@ -248,16 +254,19 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       const before = await companion.getContext();
       if (version !== contextVersion || identityKey(before) !== expected || !before?.chatId || before.isGroup || before.ambiguous)
         throw Error("El chat cambió. Revisa la conversación antes de crear su ficha.");
-      openClientForm({ name: before.name || "", phone: contactPhone(before.phone), chatDraft: { context: { ...before }, version } });
+      openClientForm({ name: before.name || "", phone: contactPhone(before.phone), whatsappUsername: username(before.username), chatDraft: { context: { ...before }, version } });
     }, "compact-primary", "compact-new-chat-client");
   }
-  async function requireDraftChat(draft, phone) {
+  async function requireDraftChat(draft, phone, handle = "") {
     const before = await companion.getContext();
     if (draft.version !== contextVersion || identityKey(before) !== identityKey(draft.context) || !before?.chatId || before.isGroup || before.ambiguous)
       throw Error("El chat cambió. Cierra este formulario y crea la ficha desde la conversación correcta.");
     const visiblePhone = contactPhone(before.phone);
     if (visiblePhone && visiblePhone !== phone)
       throw Error("El teléfono no coincide con este chat. Revisa el número antes de guardar.");
+    const visibleUsername = username(before.username);
+    if (visibleUsername && visibleUsername !== handle)
+      throw Error("El usuario no coincide con este chat. Revisa el usuario de WhatsApp antes de guardar.");
     return before;
   }
   function renderLink() {
@@ -267,7 +276,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     if (!chatIdentified()) section.append(node("p", "Todavía no se puede fijar este chat. Espera un momento o pulsa Actualizar antes de confirmar el vínculo.", "compact-form-error"));
     const search = node("input");
     search.type = "search";
-    search.placeholder = "Buscar cliente por nombre o teléfono";
+    search.placeholder = "Buscar nombre, teléfono o @usuario";
     search.id = "compact-link-search";
     search.value = linkSearch;
     search.setAttribute("aria-label", "Buscar ficha para vincular");
@@ -278,13 +287,13 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       if (!linkSearch.trim()) return;
       const query = linkSearch.trim().toLocaleLowerCase("es");
       const queryDigits = /^[+\d\s().-]+$/.test(query) ? query.replace(/\D/g, "") : "";
-      for (const group of groups().filter(item => item.clients.some(client => `${client.name} ${client.phone}`.toLocaleLowerCase("es").includes(query)) || queryDigits && item.phone.includes(queryDigits)).slice(0, 8)) {
+      for (const group of groups().filter(item => item.clients.some(client => `${client.name} ${client.phone} ${contactUsername(client)}`.toLocaleLowerCase("es").includes(query)) || queryDigits && item.phone.includes(queryDigits)).slice(0, 8)) {
         const client = group.clients[0];
-        const item = button("", async () => bindPhone(group.phone), "compact-result-button");
+        const item = button("", async () => bindContact(group), "compact-result-button");
         item.dataset.clientId = client.id;
-        item.append(node("strong", client.name), node("small", group.phone ? "+" + group.phone : "Sin teléfono: complétalo en Clientes"),
+        item.append(node("strong", client.name), node("small", contactLabel(group)),
           node("small", [...new Set(group.clients.map(service => service.service || "Sin servicio"))].join(" · ")));
-        item.disabled = !group.phone || !chatIdentified();
+        item.disabled = !(group.phone || group.username) || !chatIdentified();
         results.append(item);
       }
       if (!results.childNodes.length) results.append(node("p", "No hay coincidencias.", "compact-muted"));
@@ -295,18 +304,24 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     showResults();
   }
   async function bindPhone(value) {
-    const number = normalizePhone(value), expectedVersion = contextVersion;
+    const number = normalizePhone(value);
     const group = groups().find(item => item.phone === number);
     if (!group) throw Error("La ficha cambió. Actualiza los datos y vuelve a buscar el contacto.");
+    return bindContact(group);
+  }
+  async function bindContact(group) {
+    const expectedVersion = contextVersion;
+    const fresh = groups().find(item => item.key === group.key);
+    if (!fresh || !(fresh.phone || fresh.username)) throw Error("La ficha cambió. Actualiza los datos y vuelve a buscar el contacto.");
     const before = await companion.getContext();
     if (expectedVersion !== contextVersion || !before?.chatId || before.chatId !== currentContext?.chatId || before.name !== currentContext?.name || before.isGroup || before.ambiguous)
       throw Error("El chat cambió. Revisa el contacto antes de vincularlo.");
-    if (!confirm(`¿Vincular el chat «${before.name || "Contacto"}» con ${group.clients[0].name} (+${number})?\n\nSe usarán sus ${group.clients.length === 1 ? "datos y servicio existentes" : "datos y " + group.clients.length + " servicios existentes"}. No se creará otro cliente.`)) return false;
-    await companion.bindConversation({ chatId: before.chatId, phone: number, name: before.name });
+    if (!confirm(`¿Vincular el chat «${before.name || "Contacto"}» con ${fresh.clients[0].name} (${contactLabel(fresh)})?\n\nSe usarán sus ${fresh.clients.length === 1 ? "datos y servicio existentes" : "datos y " + fresh.clients.length + " servicios existentes"}. No se creará otro cliente.`)) return false;
+    await companion.bindConversation({ chatId: before.chatId, ...(fresh.phone ? { phone: fresh.phone } : {}), ...(fresh.username ? { username: fresh.username } : {}), name: before.name });
     // Binding itself may broadcast a new phone before its RPC returns. Verify
     // the peer and confirmed phone again, rather than treating that as a switch.
     const linked = await companion.getContext();
-    if (linked?.chatId !== before.chatId || linked.name !== before.name || linked.isGroup || linked.ambiguous || contactPhone(linked.phone) !== number)
+    if (linked?.chatId !== before.chatId || linked.name !== before.name || linked.isGroup || linked.ambiguous || !matchContact(getState().clients, linked).matches.some(client => client.id === fresh.clients[0].id))
       throw Error("El chat cambió. Revisa la nueva conversación.");
     updateContext(linked);
     linkingContact = false;
@@ -317,7 +332,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   async function unbindPhone() {
     const expectedVersion = contextVersion, expected = currentContext;
     const before = await companion.getContext();
-    if (expectedVersion !== contextVersion || !before?.chatId || before.chatId !== expected?.chatId || before.name !== expected?.name || before.phone !== expected?.phone || before.phoneSource !== "manual" || before.isGroup || before.ambiguous)
+    if (expectedVersion !== contextVersion || !before?.chatId || identityKey(before) !== identityKey(expected) || (before.phoneSource !== "manual" && before.usernameSource !== "manual") || before.isGroup || before.ambiguous)
       throw Error("El chat cambió. Revisa el contacto antes de desvincularlo.");
     if (!confirm("¿Desvincular este chat? La ficha, sus servicios y su historial seguirán guardados en el CRM.")) return;
     await companion.unbindConversation({ chatId: before.chatId, name: before.name });
@@ -344,7 +359,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     const search = node("input");
     search.type = "search";
     search.id = "compact-client-search";
-    search.placeholder = "Nombre, teléfono o servicio";
+    search.placeholder = "Nombre, teléfono, @usuario o servicio";
     search.setAttribute("aria-label", "Buscar clientes");
     search.value = clientSearch;
     const list = node("div", "", "compact-list");
@@ -352,13 +367,13 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     function renderList() {
       list.replaceChildren();
       const query = clientSearch.toLocaleLowerCase("es");
-      for (const group of groups().filter(item => item.clients.some(client => `${client.name} ${client.phone} ${client.service}`.toLocaleLowerCase("es").includes(query)))) {
+      for (const group of groups().filter(item => item.clients.some(client => `${client.name} ${client.phone} ${contactUsername(client)} ${client.service}`.toLocaleLowerCase("es").includes(query)))) {
         const lead = group.clients[0];
         const item = button("", () => { openedGroupKey = group.key; composeClientId = ""; selectedServiceId = ""; render(); }, "compact-list-item");
         item.dataset.groupKey = group.key;
         const avatar = node("span", lead.name.trim().slice(0, 1).toLocaleUpperCase("es"), "compact-avatar");
         const text = node("span", "", "compact-list-text");
-        text.append(node("strong", lead.name), node("small", group.phone ? "+" + group.phone : "Sin teléfono"), node("small", [...new Set(group.clients.map(client => client.service || "Sin servicio"))].join(" · ")));
+        text.append(node("strong", lead.name), node("small", contactLabel(group)), node("small", [...new Set(group.clients.map(client => client.service || "Sin servicio"))].join(" · ")));
         item.append(avatar, text, node("span", "›", "compact-chevron"));
         list.append(item);
       }
@@ -373,7 +388,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     if (!inChat) {
       const heading = node("div", "", "compact-person-heading");
       heading.append(node("span", lead.name.slice(0, 1).toLocaleUpperCase("es"), "compact-avatar"), node("div"));
-      heading.lastChild.append(node("h2", lead.name), node("p", group.phone ? "+" + group.phone : "Sin teléfono", "compact-muted"));
+      heading.lastChild.append(node("h2", lead.name), node("p", contactLabel(group), "compact-muted"));
       heading.append(button("Editar datos", () => openContactForm(group), "compact-text-button", "compact-edit-contact"));
       content.append(heading);
     }
@@ -382,16 +397,19 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       contactTools.append(node("span", "Datos del cliente", "compact-muted"), button("Editar datos", () => openContactForm(group), "compact-text-button", "compact-edit-contact"));
       content.append(contactTools);
     }
+    const delivery = button("Entregar servicio", () => openDelivery(group, inChat), "compact-primary", "compact-deliver-service");
+    delivery.disabled = !(group.phone || group.username);
+    content.append(delivery);
     const top = node("div", "", "compact-section-heading");
-    const addService = button("+ Añadir servicio", () => openClientForm({ name: lead.name, phone: lead.phone, whatsappUsername: lead.whatsappUsername || "", lockContact: true }), "compact-text-button", "compact-add-service");
-    addService.disabled = !group.phone;
-    if (!group.phone) addService.title = "Completa el teléfono en Editar datos para reunir sus servicios en una sola ficha.";
+    const addService = button("+ Añadir servicio", () => openClientForm({ name: lead.name, phone: group.phone, whatsappUsername: group.username, lockContact: true }), "compact-text-button", "compact-add-service");
+    addService.disabled = !(group.phone || group.username);
+    if (addService.disabled) addService.title = "Completa el teléfono o usuario en Editar datos para reunir sus servicios.";
     top.append(node("h3", "Servicios"), addService);
     const services = node("div", "", "compact-services");
     services.id = "compact-services";
     for (const client of group.clients) services.append(serviceCard(client));
     content.append(top, services);
-    if (!group.phone) content.append(node("p", "Completa el teléfono en Editar datos para añadir otro servicio a este cliente.", "compact-muted"));
+    if (!(group.phone || group.username)) content.append(node("p", "Completa el teléfono o usuario en Editar datos para añadir otro servicio a este cliente.", "compact-muted"));
     const info = details("Información e historial", "person:" + group.key);
     if (lead.notes) info.append(node("p", lead.notes, "compact-note"));
     const emails = [...new Set(group.clients.map(client => client.email).filter(Boolean))];
@@ -447,6 +465,13 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       conversation.append(options);
     }
     content.append(conversation);
+  }
+  async function openDelivery(group, inChat) {
+    const lead = group.clients[0];
+    const before = inChat ? await requireLinked(lead) : null;
+    const unassigned = group.clients.find(client => !client.archived && !client.accountId && !client.service && !client.profile);
+    openClientForm({ ...(unassigned || {}), name: lead.name, phone: group.phone, whatsappUsername: group.username,
+      lockContact: true, delivery: true, deliveryContext: before ? { context: { ...before }, version: contextVersion } : null });
   }
   function serviceCard(client) {
     const card = node("article", "", "compact-card compact-service");
@@ -556,9 +581,10 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     }, "compact-secondary", "compact-copy-message"), button("Preparar en WhatsApp", async () => {
       const freshClient = clientById(client.id);
       if (!freshClient) throw Error("La ficha ya no está disponible.");
-      await requireLinked(freshClient);
+      const before = await requireLinked(freshClient);
       if (!draft.text.trim()) throw Error("Escribe el mensaje antes de prepararlo.");
-      const result = await companion.prepareMessage({ phone: normalizeCompanionPhone(freshClient.phone), text: draft.text });
+      const matched = matchContact(getState().clients, before);
+      const result = await companion.prepareMessage({ ...(matched.matchedBy === "username" ? { username: matched.username, chatId: before.chatId } : { phone: normalizeCompanionPhone(matched.phone) }), text: draft.text });
       if (result?.prepared) setStatus("Borrador preparado. Revisa y pulsa Enviar en WhatsApp.");
       else if (result?.clipboard) setStatus("Había un borrador. Se conservó y el mensaje nuevo se copió para que lo pegues.");
       else throw Error("No se pudo preparar el mensaje. Puedes copiarlo y pegarlo en el chat correcto.");
@@ -652,7 +678,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
         const assign = button("Asignar", () => {
           const match = matchedChat();
           const lead = match.matches[0];
-          openClientForm({ name: lead?.name || (match.phone ? currentContext?.name || "" : ""), phone: match.phone || "", lockContact: Boolean(lead), accountId: account.id, profile, email: account.email, service: account.service });
+          openClientForm({ name: lead?.name || (match.phone || match.username ? currentContext?.name || "" : ""), phone: lead?.phone || match.phone || "", whatsappUsername: lead ? contactUsername(lead) : match.username || "", lockContact: Boolean(lead), accountId: account.id, profile, email: account.email, service: account.service });
         }, "compact-secondary");
         assign.disabled = statusName === "expired";
         if (assign.disabled) assign.title = "Renueva la cuenta antes de asignar perfiles";
@@ -730,14 +756,14 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     const { dialog, body } = modal("contact", "Datos del cliente", "Guardar datos", async form => {
       const values = formData(form);
       await commit("updateContact", { ids, name: values.name.trim(), phone: values.phone.trim(), whatsappUsername: values.whatsappUsername.trim() });
-      openedGroupKey = values.phone.trim() ? "phone:" + normalizePhone(values.phone) : "client:" + lead.id;
+      openedGroupKey = groupKey(clientById(lead.id));
       setStatus("Datos actualizados en todos los servicios del cliente.");
     });
     field(body, "Nombre", "name", { required: true, maxLength: 120, value: lead.name, autocomplete: "name" });
-    field(body, "WhatsApp", "phone", { type: "tel", value: lead.phone, required: ids.length > 1, placeholder: "+51 987 654 321", autocomplete: "tel" });
+    field(body, "Teléfono de WhatsApp · opcional", "phone", { type: "tel", value: group.phone, placeholder: "+51 987 654 321", autocomplete: "tel" });
+    field(body, "Usuario de WhatsApp · opcional", "whatsappUsername", { maxLength: 100, value: group.username || contactUsername(lead), placeholder: "@usuario" });
     const extra = node("details", "", "compact-details");
     extra.append(node("summary", "Más opciones"));
-    field(extra, "Usuario de WhatsApp · opcional", "whatsappUsername", { maxLength: 100, value: lead.whatsappUsername || "", placeholder: "@usuario" });
     const remove = button("Eliminar cliente y sus servicios", async () => {
       if (!confirm(`¿Eliminar definitivamente a ${lead.name} y sus ${ids.length} ficha${ids.length === 1 ? "" : "s"} de servicio? Los movimientos financieros se conservan.`)) return;
       await commit("deleteContact", { ids });
@@ -753,27 +779,44 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   }
   function openClientForm(initial = {}) {
     const editing = Boolean(initial.id), reactivating = Boolean(initial.reactivate);
-    const chatDraft = initial.chatDraft;
-    const { dialog, form, body } = modal("client", chatDraft ? "Crear ficha nueva" : reactivating ? "Reactivar servicio" : editing ? "Editar servicio" : initial.lockContact ? "Añadir servicio" : "Nuevo cliente", chatDraft ? "Crear y vincular" : "Guardar", async inputForm => {
+    const chatDraft = initial.chatDraft, delivering = Boolean(initial.delivery);
+    const creatingContact = !editing && !initial.lockContact;
+    const { dialog, form, body } = modal("client", delivering ? "Entregar servicio" : chatDraft ? "Crear ficha nueva" : reactivating ? "Reactivar servicio" : editing ? "Editar servicio" : initial.lockContact ? "Añadir servicio" : "Nuevo cliente", delivering ? "Asignar y revisar mensaje" : chatDraft ? "Crear y vincular" : "Guardar", async inputForm => {
       const values = formData(inputForm);
-      const number = chatDraft ? normalizePhone(values.phone) : "";
+      const number = values.phone.trim() ? normalizePhone(values.phone) : "";
+      const handle = values.whatsappUsername.trim() ? canonicalUsername(values.whatsappUsername) : "";
+      if (values.whatsappUsername.trim() && !handle) throw Error("Introduce un usuario de WhatsApp válido, por ejemplo @usuario.");
       if (chatDraft) {
-        await requireDraftChat(chatDraft, number);
-        if (groups().some(group => group.phone === number)) {
-          showExistingContact();
-          throw Error("Este número ya tiene una ficha. Vincula el contacto existente para conservar sus servicios e historial.");
-        }
+        if (!(number || handle)) throw Error("Indica el teléfono o usuario de WhatsApp para vincular esta ficha.");
+        await requireDraftChat(chatDraft, number, handle);
       }
+      if (creatingContact && existingGroups().length) {
+        showExistingContact();
+        throw Error("Este teléfono o usuario ya tiene una ficha. Usa el contacto existente para conservar sus servicios e historial.");
+      }
+      if (initial.deliveryContext) await requireDraftChat(initial.deliveryContext, number, handle);
+      if (delivering && (!values.accountId || !values.profile)) throw Error("Elige una cuenta vigente y uno de sus perfiles libres.");
       const pricePending = !values.price.trim();
-      await commit("saveClient", { ...(editing ? { id: initial.id } : {}), name: values.name.trim(), phone: values.phone.trim(), accountId: values.accountId || "", service: values.service.trim(), email: values.email.trim(), profile: values.profile.trim(), expires: values.expires || "", price: pricePending ? 0 : cents(values.price), pricePending, pin: values.pin.trim(), notes: values.notes.trim(), paid: values.paid === "on", ...(reactivating ? { reactivate: true } : {}) });
+      const previousIds = new Set(getState().clients.map(client => client.id));
+      await commit("saveClient", { ...(editing ? { id: initial.id } : {}), name: values.name.trim(), phone: values.phone.trim(), whatsappUsername: handle, accountId: values.accountId || "", service: values.service.trim(), email: values.email.trim(), profile: values.profile.trim(), expires: values.expires || "", price: pricePending ? 0 : cents(values.price), pricePending, pin: values.pin.trim(), notes: values.notes.trim(), paid: values.paid === "on", ...(reactivating ? { reactivate: true } : {}) });
+      if (delivering) {
+        const saved = editing ? clientById(initial.id) : getState().clients.find(client => !previousIds.has(client.id));
+        if (saved) {
+          composeClientId = saved.id;
+          drafts.delete(saved.id);
+          if (tab === "clients") openedGroupKey = groupKey(saved);
+        }
+        setStatus("Servicio asignado. Revisa el mensaje y prepáralo en WhatsApp; tú confirmas el envío.");
+        return;
+      }
       if (chatDraft) {
         // A saved ficha must never be submitted again if only its chat link
         // fails. Keep it in Clientes and close the creation form in that case.
         try {
-          const before = await requireDraftChat(chatDraft, number);
-          await companion.bindConversation({ chatId: before.chatId, phone: number, name: before.name });
+          const before = await requireDraftChat(chatDraft, number, handle);
+          await companion.bindConversation({ chatId: before.chatId, ...(number ? { phone: number } : {}), ...(handle ? { username: handle } : {}), name: before.name });
           const linked = await companion.getContext();
-          if (linked?.chatId !== before.chatId || linked.name !== before.name || linked.isGroup || linked.ambiguous || contactPhone(linked.phone) !== number)
+          if (linked?.chatId !== before.chatId || linked.name !== before.name || linked.isGroup || linked.ambiguous || (number ? contactPhone(linked.phone) !== number : username(linked.username) !== handle))
             throw Error("El chat cambió durante el vínculo.");
           updateContext(linked);
           linkingContact = false;
@@ -787,46 +830,72 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     });
     // The form's initial contact stays fixed if WhatsApp changes while it is open.
     const name = field(body, "Nombre", "name", { value: initial.name || "", required: true, maxLength: 120, autocomplete: "name" });
-    const phone = field(body, "WhatsApp", "phone", { value: initial.phone || "", type: "tel", required: Boolean(chatDraft), placeholder: "+51 987 654 321", autocomplete: "tel" });
+    const phone = field(body, "Teléfono de WhatsApp · opcional", "phone", { value: initial.phone || "", type: "tel", placeholder: "+51 987 654 321", autocomplete: "tel" });
+    const handle = field(body, "Usuario de WhatsApp · opcional", "whatsappUsername", { value: contactUsername(initial), maxLength: 100, placeholder: "@usuario" });
     name.id = "compact-client-name";
     phone.id = "compact-client-phone";
+    handle.id = "compact-client-username";
     name.readOnly = editing || Boolean(initial.lockContact);
     phone.readOnly = editing || Boolean(initial.lockContact);
+    handle.readOnly = editing || Boolean(initial.lockContact);
     if (name.readOnly) name.title = "Edita la información de todos sus servicios desde Editar datos";
     if (phone.readOnly) phone.title = name.title;
-    const existingContact = chatDraft ? node("div", "", "compact-existing-contact") : null;
+    if (handle.readOnly) handle.title = name.title;
+    const existingContact = creatingContact ? node("div", "", "compact-existing-contact") : null;
+    function existingGroups() {
+      const number = contactPhone(phone.value), wanted = username(handle.value);
+      return groups().filter(item => number && item.phone === number || wanted && item.clients.some(client => contactUsername(client) === wanted));
+    }
     function showExistingContact() {
       if (!existingContact) return;
       existingContact.replaceChildren();
-      const number = contactPhone(phone.value);
-      const group = number && groups().find(item => item.phone === number);
+      const found = existingGroups(), group = found[0];
       existingContact.hidden = !group;
       const submit = form.querySelector("button[type=submit]");
       submit.dataset.blocked = group ? "true" : "false";
       submit.disabled = Boolean(group);
       if (!group) return;
-      existingContact.append(node("p", `Este número ya pertenece a ${group.clients[0].name}. Usa su ficha existente.`),
-        button("Vincular ficha existente", async () => {
-          await requireDraftChat(chatDraft, number);
-          if (await bindPhone(number)) { dialog.close(); render(); }
+      existingContact.append(node("p", found.length > 1 ? "Este teléfono o usuario aparece en más de un contacto. Busca y elige la ficha correcta." : `Este teléfono o usuario ya pertenece a ${group.clients[0].name}. Usa su ficha existente.`),
+        button(chatDraft ? "Vincular ficha existente" : "Abrir ficha existente", async () => {
+          if (!chatDraft) {
+            dialog.close();
+            tab = "clients";
+            openedGroupKey = found.length === 1 ? group.key : "";
+            clientSearch = handle.value || phone.value;
+            render();
+            return;
+          }
+          await requireDraftChat(chatDraft, contactPhone(phone.value), username(handle.value));
+          if (found.length > 1) { dialog.close(); linkingContact = true; linkSearch = handle.value || phone.value; render(); return; }
+          if (await bindContact(group)) { dialog.close(); render(); }
         }, "compact-secondary", "compact-use-existing-contact"));
     }
     if (existingContact) {
       existingContact.id = "compact-existing-contact";
       existingContact.setAttribute("role", "status");
-      body.append(node("p", "Confirma su nombre y teléfono. Para Perú puedes escribir los 9 dígitos; se añadirá +51.", "compact-muted compact-create-hint"), existingContact);
+      if (chatDraft) body.append(node("p", "Confirma su nombre y teléfono o @usuario. Para Perú puedes escribir los 9 dígitos del teléfono; se añadirá +51.", "compact-muted compact-create-hint"));
+      body.append(existingContact);
       phone.addEventListener("input", showExistingContact);
+      handle.addEventListener("input", showExistingContact);
       showExistingContact();
     }
-    const account = field(body, "Cuenta", "accountId", { tag: "select" });
+    if (delivering) body.append(node("p", "Elige la cuenta y el perfil que entregarás. La asignación se guarda al confirmar; después podrás revisar y preparar el mensaje.", "compact-muted compact-delivery-hint"));
+    if (delivering && !getState().accounts.some(item => subscriptionStatus(item.expires) !== "expired" && availableProfiles(item, getState().clients.filter(client => client.id !== initial.id)).length)) {
+      const unavailable = node("div", "", "compact-existing-contact");
+      unavailable.id = "compact-delivery-unavailable";
+      unavailable.append(node("p", getState().accounts.length ? "No hay perfiles libres en cuentas vigentes. Crea una cuenta o revisa las cuentas existentes antes de entregar." : "Primero crea una cuenta con sus perfiles disponibles para entregar este servicio."),
+        button("Crear cuenta", () => { dialog.close(); openAccountForm(); }, "compact-secondary", "compact-delivery-create-account"));
+      body.append(unavailable);
+    }
+    const account = field(body, "Cuenta", "accountId", { tag: "select", required: delivering });
     account.id = "compact-client-account";
-    const none = node("option", "Sin cuenta asignada");
+    const none = node("option", delivering ? "Elige una cuenta disponible" : "Sin cuenta asignada");
     none.value = "";
     account.append(none);
     for (const item of getState().accounts) {
       const option = node("option", `${item.service} · ${item.email}`);
       option.value = item.id;
-      option.disabled = subscriptionStatus(item.expires) === "expired" && item.id !== initial.accountId;
+      option.disabled = (subscriptionStatus(item.expires) === "expired" || delivering && !availableProfiles(item, getState().clients.filter(client => client.id !== initial.id)).length) && item.id !== initial.accountId;
       account.append(option);
     }
     account.value = initial.accountId || "";
@@ -838,7 +907,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     profileSelect.id = "compact-client-profile-select";
     profileSelect.setAttribute("aria-label", "Perfil libre de la cuenta");
     profileWrap.append(profileSelect);
-    const expires = field(body, "Vencimiento", "expires", { type: "date", value: initial.expires || "" });
+    const expires = field(body, "Vencimiento", "expires", { type: "date", value: initial.expires || "", required: delivering });
     const price = field(body, "Precio (S/) · opcional", "price", { type: "number", min: "0", max: "999999", step: "0.01", value: initial.pricePending || initial.price === undefined ? "" : (initial.price / 100).toFixed(2), placeholder: "Sin indicar" });
     const extras = node("details", "", "compact-details");
     extras.append(node("summary", "Correo, PIN y notas"));
@@ -864,6 +933,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       email.readOnly = Boolean(selected);
       if (!selected) return;
       const free = availableProfiles(selected, getState().clients.filter(item => item.id !== initial.id));
+      if (delivering) { const option = node("option", "Elige un perfil libre"); option.value = ""; profileSelect.append(option); }
       for (const value of free) { const option = node("option", value); option.value = value; profileSelect.append(option); }
       if (keepProfile && free.includes(initial.profile)) profileSelect.value = initial.profile;
       profile.value = profileSelect.value || "";
@@ -875,7 +945,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
     profileSelect.addEventListener("change", () => { profile.value = profileSelect.value; });
     selectAccount(true);
     dialog.showModal();
-    (chatDraft && !phone.value ? phone : name.value ? expires : name).focus();
+    (delivering ? account : chatDraft && !(phone.value || handle.value) ? phone : name.value ? expires : name).focus();
   }
   function openRenewForm(client) {
     const service = client.service || "Servicio";
@@ -922,9 +992,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   async function requireLinked(client) {
     const before = await companion.getContext();
     if (!before?.chatId || before.isGroup || before.ambiguous) throw Error("Abre una conversación individual de WhatsApp.");
-    let expected = "", actual = "";
-    try { expected = normalizeCompanionPhone(client.phone); actual = normalizeCompanionPhone(before.phone); } catch {}
-    if (!expected || expected !== actual) throw Error("Abre y vincula el chat de este cliente antes de preparar o guardar mensajes.");
+    if (!matchContact(getState().clients, before).matches.some(item => item.id === client.id)) throw Error("Abre y vincula el chat de este cliente antes de preparar o guardar mensajes.");
     if (before.chatId !== currentContext?.chatId) { updateContext(before); throw Error("La conversación cambió. Revisa el destinatario."); }
     return before;
   }
@@ -945,8 +1013,8 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
       assertCurrent();
       const after = await companion.getContext();
       assertCurrent();
-      if (after?.chatId !== before.chatId || after?.phone !== before.phone) throw Error("El chat cambió durante la lectura.");
-      const result = await importVisibleMessages(getState().growth, client, after, messages, { expectedChatId: before.chatId });
+      if (identityKey(after) !== identityKey(before)) throw Error("El chat cambió durante la lectura.");
+      const result = await importVisibleMessages(getState().growth, client, after, messages, { expectedChatId: before.chatId, clients: getState().clients });
       assertCurrent();
       if (result.count) await commit("saveGrowth", { growth: result.growth });
       setStatus(result.count ? `${result.count} mensajes guardados.` : "Los textos visibles ya estaban guardados.");
@@ -956,7 +1024,7 @@ export function initializeCompanion({ companion, getState, commit, notify, isBus
   }
   function identityKey(context) {
     // Names help clear transient UI drafts, never establish customer identity.
-    return JSON.stringify([context?.tabId ?? null, context?.chatId || "", context?.name || "", context?.phone || "", Boolean(context?.isGroup), Boolean(context?.ambiguous), context?.phoneSource || "", context?.identityState || ""]);
+    return JSON.stringify([context?.tabId ?? null, context?.chatId || "", context?.name || "", context?.phone || "", context?.username || "", Boolean(context?.isGroup), Boolean(context?.ambiguous), context?.phoneSource || "", context?.usernameSource || "", context?.identityState || ""]);
   }
   function updateContext(next) {
     if (destroyed) return;

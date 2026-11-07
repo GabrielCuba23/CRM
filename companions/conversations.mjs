@@ -1,5 +1,7 @@
 import { normalizePhone } from "../crm.mjs";
 import { emptyGrowth, validateGrowth } from "../growth.mjs";
+import { contactGroup, contactUsername, normalizeCompanionUsername, normalizeContactPhone } from "./contact-identity.mjs";
+export { canonicalUsername, contactGroup, contactKey, contactUsername, normalizeCompanionUsername } from "./contact-identity.mjs";
 
 export const visibleMessageLimit = 100;
 
@@ -20,8 +22,17 @@ export function matchContact(clients, context = {}) {
     return { phone: "", matches: [], reason: "group" };
   if (context?.ambiguous)
     return { phone: "", matches: [], reason: "ambiguous-chat" };
-  if (!context?.phone)
-    return { phone: "", matches: [], reason: "missing-phone" };
+  const username = normalizeCompanionUsername(context?.username || context?.whatsappUsername);
+  const trustedUsername = username && ["visible", "manual"].includes(context?.usernameSource);
+  const usernameRows = trustedUsername ? clients.filter(client => contactUsername(client) === username) : [];
+  const usernamePhones = new Set(usernameRows.map(client => normalizeContactPhone(client.phone)).filter(Boolean));
+  if (!context?.phone) {
+    if (!trustedUsername) return { phone: "", username: "", matches: [], reason: "missing-phone" };
+    if (!identity(context.chatId)) return { phone: "", username, matches: [], reason: "unidentified-chat" };
+    if (usernamePhones.size > 1) return { phone: "", username, matches: [], reason: "ambiguous-username" };
+    const matches = usernameRows.length ? contactGroup(clients, usernameRows[0]) : [];
+    return { phone: [...usernamePhones][0] || "", username, matches, matchedBy: "username", reason: matches.length > 1 ? "ambiguous" : matches.length ? "matched" : "new" };
+  }
   let phone;
   try {
     phone = normalizeCompanionPhone(context.phone);
@@ -34,17 +45,26 @@ export function matchContact(clients, context = {}) {
     return { phone: "", matches: [], reason: "unidentified-chat" };
   if (context.phoneSource !== undefined && !["visible", "manual"].includes(context.phoneSource))
     return { phone: "", matches: [], reason: "unverified-phone" };
+  if (trustedUsername && (usernamePhones.size > 1 || [...usernamePhones].some(number => number !== phone)))
+    return { phone: "", username, matches: [], reason: "identity-conflict" };
   const matches = clients.filter((client) => {
     try {
-      return normalizeCompanionPhone(client?.phone) === phone;
+      return normalizeContactPhone(client?.phone) === phone;
     } catch {
       return false;
     }
   });
+  const phoneGroup = matches.length ? contactGroup(clients, matches[0]) : [];
+  const usernameGroup = usernameRows.length ? contactGroup(clients, usernameRows[0]) : [];
+  if (phoneGroup.length && usernameGroup.length && !usernameGroup.some(row => phoneGroup.some(match => match.id === row.id)))
+    return { phone: "", username, matches: [], reason: "identity-conflict" };
+  const grouped = phoneGroup.length ? phoneGroup : usernameGroup;
   return {
     phone,
-    matches,
-    reason: matches.length > 1 ? "ambiguous" : matches.length ? "matched" : "new",
+    username: trustedUsername ? username : "",
+    matches: grouped,
+    matchedBy: phoneGroup.length ? "phone" : usernameGroup.length ? "username" : "phone",
+    reason: grouped.length > 1 ? "ambiguous" : grouped.length ? "matched" : "new",
   };
 }
 
@@ -74,18 +94,28 @@ export async function importVisibleMessages(
   client,
   context,
   messages,
-  { now = new Date(), expectedChatId } = {},
+  { now = new Date(), expectedChatId, clients } = {},
 ) {
   if (!client?.id || typeof client.id !== "string")
     throw Error("Selecciona una ficha antes de guardar la conversación.");
   if (!context || context.isGroup || context.ambiguous)
     throw Error("Selecciona una conversación individual de WhatsApp.");
-  if (context.phoneSource !== undefined && !["visible", "manual"].includes(context.phoneSource))
+  if (context.phone && context.phoneSource !== undefined && !["visible", "manual"].includes(context.phoneSource))
     throw Error("Confirma el teléfono de esta conversación antes de guardar sus mensajes.");
-  let phone;
+  let phone = "", username = "";
   try {
-    phone = normalizeCompanionPhone(context.phone);
-    if (normalizeCompanionPhone(client.phone) !== phone) throw Error();
+    if (context.phone) {
+      phone = normalizeCompanionPhone(context.phone);
+      if (client.phone) {
+        if (normalizeContactPhone(client.phone) !== phone) throw Error();
+      }
+      const result = matchContact(Array.isArray(clients) ? clients : [client], context);
+      if (!result.matches.some(row => row.id === client.id)) throw Error();
+    } else {
+      username = normalizeCompanionUsername(context.username);
+      const result = matchContact(Array.isArray(clients) ? clients : [client], context);
+      if (!username || !["visible", "manual"].includes(context.usernameSource) || !result.matches.some(row => row.id === client.id)) throw Error();
+    }
   } catch {
     throw Error("El teléfono del chat no coincide con la ficha seleccionada.");
   }
@@ -97,13 +127,16 @@ export async function importVisibleMessages(
   const timestamp = now instanceof Date ? now : new Date(now);
   if (!Number.isFinite(timestamp.getTime())) throw Error("Hora de captura no válida.");
   const base = validateGrowth(growth ?? emptyGrowth());
+  const selectedGroup = contactGroup(Array.isArray(clients) ? clients : [client], client);
+  const storedPhones = new Set(selectedGroup.map(row => normalizeContactPhone(row.phone)).filter(Boolean));
+  const sourceIdentity = storedPhones.size === 1 ? [...storedPhones][0] : contactUsername(client) || username || phone;
   const interactions = [...base.interactions];
   const known = new Set(interactions.map((row) => row.id));
   let count = 0, duplicates = 0, skipped = 0;
   for (const message of messages) {
     let rowPhone = "";
     try { rowPhone = normalizeCompanionPhone(message?.phone); } catch {}
-    if (rowPhone !== phone || identity(message?.chatId) !== chatId)
+    if ((phone ? rowPhone !== phone : rowPhone || normalizeCompanionUsername(message?.username) !== username) || identity(message?.chatId) !== chatId)
       throw Error("Los mensajes no pertenecen a la conversación seleccionada.");
     const sourceId = identity(message?.id || message?.sourceId);
     if (!sourceId || !["received", "sent"].includes(message.direction) ||
@@ -123,7 +156,7 @@ export async function importVisibleMessages(
       occurredAt = new Date(message.occurredAt).toISOString();
       originalTime = true;
     }
-    const id = await entryId(client.id, phone, sourceId, message.direction);
+    const id = await entryId(client.id, sourceIdentity, sourceId, message.direction);
     if (known.has(id)) {
       duplicates++;
       continue;

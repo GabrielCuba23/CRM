@@ -1,7 +1,7 @@
 # Nexo CRM para WhatsApp Web
 
 Extensión Manifest V3 para Chrome de computadora. Presenta una interfaz compacta
-en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.7.0 del código tiene cinco entradas:
+en la barra lateral de Chrome, conectada a WhatsApp Web y a la misma base del CRM. La versión 1.8.0 del código tiene cinco entradas:
 **Chat actual**, **Clientes**, **Cuentas**, **Campañas** y **Chatbot**. Las herramientas avanzadas siguen
 disponibles desde **Abrir CRM**.
 Pulsa **Nexo** en WhatsApp o el icono de la extensión para abrir la barra. Una vez
@@ -143,6 +143,27 @@ Capturar un texto enviado no
 demuestra que el destinatario lo haya recibido.
 La ficha elegida y el chat abierto deben corresponder a la misma persona antes
 de preparar un borrador. Copiar texto no equivale a enviarlo ni cambia de destinatario.
+
+## Usuarios, entrega y contraseña en 1.8.0
+
+**Chat actual** reconoce un `@usuario` completo que WhatsApp muestra y busca sus
+fichas existentes, incluso cuando no expone su teléfono. También reconoce fichas
+anteriores cuyo nombre es exactamente ese `@usuario`. Los nombres comunes no
+asignan clientes automáticamente y un usuario con teléfonos contradictorios
+requiere revisión. Los vínculos que confirmes admiten teléfono o usuario y se
+conservan por conversación estable y CRM en este navegador.
+
+**Entregar servicio**, dentro de la ficha del chat, permite seleccionar cuenta y
+perfil, guardar la asignación y revisar el mensaje de entrega sin salir del chat.
+Cada servicio conserva su perfil, fecha y cobros independientes. La disponibilidad
+procede de las cuentas que hayas registrado con su capacidad real.
+
+El botón **Contraseña** de la cabecera de Nexo abre el cambio en la misma barra.
+Introduce la actual, la nueva y su confirmación. Puedes elegir una frase de al
+menos doce caracteres sin requisitos de símbolos o mayúsculas. Al guardarla se
+cierran las sesiones y vuelves a entrar con la nueva contraseña en el panel.
+La web conserva el mismo cambio desde **Seguridad**. No se cambia una contraseña
+por actualizar la extensión.
 
 ## Flujos de conversación en 1.7.0
 

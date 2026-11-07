@@ -53,6 +53,7 @@ export function isWhatsAppSender(sender, extensionId) {
   try { return new URL(sender.url || sender.tab.url).origin === WA_ORIGIN; } catch { return false; }
 }
 export function safeContext(value, tabId) {
+  const username = typeof value?.username === "string" && /^@[a-z0-9_][a-z0-9._]{1,63}$/i.test(value.username) ? value.username.toLowerCase() : "";
   return {
     name: typeof value?.name === "string" ? value.name.slice(0, 160) : "",
     phone: /^\d{7,15}$/.test(value?.phone || "") ? value.phone : "",
@@ -60,12 +61,16 @@ export function safeContext(value, tabId) {
     isGroup: value?.isGroup === true,
     ambiguous: value?.ambiguous === true,
     phoneSource: value?.phoneSource === "manual" ? "manual" : value?.phoneSource === "visible" ? "visible" : "",
+    username,
+    usernameSource: username && ["manual", "visible"].includes(value?.usernameSource) ? value.usernameSource : "",
     tabId,
   };
 }
 export function draftInput(value) {
   const phone = String(value?.phone || "").replace(/[\s()+.-]/g, "");
   const text = value?.text;
-  if (!/^\d{7,15}$/.test(phone) || typeof text !== "string" || !text.trim() || text.length > 8000) throw Error("Revisa el teléfono y el texto del mensaje.");
-  return { phone, text };
+  const username = typeof value?.username === "string" && /^@[a-z0-9_][a-z0-9._]{1,63}$/i.test(value.username) ? value.username.toLowerCase() : "";
+  const chatId = typeof value?.chatId === "string" && value.chatId.length <= 300 ? value.chatId : "";
+  if ((!/^\d{7,15}$/.test(phone) && !username) || value?.phone && !/^\d{7,15}$/.test(phone) || value?.username && !username || !phone && !chatId || typeof text !== "string" || !text.trim() || text.length > 8000) throw Error("Revisa el destinatario y el texto del mensaje.");
+  return { ...(phone ? { phone } : {}), ...(username ? { username } : {}), ...(chatId ? { chatId } : {}), text };
 }

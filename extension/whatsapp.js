@@ -6,6 +6,7 @@
   const sessionNonce = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36);
   let bindingScope = "";
   const observedPhones = new Map();
+  const observedUsernames = new Map();
   const observedDrawers = new WeakMap();
   const plainContactPanes = new Set();
   let selectedPhone = null;
@@ -22,6 +23,10 @@
     if (!text.startsWith("+") && !text.startsWith("00") && digits.length < 10) return "";
     if (!/^[1-9]\d{7,14}$/.test(digits)) return "";
     return digits.startsWith("51") && !/^519\d{8}$/.test(digits) ? "" : digits;
+  };
+  const username = value => {
+    const text = typeof value === "string" ? value.trim() : "";
+    return /^@[a-z0-9_][a-z0-9._]{1,63}$/i.test(text) ? text.toLowerCase() : "";
   };
   function main() { return document.querySelector("#main") || document.querySelector('[data-testid="conversation-panel-wrapper"]'); }
   const contactDrawerSelector = [
@@ -48,6 +53,7 @@
     '[aria-label="Phone number"]', '[aria-label="Número de teléfono"]',
     'a[href^="tel:"]',
   ].join(",");
+  const contactUsernameSelector = '[data-testid="contact-info-username"], [data-testid="contact-info-drawer-username"], [aria-label="Username"], [aria-label="Nombre de usuario"]';
   const contactName = value => String(value || "").normalize("NFC").replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "").replace(/\s+/g, " ").trim();
   const nativeChatListSelector = '#pane-side, [data-testid="chat-list"], [aria-label="Chat list"], [aria-label="Lista de chats"]';
   const nativeSelectedSelector = '#pane-side [aria-selected="true"], [data-testid="chat-list"] [aria-selected="true"], [aria-label="Chat list"] [aria-selected="true"], [aria-label="Lista de chats"] [aria-selected="true"]';
@@ -93,16 +99,17 @@
         const elements = boundedElements(pane);
         const identity = elements.find(item => item !== heading && !item.contains?.(heading) && !item.closest?.('header') && visible(item) && smallText(item) === contactName(name));
         if (!identity) continue;
-        let phoneNodes = [];
+        let phoneNodes = [], usernameNodes = [];
         // The smallest profile block holding name and phone wins. Later note,
         // media and message sections cannot supply a telephone accidentally.
         for (let block = identity.parentElement, hops = 0; block && pane.contains(block) && hops < 4; block = block.parentElement, hops++) {
           const fields = boundedElements(block, 100);
           phoneNodes = fields.filter(item => visible(item) && phone(smallText(item)));
-          if (phoneNodes.length || block === pane) break;
+          usernameNodes = fields.filter(item => visible(item) && username(smallText(item)));
+          if (phoneNodes.length || usernameNodes.length || block === pane) break;
         }
-        if (!phoneNodes.length) continue;
-        descriptors.set(pane, { element: pane, identity, phoneNodes, anchored: true });
+        if (!phoneNodes.length && !usernameNodes.length) continue;
+        descriptors.set(pane, { element: pane, identity, phoneNodes, usernameNodes, anchored: true });
         plainContactPanes.add(pane);
         for (const remembered of plainContactPanes) if (!remembered.isConnected) plainContactPanes.delete(remembered);
         if (plainContactPanes.size > 8) plainContactPanes.delete(plainContactPanes.values().next().value);
@@ -121,8 +128,8 @@
     return stable;
   }
   function drawerPhone(name, knownHeader) {
-    const candidates = new Set();
-    if (!name || !document.querySelectorAll) return { phone: "", ambiguous: false };
+    const candidates = new Set(), usernames = new Set();
+    if (!name || !document.querySelectorAll) return { phone: "", username: "", ambiguous: false };
     // Read only an explicitly visible native contact-info surface. Never scan
     // messages, the document's generic phone-like text, extension shadow roots
     // or CRM iframes. The exact contact heading ties it to the current header.
@@ -149,8 +156,15 @@
         const found = phone(href.startsWith("tel:") ? href.slice(4) : node.getAttribute("title") || node.textContent);
         if (found) drawerNumbers.add(found);
       }
+      const drawerUsernames = new Set();
+      for (const node of descriptor.usernameNodes || drawer.querySelectorAll(contactUsernameSelector)) {
+        if (!visible(node)) continue;
+        const found = username(node.getAttribute("title") || node.textContent);
+        if (found) drawerUsernames.add(found);
+      }
       const numbers = [...drawerNumbers].sort().join(",");
       const singlePhone = drawerNumbers.size === 1 ? [...drawerNumbers][0] : "";
+      const singleUsername = drawerUsernames.size === 1 ? [...drawerUsernames][0] : "";
       const matching = drawerName && drawerName === contactName(name);
       const currentIntent = openIntent?.header === nativeHeader.element && openIntent.navigationRevision === navigationRevision && openIntent.generation === nativeGeneration;
       const reopened = previous?.visible === false && currentIntent && previous.openIntentRevision !== openIntent.revision;
@@ -159,26 +173,29 @@
       // phone to a new peer with the same name. A changed phone or a fresh native
       // drawer appearance is needed after navigation, even for equal aliases.
       const stableInitialPane = descriptor.anchored && previous?.initialGeneration === nativeGeneration && nativeGeneration === initialNativeGeneration && !navigationRevision;
-      const fresh = (!previous && knownHeader) || reopened || stableInitialPane || (previous?.singlePhone && singlePhone && previous.singlePhone !== singlePhone);
+      const fresh = (!previous && knownHeader) || reopened || stableInitialPane || (previous?.singlePhone && singlePhone && previous.singlePhone !== singlePhone) || (previous?.singleUsername && singleUsername && previous.singleUsername !== singleUsername);
       const authorized = Boolean(matching && knownHeader && (previous?.generation === nativeGeneration && previous.authorized || fresh));
-      observedDrawers.set(drawer, { generation: nativeGeneration, initialGeneration: previous?.initialGeneration || (descriptor.anchored && nativeGeneration === initialNativeGeneration && !navigationRevision ? nativeGeneration : 0), authorized, visible: true, numbers, singlePhone: authorized && singlePhone ? singlePhone : previous?.singlePhone || singlePhone, openIntentRevision: authorized && currentIntent ? openIntent.revision : previous?.openIntentRevision });
+      observedDrawers.set(drawer, { generation: nativeGeneration, initialGeneration: previous?.initialGeneration || (descriptor.anchored && nativeGeneration === initialNativeGeneration && !navigationRevision ? nativeGeneration : 0), authorized, visible: true, numbers, singlePhone: authorized && singlePhone ? singlePhone : previous?.singlePhone || singlePhone, singleUsername: authorized && singleUsername ? singleUsername : previous?.singleUsername || singleUsername, openIntentRevision: authorized && currentIntent ? openIntent.revision : previous?.openIntentRevision });
       if (authorized) for (const number of drawerNumbers) candidates.add(number);
+      if (authorized) for (const value of drawerUsernames) usernames.add(value);
     }
-    return { phone: candidates.size === 1 ? [...candidates][0] : "", ambiguous: candidates.size > 1 };
+    return { phone: candidates.size === 1 ? [...candidates][0] : "", username: usernames.size === 1 ? [...usernames][0] : "", ambiguous: candidates.size > 1 || usernames.size > 1 };
   }
   function rawContext() {
     const root = main(), header = root?.querySelector("header");
     if (!header) {
       if (nativeHeader) nativeGeneration++;
       nativeHeader = null;
-      return { name: "", phone: "", chatId: "", isGroup: false, phoneSource: "" };
+      return { name: "", phone: "", username: "", chatId: "", isGroup: false, phoneSource: "", usernameSource: "" };
     }
     const title = header.querySelector('[data-testid="conversation-info-header-chat-title"]') || header.querySelector('span[title]') || header.querySelector('[dir="auto"]');
     const name = String(title?.getAttribute("title") || title?.textContent || "").trim().slice(0, 160);
-    const candidates = new Set();
+    const candidates = new Set(), usernames = new Set();
     for (const node of header.querySelectorAll("[title], [dir=auto]")) {
       const found = phone(node.getAttribute("title") || node.textContent);
       if (found) candidates.add(found);
+      const handle = username(node.getAttribute("title") || node.textContent);
+      if (handle) usernames.add(handle);
     }
     // data-id's peer component is an opaque conversation identity, NOT a phone number.
     const peers = new Set();
@@ -195,7 +212,9 @@
     const isGroup = /@g\.us$|@newsletter$|@broadcast$/.test(peer) || !!header.querySelector('[data-icon="default-group"], [data-testid="default-group"]') || /\b(participantes|participants|members)\b/i.test(groupDescription);
     const revealed = !isGroup && peers.size <= 1 && candidates.size === 0 ? drawerPhone(name, knownHeader) : { phone: "", ambiguous: false };
     const number = candidates.size === 1 ? [...candidates][0] : revealed.phone;
-    return { name, phone: number, chatId: peer ? "wa:" + peer : number ? "phone:" + number : name && !isGroup ? "session:" + sessionNonce + ":" + nativeGeneration : "", isGroup, phoneSource: number ? "visible" : "", ambiguous: peers.size > 1 || candidates.size > 1 || revealed.ambiguous };
+    if (revealed.username) usernames.add(revealed.username);
+    const handle = usernames.size === 1 ? [...usernames][0] : "";
+    return { name, phone: number, username: handle, chatId: peer ? "wa:" + peer : number ? "phone:" + number : name && !isGroup ? "session:" + sessionNonce + ":" + nativeGeneration : "", isGroup, phoneSource: number ? "visible" : "", usernameSource: handle ? "visible" : "", ambiguous: peers.size > 1 || candidates.size > 1 || usernames.size > 1 || revealed.ambiguous };
   }
   function identifiedContext() {
     const value = rawContext();
@@ -203,7 +222,7 @@
     // nodes. Do not combine that new name with the old peer's cached telephone.
     const samePeer = value.chatId.startsWith("wa:") && value.chatId === lastObserved?.chatId;
     const sameNumberTitle = value.phone && phone(value.name) === value.phone && phone(lastObserved?.name) === value.phone;
-    if (samePeer && value.name && lastObserved.name && value.name !== lastObserved.name && !sameNumberTitle) {
+    if (samePeer && ((value.name && lastObserved.name && value.name !== lastObserved.name && !sameNumberTitle) || value.username && lastObserved.username && value.username !== lastObserved.username)) {
       manualBindings.delete(value.chatId);
       identityTransition = { chatId: value.chatId, name: value.name, until: Date.now() + transitionDelay };
     } else if (identityTransition && (identityTransition.chatId !== value.chatId || identityTransition.name !== value.name)) {
@@ -211,12 +230,12 @@
     }
     lastObserved = value;
     if (identityTransition && Date.now() < identityTransition.until)
-      return { ...value, phone: "", phoneSource: "", chatId: "", ambiguous: true };
+      return { ...value, phone: "", username: "", phoneSource: "", usernameSource: "", chatId: "", ambiguous: true };
     identityTransition = null;
     return value;
   }
   function context() {
-    const value = identifiedContext();
+    let value = identifiedContext();
     if (selectedPhone && (selectedPhone.name !== value.name || selectedPhone.generation !== nativeGeneration || selectedPhone.selected !== nativeHeader?.selected)) selectedPhone = null;
     if (value.isGroup || value.ambiguous) return value;
     if (!value.chatId || value.chatId.startsWith("session:")) {
@@ -226,38 +245,47 @@
     if (value.phone && value.phoneSource === 'visible' && nativeHeader?.selected) selectedPhone = { name: value.name, phone: value.phone, generation: nativeGeneration, selected: nativeHeader.selected };
     const binding = manualBindings.get(value.chatId);
     const observed = observedPhones.get(value.chatId);
+    const observedUsername = observedUsernames.get(value.chatId);
     if (observed && (observed.name !== value.name || observed.generation !== nativeGeneration || value.phone && value.phone !== observed.phone)) observedPhones.delete(value.chatId);
+    if (observedUsername && (observedUsername.name !== value.name || observedUsername.generation !== nativeGeneration || value.username && value.username !== observedUsername.username)) observedUsernames.delete(value.chatId);
     if (value.phone && value.phoneSource === 'visible' && value.chatId.startsWith('wa:')) {
       observedPhones.set(value.chatId, { name: value.name, phone: value.phone, generation: nativeGeneration });
       if (observedPhones.size > 100) observedPhones.delete(observedPhones.keys().next().value);
     }
-    if (binding && (binding.name !== value.name || value.phone && value.phone !== binding.phone)) {
-      manualBindings.delete(value.chatId);
-    } else if (!value.phone && binding) {
-      return { ...value, phone: binding.phone, phoneSource: "manual" };
+    if (value.username && value.usernameSource === 'visible' && value.chatId.startsWith('wa:')) {
+      observedUsernames.set(value.chatId, { name: value.name, username: value.username, generation: nativeGeneration });
+      if (observedUsernames.size > 100) observedUsernames.delete(observedUsernames.keys().next().value);
     }
-    const retained = observedPhones.get(value.chatId);
-    if (!value.phone && retained) return { ...value, phone: retained.phone, phoneSource: 'visible' };
-    return value;
+    if (binding && (binding.name !== value.name || value.phone && binding.phone && value.phone !== binding.phone || value.username && binding.username && value.username !== binding.username)) {
+      manualBindings.delete(value.chatId);
+    } else if (binding) {
+      value = { ...value, ...(!value.phone && binding.phone ? { phone: binding.phone, phoneSource: "manual" } : {}), ...(!value.username && binding.username ? { username: binding.username, usernameSource: "manual" } : {}) };
+    }
+    const retained = observedPhones.get(value.chatId), retainedUsername = observedUsernames.get(value.chatId);
+    return { ...value, ...(!value.phone && retained ? { phone: retained.phone, phoneSource: 'visible' } : {}), ...(!value.username && retainedUsername ? { username: retainedUsername.username, usernameSource: 'visible' } : {}) };
   }
-  function requireChat(expectedPhone) {
+  function requireChat(expectedPhone, expectedUsername, expectedChatId) {
     const value = context();
     if (value.isGroup || value.ambiguous) throw Error("Selecciona una conversación individual sin identidad ambigua.");
     if (!value.chatId) throw Error("Todavía no se puede identificar este chat. Abre su información de contacto o carga un mensaje.");
-    if (!value.phone) throw Error("WhatsApp no muestra el teléfono. Vincula expresamente este chat con el teléfono del cliente.");
+    if (!value.phone && !value.username) throw Error("WhatsApp no muestra el teléfono ni el usuario. Vincula expresamente este chat con el cliente.");
     if (expectedPhone && value.phone !== expectedPhone) throw Error("El teléfono del cliente no coincide con la conversación abierta. Selecciona su chat antes de preparar el mensaje.");
+    if (expectedUsername && value.username !== expectedUsername) throw Error("El usuario del cliente no coincide con la conversación abierta.");
+    if (expectedChatId !== undefined && value.chatId !== expectedChatId) throw Error("La conversación cambió. Revisa el destinatario.");
     return value;
   }
   function bind(input) {
     const value = identifiedContext();
     const number = phone(input?.phone);
-    if (!number || !value.chatId || value.chatId !== input?.chatId || input?.name !== undefined && value.name !== input.name || value.isGroup || value.ambiguous) throw Error("La conversación cambió o no se puede vincular de forma segura.");
-    if (value.phone && value.phone !== number) throw Error("El teléfono indicado no coincide con el teléfono visible de WhatsApp.");
+    const handle = username(input?.username);
+    if ((!number && !handle) || input?.phone && !number || input?.username && !handle || !value.chatId || value.chatId !== input?.chatId || input?.name !== undefined && value.name !== input.name || value.isGroup || value.ambiguous) throw Error("La conversación cambió o no se puede vincular de forma segura.");
+    if (value.phone && number && value.phone !== number) throw Error("El teléfono indicado no coincide con el teléfono visible de WhatsApp.");
+    if (value.username && handle && value.username !== handle) throw Error("El usuario indicado no coincide con el usuario visible de WhatsApp.");
     // A session anchor represents this exact native header generation, never a
     // reusable alias. Only exact wa: peers are eligible for background persistence.
     if (!value.phone && !/^(wa:|session:)/.test(value.chatId)) throw Error("Selecciona otra vez la conversación antes de vincularla.");
     manualBindings.delete(value.chatId);
-    manualBindings.set(value.chatId, { phone: number, name: value.name });
+    manualBindings.set(value.chatId, { phone: number, username: handle, name: value.name });
     // This is a bounded, ephemeral cache, never an exported customer database.
     if (manualBindings.size > 100) manualBindings.delete(manualBindings.keys().next().value);
     return context();
@@ -302,23 +330,23 @@
       characters += body.length;
       if (entries.length >= 100 || characters > 100000) break;
       seen.add(id);
-      entries.push({ id, direction, body, phone: current.phone, chatId: current.chatId });
+      entries.push({ id, direction, body, phone: current.phone, username: current.username, chatId: current.chatId });
     }
     const after = requireChat();
-    if (after.chatId !== current.chatId || after.phone !== current.phone) throw Error("El chat cambió durante la lectura. Repite la captura.");
+    if (after.chatId !== current.chatId || after.phone !== current.phone || after.username !== current.username) throw Error("El chat cambió durante la lectura. Repite la captura.");
     return entries;
   }
   function prepare(input) {
-    const expectedPhone = phone(input?.phone), text = input?.text;
-    if (!expectedPhone || typeof text !== "string" || !text.trim() || text.length > 8000) throw Error("Mensaje o teléfono no válido.");
-    const current = requireChat(expectedPhone);
+    const expectedPhone = phone(input?.phone), expectedUsername = username(input?.username), text = input?.text;
+    if ((!expectedPhone && !expectedUsername) || input?.phone && !expectedPhone || input?.username && !expectedUsername || !expectedPhone && !input?.chatId || typeof text !== "string" || !text.trim() || text.length > 8000) throw Error("Mensaje o destinatario no válido.");
+    const current = requireChat(expectedPhone, expectedUsername, input?.chatId);
     const composer = main()?.querySelector('footer [contenteditable="true"][role="textbox"]') || main()?.querySelector('[data-testid="conversation-compose-box-input"][contenteditable="true"]');
     if (!composer) return { prepared: false, clipboard: true, reason: "WhatsApp cambió su editor. El mensaje se copiará para que lo pegues tú." };
     const oldText = (composer.innerText || composer.textContent || "").trim();
     if (oldText && !editorMatches(composer, text)) return { prepared: false, clipboard: true, reason: "Ya hay un borrador en WhatsApp. Se conserva; el mensaje nuevo se copiará al portapapeles." };
     if (oldText) return { prepared: true, requiresConfirmation: true, chatId: current.chatId };
     composer.focus();
-    const beforeInsert = requireChat(expectedPhone);
+    const beforeInsert = requireChat(expectedPhone, expectedUsername, input?.chatId);
     if (beforeInsert.chatId !== current.chatId) throw Error("La conversación cambió. Revisa el destinatario.");
     // insertText updates WhatsApp's normal editor; no send button is clicked.
     const inserted = document.execCommand?.("insertText", false, text) === true;

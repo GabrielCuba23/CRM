@@ -10,6 +10,7 @@ import {
 import { archiveContact } from "../lifecycle.mjs";
 import { emptyGrowth } from "../growth.mjs";
 import { validateOutreach } from "../outreach.mjs";
+import { canonicalUsername, contactGroup, contactUsername } from "./contact-identity.mjs";
 
 const owns = (object, field) => Object.hasOwn(object, field);
 const clientTextFields = ["name", "phone", "whatsappUsername", "email", "service", "profile", "expires", "notes", "accountId", "pin"];
@@ -45,10 +46,18 @@ function capacity(value, clients, accountId) {
   return value;
 }
 
-function contactKey(client) {
-  // Blank or malformed legacy numbers do not establish a shared identity.
-  try { return `phone:${normalizePhone(client.phone)}`; }
-  catch { return `client:${client.id}`; }
+function contactPhone(client) {
+  try { return normalizePhone(client.phone); }
+  catch { return ""; }
+}
+
+function usernameValue(value) {
+  if (typeof value !== "string" || value.length > 100)
+    throw Error("Introduce un usuario de WhatsApp válido.");
+  const username = canonicalUsername(value);
+  if (value.trim() && !username)
+    throw Error("Introduce un usuario de WhatsApp válido.");
+  return username;
 }
 
 function requireWholeContact(clients, ids) {
@@ -56,10 +65,10 @@ function requireWholeContact(clients, ids) {
       ids.some(id => typeof id !== "string" || !id) || new Set(ids).size !== ids.length)
     throw Error("Selecciona todas las fichas del contacto una sola vez.");
   const selected = ids.map(id => requireId(clients, id, "El contacto cambió. Actualiza sus datos antes de continuar."));
-  const key = contactKey(selected[0]);
-  if (selected.some(client => contactKey(client) !== key))
+  const expected = contactGroup(clients, selected[0]);
+  const expectedIds = new Set(expected.map(client => client.id));
+  if (selected.some(client => !expectedIds.has(client.id)))
     throw Error("Las fichas seleccionadas pertenecen a contactos diferentes.");
-  const expected = clients.filter(client => contactKey(client) === key);
   if (expected.length !== selected.length)
     throw Error("El contacto tiene otros servicios. Actualiza y selecciona todas sus fichas.");
   return selected;
@@ -90,20 +99,27 @@ export function applyWorkspaceCommand(state, command, input = {}, options = {}) 
       throw Error("Introduce el nombre del cliente, con hasta 120 caracteres.");
     if (owns(input, "phone") && typeof input.phone !== "string")
       throw Error("Introduce un teléfono válido, con código de país.");
-    const rawPhone = owns(input, "phone") ? input.phone.trim() : contact[0].phone;
+    const rawPhone = owns(input, "phone") ? input.phone.trim() :
+      (contact.find(client => contactPhone(client))?.phone || contact[0].phone);
     const phone = rawPhone ? normalizePhone(rawPhone) : "";
-    if (!phone && contact.length > 1)
-      throw Error("Conserva un teléfono para mantener juntos los servicios de este cliente.");
     const selected = new Set(input.ids);
-    if (phone && next.clients.some(client => !selected.has(client.id) && contactKey(client) === `phone:${phone}`))
+    if (phone && next.clients.some(client => !selected.has(client.id) && contactPhone(client) === phone))
       throw Error("Ese teléfono ya pertenece a otro contacto. No se combinaron sus fichas.");
-    if (owns(input, "whatsappUsername") &&
-        (typeof input.whatsappUsername !== "string" || input.whatsappUsername.length > 100))
-      throw Error("Introduce un usuario de WhatsApp válido.");
-    next.clients = next.clients.map(client => selected.has(client.id) ? {
+    const username = owns(input, "whatsappUsername") ? usernameValue(input.whatsappUsername) : undefined;
+    if (username && contact.some(client => contactUsername(client) !== username) &&
+        next.clients.some(client => !selected.has(client.id) && contactUsername(client) === username))
+      throw Error("Ese usuario de WhatsApp ya pertenece a otro contacto. No se combinaron sus fichas.");
+    const updated = next.clients.map(client => selected.has(client.id) ? {
       ...client, name: input.name.trim(), phone,
-      ...(owns(input, "whatsappUsername") ? { whatsappUsername: input.whatsappUsername.trim() } : {}),
+      ...(username !== undefined ? { whatsappUsername: username } :
+        contactUsername(client) ? { whatsappUsername: contactUsername(client) } : {}),
     } : client);
+    const updatedContact = contactGroup(updated, updated.find(client => selected.has(client.id)));
+    if (updatedContact.some(client => !selected.has(client.id)))
+      throw Error("Los datos ya pertenecen a otro contacto. No se combinaron sus fichas.");
+    if (updatedContact.length !== selected.size)
+      throw Error("Conserva un teléfono o usuario de WhatsApp para mantener juntos los servicios de este cliente.");
+    next.clients = updated;
   } else if (command === "deleteContact") {
     requireWholeContact(next.clients, input.ids);
     const selected = new Set(input.ids);
@@ -120,6 +136,17 @@ export function applyWorkspaceCommand(state, command, input = {}, options = {}) 
     mergeText(client, input, clientTextFields);
     if (!client.name) throw Error("Introduce el nombre del cliente.");
     client.phone = client.phone ? normalizePhone(client.phone) : "";
+    if (owns(input, "whatsappUsername")) client.whatsappUsername = usernameValue(input.whatsappUsername);
+    // Service rows may share a contact's username, but a username must not join
+    // two different known phone numbers or guess between an ambiguous match.
+    const username = contactUsername(client);
+    const identityChanged = !previous || username !== contactUsername(previous) || client.phone !== contactPhone(previous);
+    if (identityChanged && username) {
+      const matches = next.clients.filter(row => row.id !== client.id && contactUsername(row) === username);
+      const phones = new Set([client, ...matches].map(contactPhone).filter(Boolean));
+      if (phones.size > 1)
+        throw Error("Ese usuario de WhatsApp pertenece a otro teléfono o es ambiguo. Revisa la ficha existente.");
+    }
     if (client.expires && !validDate(client.expires)) throw Error("Introduce un vencimiento válido.");
     for (const field of ["reminderConsent", "marketingConsent", "pricePending"]) {
       if (!owns(input, field)) continue;

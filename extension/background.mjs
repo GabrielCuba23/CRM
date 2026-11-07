@@ -499,7 +499,8 @@ async function whatsappTab(pinnedTabId, windowId) {
 // the confirmed CRM telephone. They never contain fichas, messages or credentials.
 // Session anchors are deliberately excluded: a display name is not a durable key.
 let chatLinkWrites = Promise.resolve();
-const validStoredLink = item => item && typeof item.origin === "string" && /^https:\/\//.test(item.origin) && typeof item.chatId === "string" && item.chatId.startsWith("wa:") && item.chatId.length <= 300 && typeof item.name === "string" && item.name.length <= 160 && /^\d{7,15}$/.test(item.phone);
+const validLinkUsername = value => typeof value === "string" && /^@[a-z0-9_][a-z0-9._]{1,63}$/.test(value);
+const validStoredLink = item => item && typeof item.origin === "string" && /^https:\/\//.test(item.origin) && typeof item.chatId === "string" && item.chatId.startsWith("wa:") && item.chatId.length <= 300 && typeof item.name === "string" && item.name.length <= 160 && (!item.phone || /^\d{7,15}$/.test(item.phone)) && (!item.username || validLinkUsername(item.username)) && (item.phone || item.username);
 async function readChatLinks() {
   await chatLinkWrites;
   const { chatLinks } = await chrome.storage.local.get("chatLinks");
@@ -569,20 +570,21 @@ async function waRequestOnTab(action, input, origin, tab, guard, requireVisible 
     // Another WhatsApp tab can forget or change this peer's link. Its persisted
     // mapping is authoritative; an old document's manual cache cannot recreate
     // it or delete a newer mapping by pretending to be a visible phone conflict.
-    if (!stored) return current.phoneSource === "manual" ? forgetManual() : current;
-    if (stored.name !== current.name || current.phoneSource === "visible" && current.phone !== stored.phone) {
+    const hasManual = () => current.phoneSource === "manual" || current.usernameSource === "manual";
+    if (!stored) return hasManual() ? forgetManual() : current;
+    if (stored.name !== current.name || stored.phone && current.phoneSource === "visible" && current.phone !== stored.phone || stored.username && current.usernameSource === "visible" && current.username !== stored.username) {
       await changeChatLinks(items => items.filter(item => item.origin !== origin || item.chatId !== stored.chatId));
-      return current.phoneSource === "manual" ? forgetManual() : current;
+      return hasManual() ? forgetManual() : current;
     }
-    if (current.phoneSource === "manual" && current.phone !== stored.phone) current = await forgetManual();
-    if (!current.phone) current = safeContext(await send("bind", { input: { chatId: current.chatId, name: stored.name, phone: stored.phone } }), tab.id);
+    if (current.phoneSource === "manual" && current.phone !== stored.phone || current.usernameSource === "manual" && current.username !== stored.username) current = await forgetManual();
+    if (stored.phone && !current.phone || stored.username && !current.username) current = safeContext(await send("bind", { input: { chatId: current.chatId, name: stored.name, ...(stored.phone ? { phone: stored.phone } : {}), ...(stored.username ? { username: stored.username } : {}) } }), tab.id);
     return current;
   };
   if (action === "context") return restore();
   if (action === "bind" || action === "unbind") {
     const result = safeContext(await send(action, input), tab.id);
-    if (action === "bind" && result.chatId.startsWith("wa:") && result.chatId === input.input.chatId && result.phone === input.input.phone)
-      await changeChatLinks(items => [...items.filter(item => item.origin !== origin || item.chatId !== result.chatId), { origin, chatId: result.chatId, name: result.name, phone: result.phone }]);
+    if (action === "bind" && result.chatId.startsWith("wa:") && result.chatId === input.input.chatId && (!input.input.phone || result.phone === input.input.phone) && (!input.input.username || result.username === input.input.username))
+      await changeChatLinks(items => [...items.filter(item => item.origin !== origin || item.chatId !== result.chatId), { origin, chatId: result.chatId, name: result.name, phone: result.phone, ...(result.username ? { username: result.username } : {}) }]);
     if (action === "unbind") await changeChatLinks(items => items.filter(item => item.origin !== origin || item.chatId !== input.input.chatId));
     return result;
   }
@@ -895,8 +897,9 @@ async function execute(message, sender) {
       const phone = String(message.input?.phone || "").replace(/[\s()+.-]/g, "");
       const chatId = message.input?.chatId;
       const name = message.input?.name;
-      if (!/^\d{7,15}$/.test(phone) || typeof chatId !== "string" || chatId.length > 300 || typeof name !== "string" || !name || name.length > 160) throw Error("Confirma el teléfono y la conversación a vincular.");
-      return waRequest("bind", { input: { phone, chatId, name } }, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
+      const username = typeof message.input?.username === "string" ? message.input.username.trim().toLowerCase() : "";
+      if ((!/^\d{7,15}$/.test(phone) && !validLinkUsername(username)) || phone && !/^\d{7,15}$/.test(phone) || username && !validLinkUsername(username) || typeof chatId !== "string" || !chatId || chatId.length > 300 || typeof name !== "string" || !name || name.length > 160) throw Error("Confirma el teléfono o usuario y la conversación a vincular.");
+      return waRequest("bind", { input: { ...(phone ? { phone } : {}), ...(username ? { username } : {}), chatId, name } }, sender, message.expectedOrigin, undefined, message.panelContextId, message.panelWindowId, message.panelInstance);
     }
     case "wa.unbind": {
       const chatId = message.input?.chatId;

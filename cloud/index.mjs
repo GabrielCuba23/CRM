@@ -30,6 +30,7 @@ const privateAssets = new Set([
   "/companion-ui.mjs",
   "/companion-ui.css",
   "/companions/conversations.mjs",
+  "/companions/contact-identity.mjs",
   "/companions/workspace.mjs",
   "/reports.mjs",
   "/report-config.mjs",

@@ -19,6 +19,7 @@
 .nexo-compact .compact-chat-heading p { font-size:12px; margin-top:3px; }
 .nexo-compact .compact-client-name { color:var(--compact-muted); font-size:12px; margin:-5px 0 15px!important; }
 .nexo-compact .compact-contact-tools { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:-2px 0 17px; font-size:11px; }
+.nexo-compact #compact-deliver-service { width:100%; margin:0 0 17px; }
 .nexo-compact .compact-section-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 12px; }
 .nexo-compact .compact-section-heading h2, .nexo-compact .compact-section-heading h3 { min-width:0; overflow-wrap:anywhere; }
 .nexo-compact .compact-section-heading > button { flex-shrink:0; }

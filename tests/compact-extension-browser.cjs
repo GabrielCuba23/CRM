@@ -186,6 +186,10 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
       { ...state.clients[0], id: "maria-disney", service: "Disney+", profile: "Infantil", email: "disney@example.test", accountId: "", expires: "2031-12-01", price: 0, pricePending: true },
       { ...state.clients[0], id: "jose-demo", name: "José · ejemplo", phone: "51988888888", service: "Max", profile: "Perfil 1", email: "jose@example.test", accountId: "", expires: "2031-12-01", price: 1800 },
     );
+    if (process.env.USERNAME_DELIVERY_ONLY === '1') {
+      state.clients = [{ ...state.clients[0], id: 'username-existing', name: '@cxmi.26', phone: '51911111111', whatsappUsername: '', service: '', profile: '', email: '', accountId: '', expires: '', price: 0, pricePending: true }];
+      state.accounts = [];
+    }
     if (process.env.RENEWAL_ISOLATION_ONLY === '1') {
       Object.assign(state.clients[0], { name: 'Ernesto · cliente sintético', service: 'MAX', profile: 'Ernesto', accountId: '', email: 'max@example.test', notes: 'Solo el perfil MAX principal.', expires: '2030-12-31', price: 0, pricePending: true });
       Object.assign(state.clients[1], { name: 'Ernesto · cliente sintético', service: 'PARAMOUNT', profile: 'Ernesto', accountId: '', email: 'paramount@example.test', notes: 'Solo el perfil PARAMOUNT.', expires: '2030-12-20', price: 0, pricePending: true,
@@ -369,7 +373,7 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
         return ctx.name === (phone || name) && ctx.chatId === `wa:${peer}`;
       }, "El adaptador no reconoció el cambio de conversación.");
       const expectedPhone = phone.replace(/\D/g, '');
-      const expectedName = state.clients.find(item => expectedPhone && item.phone === expectedPhone)?.name || phone || name;
+      const expectedName = state.clients.find(item => expectedPhone ? item.phone === expectedPhone : (item.whatsappUsername || (item.name.startsWith('@') ? item.name : '')).toLowerCase() === name.toLowerCase())?.name || phone || name;
       await until(async () => (await embedded.locator('#compact-chat-name').innerText()).includes(expectedName), "La ficha compacta no cambió junto con la conversación.");
     }
     const service = id => embedded.locator(`.compact-service[data-client-id="${id}"]`);
@@ -389,6 +393,117 @@ footer{background:#f0f2f5;display:flex;align-items:center;gap:12px;padding:14px 
     assert.equal(await embedded.locator('[id^="compact-tab-"]:visible').count(), 5);
     assert.equal(await embedded.locator('#nexo-module-select:visible').count(), 0, "El menú de catorce módulos no debe aparecer en la extensión compacta.");
     assert.equal(await embedded.locator('#summary:visible, .mode-banner:visible, .hero:visible, .crm-sidebar:visible').count(), 0, "La extensión no debe mostrar el tablero, los avisos y la navegación de la web completa.");
+    if (process.env.USERNAME_DELIVERY_ONLY === '1') {
+      await switchChat({ name: '@cxmi.26', peer: 'username-existing@lid' });
+      await service('username-existing').waitFor({ state: 'visible' });
+      assert.equal((await appFrame.evaluate(() => globalThis.NexoCompanion.getContext())).phone, '', 'La prueba reconoce el usuario aunque WhatsApp oculte el teléfono guardado.');
+      assert.equal(state.clients.length, 1);
+      assert.equal(writes, 0, 'Reconocer un usuario existente no crea otra ficha.');
+      for (let turn = 0; turn < 2; turn++) {
+        await embedded.locator('#compact-tab-clients').click();
+        if (turn) await embedded.getByRole('button', { name: '← Clientes', exact: true }).click();
+        assert.equal(await embedded.locator('#compact-client-list button').count(), 1);
+        await embedded.locator('#compact-client-list button').click();
+        await service('username-existing').waitFor({ state: 'visible' });
+        await embedded.locator('#compact-tab-chat').click();
+        await service('username-existing').waitFor({ state: 'visible' });
+      }
+      await embedded.locator('#compact-deliver-service').click();
+      await embedded.locator('#compact-delivery-unavailable').waitFor({ state: 'visible' });
+      assert.equal(writes, 0, 'Abrir Entregar servicio no asigna inventario.');
+      await embedded.locator('#compact-delivery-create-account').click();
+      await embedded.locator('#compact-account-dialog').waitFor({ state: 'visible' });
+      for (const [name, value] of Object.entries({ service: 'Netflix de prueba', email: 'entrega@example.test', expires: '2099-12-31', capacity: '2' })) await embedded.locator(`#compact-account-form [name="${name}"]`).fill(value);
+      await submit('#compact-account-form', '#compact-account-dialog');
+      const account = state.accounts[0];
+      assert.ok(account);
+      assert.equal(state.clients[0].accountId, '');
+      const beforeDeliveryWrites = writes;
+      await embedded.locator('#compact-deliver-service').click();
+      assert.equal(await embedded.locator('#compact-client-account').inputValue(), '');
+      assert.equal(await embedded.locator('#compact-client-username').inputValue(), '@cxmi.26', 'El usuario heredado tiene su propio campo antes de guardar.');
+      await embedded.locator('#compact-client-account').selectOption(account.id);
+      assert.equal(await embedded.locator('#compact-client-profile-select').inputValue(), '', 'El operador elige expresamente el perfil.');
+      await setProfile('Perfil 2');
+      await embedded.locator('#compact-client-form [name="expires"]').fill('2099-11-30');
+      assert.equal(state.clients[0].accountId, '', 'Elegir la cuenta y el perfil no guarda antes de confirmar.');
+      assert.equal(writes, beforeDeliveryWrites);
+      await submit('#compact-client-form', '#compact-client-dialog');
+      assert.equal(state.clients.length, 1, 'La entrega completa la ficha sin servicio existente.');
+      assert.equal(state.clients[0].id, 'username-existing');
+      assert.equal(state.clients[0].whatsappUsername, '@cxmi.26');
+      assert.equal(state.clients[0].phone, '51911111111');
+      assert.equal(state.clients[0].accountId, account.id);
+      assert.equal(state.clients[0].profile, 'Perfil 2');
+      assert.equal(writes, beforeDeliveryWrites + 1, 'La asignación usa una sola escritura CAS al workspace compartido.');
+      await embedded.locator('#compact-compose').waitFor({ state: 'visible' });
+      assert.match(await embedded.locator('#compact-message-text').inputValue(), /entrega@example.test/);
+      assert.match(await embedded.locator('#compact-message-text').inputValue(), /Perfil 2/);
+      assert.equal(await whatsapp.locator('footer [contenteditable]').innerText(), '');
+      await embedded.locator('#compact-prepare-message').click();
+      await until(async () => (await whatsapp.locator('footer [contenteditable]').innerText()).includes('Perfil 2'), 'La entrega por usuario debe preparar el borrador en el chat exacto.');
+      assert.equal(await whatsapp.locator('#fixture-sent').innerText(), '', 'El propietario confirma Enviar en WhatsApp.');
+      await embedded.locator('#compact-edit-contact').click();
+      await embedded.locator('#compact-contact-form [name="name"]').fill('Camila de prueba');
+      assert.equal(await embedded.locator('#compact-contact-form [name="whatsappUsername"]').inputValue(), '@cxmi.26');
+      await submit('#compact-contact-form', '#compact-contact-dialog');
+      await service('username-existing').waitFor({ state: 'visible' });
+      assert.equal(await embedded.locator('#compact-chat-name').innerText(), 'Camila de prueba', 'Editar el nombre conserva la asociación por usuario.');
+      await appFrame.goto(appFrame.url());
+      await service('username-existing').waitFor({ state: 'visible', timeout: 20000 });
+      assert.equal(await embedded.locator('#compact-chat-name').innerText(), 'Camila de prueba');
+      await embedded.locator('#compact-tab-clients').click();
+      await embedded.locator('#compact-client-list button').click();
+      await embedded.getByRole('button', { name: '← Clientes', exact: true }).click();
+      await embedded.locator('#compact-new-client').click();
+      await embedded.locator('#compact-client-name').fill('Otro nombre');
+      await embedded.locator('#compact-client-username').fill('@CXMI.26');
+      await embedded.locator('#compact-existing-contact').waitFor({ state: 'visible' });
+      assert.equal(await embedded.locator('#compact-client-form button[type=submit]').isDisabled(), true, 'Un usuario único existente bloquea una ficha duplicada.');
+      await embedded.locator('#compact-use-existing-contact').click();
+      await service('username-existing').waitFor({ state: 'visible' });
+      assert.equal(state.clients.length, 1);
+      await embedded.locator('#compact-tab-chat').click();
+      await switchChat({ name: '@nueva.27', peer: 'username-new@lid' });
+      assert.equal(await service('username-existing').count(), 0, 'Otro usuario nunca conserva la ficha previa.');
+      await embedded.locator('#compact-new-chat-client').click();
+      assert.equal(await embedded.locator('#compact-client-phone').inputValue(), '');
+      assert.equal(await embedded.locator('#compact-client-username').inputValue(), '@nueva.27');
+      await embedded.locator('#compact-client-name').fill('Nueva persona de prueba');
+      await submit('#compact-client-form', '#compact-client-dialog');
+      const created = state.clients.find(client => client.id !== 'username-existing');
+      assert.ok(created);
+      assert.equal(created.phone, '');
+      assert.equal(created.whatsappUsername, '@nueva.27');
+      await service(created.id).waitFor({ state: 'visible' });
+      await embedded.locator('#compact-add-service').click();
+      assert.equal(await embedded.locator('#compact-client-username').inputValue(), '@nueva.27');
+      await embedded.locator('#compact-client-form [name=service]').fill('Servicio manual de prueba');
+      await submit('#compact-client-form', '#compact-client-dialog');
+      assert.equal(state.clients.filter(client => client.whatsappUsername === '@nueva.27').length, 2);
+      await embedded.locator('#compact-tab-clients').click();
+      await embedded.getByRole('button', { name: '← Clientes', exact: true }).click();
+      await embedded.locator('#compact-client-search').fill('@nueva.27');
+      assert.equal(await embedded.locator('#compact-client-list button').count(), 1, 'Los servicios del mismo usuario forman un solo contacto.');
+      await embedded.locator('#compact-tab-chat').click();
+      await service(created.id).waitFor({ state: 'visible' });
+      await switchChat({ name: '@cxmi.26', peer: 'username-existing@lid' });
+      await service('username-existing').waitFor({ state: 'visible' });
+      await embedded.locator('#compact-deliver-service').click();
+      await embedded.locator('#compact-client-account').selectOption(account.id);
+      await setProfile('Perfil 1');
+      await embedded.locator('#compact-client-form [name=expires]').fill('2099-11-30');
+      const writesBeforeSwitch = writes;
+      await switchChat({ name: '@nueva.27', peer: 'username-new@lid' });
+      await embedded.locator('#compact-client-form button[type=submit]').click();
+      await until(async () => /chat cambió/i.test(await embedded.locator('#compact-client-error').innerText()), 'Cambiar de chat debe rechazar una entrega pendiente.');
+      assert.equal(writes, writesBeforeSwitch);
+      await embedded.locator('#compact-client-form').getByRole('button', { name: 'Cancelar', exact: true }).click();
+      assert.equal(await whatsapp.locator('#fixture-sent').innerText(), '');
+      assert.deepEqual(errors, []);
+      console.log('Username delivery passed: existing legacy @handle, tab/reload persistence, inline account creation, explicit account/profile confirmation, shared CAS save, editable delivery draft, username-only creation and grouping, duplicate prevention and stale-chat rejection.');
+      return;
+    }
     if (process.env.INITIAL_LOAD_FAILURE_ONLY === '1') {
       await embedded.locator('#compact-load-error').waitFor({ state: 'visible' });
       assert.match(await embedded.locator('#compact-load-error').innerText(), /No se pudieron cargar/);

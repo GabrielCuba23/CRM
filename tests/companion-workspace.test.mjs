@@ -273,11 +273,11 @@ test("contact updates require a name and can update a WhatsApp reference without
   const { run } = groupedFixture();
   for (const name of ["", "   ", undefined, "n".repeat(121)])
     assert.throws(() => run("updateContact", { ids: ["client", "second-service"], name }), /nombre/);
-  const next = run("updateContact", { ids: ["client", "second-service"], name: "Nuevo nombre", whatsappUsername: " @new-reference " });
+  const next = run("updateContact", { ids: ["client", "second-service"], name: "Nuevo nombre", whatsappUsername: " New_reference " });
   assert.equal(next.clients[0].phone, "51987654321");
   assert.equal(next.clients[1].phone, "51987654321");
-  assert.equal(next.clients[0].whatsappUsername, "@new-reference");
-  assert.equal(next.clients[1].whatsappUsername, "@new-reference");
+  assert.equal(next.clients[0].whatsappUsername, "@new_reference");
+  assert.equal(next.clients[1].whatsappUsername, "@new_reference");
   assert.equal(next.clients[1].notes, "Notas específicas de Max");
 });
 
@@ -304,4 +304,86 @@ test("deleting a complete contact releases all its services and preserves financ
   assert.equal(state.clients.length, 3);
   assert.throws(() => run("deleteContact", { ids: ["client"] }), /otros servicios/);
   assert.throws(() => run("deleteContact", { ids: ["client", "other-contact"] }), /contactos diferentes/);
+});
+
+test("username-only contacts keep separate service IDs, dates, assignments and renewal payments", () => {
+  const { state, run } = fixture();
+  state.clients[0].phone = "";
+  state.clients[0].whatsappUsername = "@CXMI.26";
+  const added = run("saveClient", { name: "Otra etiqueta", phone: "", whatsappUsername: " cxmi.26 ", service: "Max", expires: "2026-11-20", price: 900, paid: false });
+  assert.equal(added.clients[1].whatsappUsername, "@cxmi.26");
+  assert.notEqual(added.clients[0].id, added.clients[1].id);
+  assert.deepEqual(added.clients[0], state.clients[0]);
+  assert.throws(() => run("updateContact", { ids: ["client"], name: "Cambio" }, added), /otros servicios/);
+  const updated = run("updateContact", { ids: added.clients.map(client => client.id), name: "Cliente", phone: "", whatsappUsername: "@CXMI.26" }, added);
+  assert.deepEqual(updated.clients.map(client => client.whatsappUsername), ["@cxmi.26", "@cxmi.26"]);
+  const renewed = run("renewClient", { id: "client", expires: "2026-12-01", amount: 1500, paid: true }, updated);
+  assert.deepEqual(renewed.clients[1], updated.clients[1]);
+  assert.equal(renewed.clients[0].accountId, "account");
+  assert.equal(renewed.clients[0].profile, "Perfil 1");
+  assert.equal(renewed.ledger.at(-1).clientId, "client");
+  assert.equal(renewed.ledger.length, state.ledger.length + 1);
+});
+
+test("grouped services may replace their phone with a shared username and cannot erase both identities", () => {
+  const { state, run } = groupedFixture();
+  const ids = ["client", "second-service"];
+  const updated = run("updateContact", { ids, name: "Cliente sin número", phone: "", whatsappUsername: "CXMI.26" });
+  assert.deepEqual(updated.clients.slice(0, 2).map(client => [client.phone, client.whatsappUsername]), [["", "@cxmi.26"], ["", "@cxmi.26"]]);
+  assert.deepEqual(updated.clients[2], state.clients[2]);
+  assert.throws(() => run("updateContact", { ids, name: "Cliente", phone: "", whatsappUsername: "" }, updated), /mantener juntos/);
+  assert.throws(() => run("deleteContact", { ids: ["client"] }, updated), /otros servicios/);
+  assert.deepEqual(run("deleteContact", { ids }, updated).clients.map(client => client.id), ["other-contact"]);
+});
+
+test("a username service with hidden phone remains grouped with the known phone regardless of selection order", () => {
+  const { state, run } = fixture();
+  state.clients[0].whatsappUsername = "@cxmi.26";
+  const added = run("saveClient", { name: "@cxmi.26", whatsappUsername: "cxmi.26", service: "Max" });
+  assert.equal(added.clients[1].phone, "");
+  assert.throws(() => run("updateContact", { ids: [added.clients[1].id], name: "Cambio" }, added), /otros servicios/);
+  const updated = run("updateContact", { ids: [added.clients[1].id, "client"], name: "Cliente" }, added);
+  assert.deepEqual(updated.clients.map(client => client.phone), ["51987654321", "51987654321"]);
+  assert.deepEqual(updated.clients.map(client => client.whatsappUsername), ["@cxmi.26", "@cxmi.26"]);
+  assert.deepEqual(updated.ledger, state.ledger);
+});
+
+test("an exact legacy @username joins its stored username services and survives a display-name edit", () => {
+  const { state, run } = fixture();
+  state.clients[0].phone = "";
+  state.clients[0].name = "@Cxmi.26";
+  state.clients.push({ ...structuredClone(state.clients[0]), id: "legacy-sibling", name: "Cliente", whatsappUsername: "cxmi.26", accountId: "", profile: "" });
+  const updated = run("updateContact", { ids: ["client", "legacy-sibling"], name: "Nombre real" });
+  assert.equal(updated.clients[0].whatsappUsername, "@cxmi.26");
+  assert.equal(updated.clients[0].name, "Nombre real");
+  assert.throws(() => run("deleteContact", { ids: ["client"] }, updated), /otros servicios/);
+  assert.equal(run("deleteContact", { ids: ["client", "legacy-sibling"] }, updated).clients.length, 0);
+});
+
+test("username identity does not join conflicting phones or arbitrary duplicate names", () => {
+  const { state, run } = fixture();
+  state.clients[0].whatsappUsername = "@cxmi.26";
+  assert.throws(() => run("saveClient", { name: "Otra persona", phone: "51912345678", whatsappUsername: "CXMI.26" }), /otro teléfono|ambiguo/);
+  state.clients.push({ ...structuredClone(state.clients[0]), id: "conflicting-number", phone: "51912345678", accountId: "", profile: "" });
+  assert.throws(() => run("saveClient", { name: "Oculto", whatsappUsername: "@cxmi.26" }), /ambiguo/);
+  assert.throws(() => run("updateContact", { ids: ["client", "conflicting-number"], name: "No mezclar" }), /contactos diferentes/);
+  state.clients[0].phone = "";
+  state.clients[0].whatsappUsername = "";
+  state.clients[0].name = "cxmi.26";
+  state.clients[1].phone = "";
+  state.clients[1].whatsappUsername = "";
+  state.clients[1].name = "cxmi.26";
+  assert.throws(() => run("updateContact", { ids: ["client", "conflicting-number"], name: "No mezclar" }), /contactos diferentes/);
+});
+
+test("contact username changes reject collisions atomically and validate supplied values", () => {
+  const { state, run } = groupedFixture();
+  state.clients[2].whatsappUsername = "other_contact";
+  const before = structuredClone(state);
+  assert.throws(() => run("updateContact", { ids: ["client", "second-service"], name: "Cambio", whatsappUsername: "@OTHER_CONTACT" }), /otro contacto/);
+  for (const whatsappUsername of ["not a username", "@@cxmi.26", "x".repeat(101), 123]) {
+    assert.throws(() => run("saveClient", { name: "Nuevo", whatsappUsername }), /usuario de WhatsApp|campo de texto/);
+    assert.throws(() => run("updateContact", { ids: ["client", "second-service"], name: "Cambio", whatsappUsername }), /usuario de WhatsApp/);
+  }
+  assert.deepEqual(state, before);
 });

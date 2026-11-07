@@ -29,7 +29,7 @@ las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
 ## Instalar la extensión
 
-1. Descarga la [extensión Nexo 1.7.0](https://drive.google.com/file/d/1nvrSId8VEoJNKbp7qmK88WtRsu_6KPNG/view)
+1. Descarga la [extensión Nexo 1.8.0](https://drive.google.com/file/d/1vL-NuTV0AEfr4zLvod25-NBhXpb7sdvX/view)
    y descomprímela en una carpeta que conservarás.
 2. Abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa
    **Cargar descomprimida** y selecciona la carpeta que contiene `manifest.json`.
@@ -120,6 +120,23 @@ Los cambios confirmados se guardan en el servidor. Una revisión antigua se rech
 para no sobrescribir operaciones de otra sesión; guarda o cierra los formularios
 y pulsa **Recargar datos del CRM** cuando corresponda. La asignación de un perfil
 se confirma al guardar la venta, no al abrir el selector de disponibilidad.
+
+## Usuarios, entrega y contraseña en 1.8.0
+
+Chat actual identifica un @usuario completo visible y único, incluso en fichas
+anteriores cuyo nombre es ese usuario. Conserva los servicios de la ficha ya
+existente al volver desde Clientes. Los vínculos confirmados admiten teléfono o
+usuario, siempre asociados a la conversación y al CRM. Una identidad contradictoria
+requiere revisión, sin combinar clientes automáticamente.
+
+Desde **Entregar servicio** eliges cuenta y perfil, confirmas la asignación y
+revisas el mensaje sin salir del chat. Si no hay inventario registrado, **Crear
+cuenta** abre el formulario en la misma barra. El envío lo confirmas en WhatsApp.
+
+**Contraseña**, en la cabecera de la extensión, permite elegir la nueva dentro
+de Nexo. Introduce la actual, la nueva y su confirmación. Una frase de al menos
+12 caracteres es válida, sin requisitos de símbolos o mayúsculas. Al guardarla
+vuelves al ingreso en la misma barra. La web ofrece el mismo cambio en Seguridad.
 
 ## Conversaciones
 

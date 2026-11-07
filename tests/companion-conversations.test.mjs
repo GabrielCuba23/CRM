@@ -124,3 +124,46 @@ test("Capture skips unsupported/non-text rows, requires stable IDs and validates
     Array.from({ length: visibleMessageLimit + 1 }, (_, index) => captured({ id: String(index) })), { now }));
   await assert.rejects(() => importVisibleMessages(undefined, client, context, [captured()], { now: "invalid" }));
 });
+
+test("Explicit username identity recognizes legacy saved names, mixed services and optional @ fields without display-name guesses", () => {
+  const clients = [
+    { ...client, id: "legacy", name: "@Cxmi.26" },
+    { ...client, id: "service", name: "Camila", phone: "" , whatsappUsername: "cxmi.26" },
+    { ...client, id: "named", name: "cxmi.26", phone: "51987654321" },
+  ];
+  const chat = { name: "Camila", username: "@cxmi.26", usernameSource: "visible", phone: "", chatId: "wa:private@lid" };
+  const matched = matchContact(clients, chat);
+  assert.equal(matched.matchedBy, "username");
+  assert.equal(matched.phone, "51912345678");
+  assert.deepEqual(matched.matches.map(row => row.id), ["legacy", "service"]);
+  assert.deepEqual(matchContact(clients, { ...chat, usernameSource: "draft" }).matches, []);
+  assert.deepEqual(matchContact(clients, { ...chat, username: "cxmi.26" }).matches, []);
+  assert.deepEqual(matchContact(clients, { ...chat, username: "", name: "@cxmi.26" }).matches, []);
+  const conflicting = [...clients, { ...client, id: "different-phone", whatsappUsername: "@cxmi.26", phone: "51987654321" }];
+  assert.equal(matchContact(conflicting, chat).reason, "ambiguous-username");
+  assert.equal(matchContact([{ ...clients[0], phone: "912345678" }, conflicting.at(-1)], chat).reason, "ambiguous-username", "A stored local CRM phone still counts as a conflicting known telephone");
+  assert.equal(matchContact(clients, { ...chat, phone: "51987654321", phoneSource: "visible" }).reason, "identity-conflict");
+});
+
+test("A newly revealed phone preserves a username-only contact and rejects identifiers belonging to separate saved contacts", () => {
+  const usernameOnly = { ...client, id: "username-only", phone: "", whatsappUsername: "@cxmi.26" };
+  const chat = { username: "@cxmi.26", usernameSource: "visible", phone: "51912345678", phoneSource: "visible", chatId: "wa:private@lid" };
+  assert.deepEqual(matchContact([usernameOnly], chat).matches.map(row => row.id), ["username-only"]);
+  assert.equal(matchContact([client, usernameOnly], chat).reason, "identity-conflict");
+});
+
+test("Username correspondence remains scoped to its exact chat and accepts a selected username-only service in a phone contact", async () => {
+  const saved = { ...client, name: "@Cxmi.26", whatsappUsername: "@cxmi.26" };
+  const service = { ...saved, id: "username-service", phone: "" };
+  const chat = { username: "@cxmi.26", usernameSource: "visible", phone: "", chatId: "wa:private@lid" };
+  const row = captured({ phone: "", username: "@cxmi.26", chatId: chat.chatId });
+  const first = await importVisibleMessages(undefined, saved, chat, [row], { now });
+  assert.equal(first.count, 1);
+  await assert.rejects(() => importVisibleMessages(undefined, saved, chat, [{ ...row, username: "@someone.else" }], { now }));
+  await assert.rejects(() => importVisibleMessages(undefined, saved, chat, [{ ...row, chatId: "wa:another@lid" }], { now }));
+  await assert.rejects(() => importVisibleMessages(undefined, saved, { ...chat, usernameSource: "draft" }, [row], { now }));
+  const visible = { ...chat, phone: saved.phone, phoneSource: "visible" };
+  const repeated = await importVisibleMessages(first.growth, saved, visible, [{ ...row, phone: saved.phone }], { now });
+  assert.equal(repeated.count, 0, "Changing the proof from username to a visible phone cannot duplicate an imported row");
+  assert.equal((await importVisibleMessages(undefined, service, visible, [{ ...row, phone: saved.phone }], { now, clients: [saved, service] })).count, 1);
+});

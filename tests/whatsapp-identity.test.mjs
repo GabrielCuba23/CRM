@@ -46,7 +46,7 @@ function fixture({ name = "Ana", peer = "ana@lid", number = "", group = false, o
     const node = {
       ...visibleNode(), getClientRects: () => data.hidden ? [] : [{}], getAttribute: () => "",
       querySelector: selector => selector === '[data-testid="contact-info-name"]' ? identity : null,
-      querySelectorAll: () => (data.phones || []).map((value, index) => ({
+      querySelectorAll: selector => (selector.includes('username') ? data.usernames || [] : data.phones || []).map((value, index) => ({
         ...visibleNode(data.phoneHidden), textContent: value,
         getAttribute: name => name === "href" && data.telLinks ? "tel:" + value : name === "aria-hidden" && data.phoneAriaHidden ? "true" : "",
       })),
@@ -96,6 +96,53 @@ test("A stale manually entered number cannot select another customer's records i
   assert.deepEqual(matchContact(clients, staleInput).matches, []);
   assert.equal(matchContact(clients, staleInput).reason, "unverified-phone");
   assert.throws(() => adapter.bind({ phone: "51912345678", chatId: "" }), /cambió|segura/);
+});
+
+test("An explicit WhatsApp @username recognizes the saved contact and every service without exposing a guessed phone", () => {
+  const { state, adapter } = fixture({ name: "@Cxmi.26", peer: "username-peer@lid" });
+  const saved = [{ id: "legacy", name: "@cxmi.26", phone: "51912345678" }, { id: "service", name: "Camila", phone: "51912345678" }];
+  const current = adapter.context();
+  assert.equal(current.phone, "");
+  assert.equal(current.username, "@cxmi.26");
+  assert.equal(current.usernameSource, "visible");
+  assert.equal(current.chatId, "wa:username-peer@lid");
+  assert.deepEqual(matchContact(saved, current).matches.map(row => row.id), ["legacy", "service"]);
+  assert.equal(matchContact(saved, current).matchedBy, "username");
+  assert.equal(adapter.capture()[0].username, "@cxmi.26");
+  adapter.prepare({ username: "@cxmi.26", chatId: current.chatId, text: "Borrador revisable" });
+  assert.equal(state.draft, "Borrador revisable");
+  assert.equal(state.sent, 0);
+  assert.throws(() => adapter.prepare({ username: "@cxmi.26", chatId: "wa:another@lid", text: "Privado" }), /cambió/);
+  assert.throws(() => adapter.prepare({ username: "@different", chatId: current.chatId, text: "Privado" }), /usuario/);
+  assert.throws(() => adapter.prepare({ phone: "51912345678", text: "Campaña" }), /teléfono/);
+});
+
+test("Native username evidence stays with the same peer when contact info closes and cannot follow a same-name chat switch", () => {
+  const { state, adapter } = fixture({ name: "Camila", peer: "first@lid" });
+  adapter.context();
+  state.drawers = [{ name: "Camila", usernames: ["@cxmi.26"] }];
+  assert.equal(adapter.context().username, "@cxmi.26");
+  state.drawers = [];
+  assert.equal(adapter.context().username, "@cxmi.26");
+  state.peer = "second@lid";
+  assert.equal(adapter.context().username, "");
+  assert.throws(() => adapter.prepare({ username: "@cxmi.26", chatId: "wa:second@lid", text: "Privado" }), /vincula|usuario/i);
+});
+
+test("A username-only manual link requires the exact peer and rejects a different visible handle", () => {
+  const { state, adapter, advance } = fixture({ name: "Camila", peer: "first@lid" });
+  const linked = adapter.bind({ username: "@cxmi.26", chatId: "wa:first@lid", name: "Camila" });
+  assert.equal(linked.phone, "");
+  assert.equal(linked.usernameSource, "manual");
+  state.peer = "second@lid";
+  assert.equal(adapter.context().username, "");
+  state.peer = "first@lid";
+  assert.equal(adapter.context().username, "@cxmi.26");
+  state.name = "@other.user";
+  assert.equal(adapter.context().ambiguous, true);
+  advance(251);
+  assert.equal(adapter.context().username, "@other.user");
+  assert.throws(() => adapter.bind({ username: "@cxmi.26", chatId: "wa:first@lid", name: "@other.user" }), /usuario/);
 });
 
 test("Visible phone matching is automatic and includes every service without guessing from display name", () => {

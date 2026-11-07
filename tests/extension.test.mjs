@@ -113,13 +113,14 @@ async function backgroundFixture({ localState, waState, beforeWhatsAppSend } = {
         if (message.channel === "nexo.whatsapp") {
           await beforeWhatsAppSend?.({ tabId, message });
           const value = whatsapp.get(tabId) || { name: `Chat ${tabId}`, phone: tabId === 11 ? "51999999999" : "51888888888", chatId: `wa:peer-${tabId}@lid`, phoneSource: "visible" };
-          if (value.scope !== message.scope) { value.scope = message.scope; value.manual = ""; }
+          if (value.scope !== message.scope) { value.scope = message.scope; value.manual = ""; value.manualUsername = ""; }
           if (message.action === "bind") {
-            if (value.chatId !== message.input.chatId || message.input.name !== value.name || value.phone && value.phone !== message.input.phone) return { ok: false, error: "La conversación cambió" };
+            if (value.chatId !== message.input.chatId || message.input.name !== value.name || value.phone && message.input.phone && value.phone !== message.input.phone || value.username && message.input.username && value.username !== message.input.username) return { ok: false, error: "La conversación cambió" };
             value.manual = message.input.phone;
+            value.manualUsername = message.input.username;
           }
-          if (message.action === "unbind") value.manual = "";
-          const current = { name: value.name, chatId: value.chatId, phone: value.phone || value.manual || "", phoneSource: value.phone ? "visible" : value.manual ? "manual" : "", ambiguous: value.ambiguous || false };
+          if (message.action === "unbind") { value.manual = ""; value.manualUsername = ""; }
+          const current = { name: value.name, chatId: value.chatId, phone: value.phone || value.manual || "", phoneSource: value.phone ? "visible" : value.manual ? "manual" : "", username: value.username || value.manualUsername || "", usernameSource: value.username ? "visible" : value.manualUsername ? "manual" : "", ambiguous: value.ambiguous || false };
           return { ok: true, result: message.action === "capture" ? [{ ...current, body: `Message ${tabId}` }] : message.action === "prepare" ? { ...current, prepared: true } : current };
         }
         return { ok: true };
@@ -352,7 +353,7 @@ test("The package contains the entire CRM and no server data or remote executabl
   assert.equal(result.status, 0, result.stderr);
   const manifest = JSON.parse(await readFile(join(output, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "1.7.0");
+  assert.equal(manifest.version, "1.8.0");
   assert.deepEqual(manifest.host_permissions, ["https://web.whatsapp.com/*", "https://nexo-crm.acxelcubaaraoz.workers.dev/*"]);
   assert.equal(manifest.externally_connectable, undefined);
   assert.deepEqual(manifest.side_panel, { default_path: "app/index.html?panel=1" });
@@ -512,4 +513,40 @@ test("A slow restore in one tab finishes before another tab changes the shared p
   assert.equal((await relinking).result.phone, "51987654321");
   assert.equal(local.chatLinks[0].phone, "51987654321");
   assert.equal((await invoke({ type: "wa.context" }, sender(11))).result.phone, "51987654321");
+});
+
+test("Username-only peer links survive worker/document reload, stay scoped and expire on a contradictory visible username", async () => {
+  const local = { crmOrigin: "https://crm.example" };
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  const createState = () => new Map([[11, { name: "Camila", chatId: "wa:private-username@lid", phone: "" }]]);
+  const first = await backgroundFixture({ localState: local, waState: createState() });
+  const linked = await first.invoke({ type: "wa.bind", input: { chatId: "wa:private-username@lid", name: "Camila", username: "@Cxmi.26" } }, sender);
+  assert.equal(linked.ok, true);
+  assert.equal(linked.result.phone, "");
+  assert.equal(linked.result.username, "@cxmi.26");
+  assert.equal(linked.result.usernameSource, "manual");
+  assert.equal(local.chatLinks[0].username, "@cxmi.26");
+  const whatsapp = createState();
+  const reloaded = await backgroundFixture({ localState: local, waState: whatsapp });
+  assert.equal((await reloaded.invoke({ type: "wa.context" }, sender)).result.username, "@cxmi.26");
+  whatsapp.get(11).chatId = "wa:same-name-other-peer@lid";
+  whatsapp.get(11).manualUsername = "";
+  assert.equal((await reloaded.invoke({ type: "wa.context" }, sender)).result.username, "");
+  whatsapp.get(11).chatId = "wa:private-username@lid";
+  whatsapp.get(11).username = "@another.user";
+  const contradicted = await reloaded.invoke({ type: "wa.context" }, sender);
+  assert.equal(contradicted.result.username, "@another.user");
+  assert.equal(contradicted.result.usernameSource, "visible");
+  assert.equal(local.chatLinks.length, 0);
+});
+
+test("The background accepts username drafts only with a captured chat identity", async () => {
+  const { invoke, calls } = await backgroundFixture();
+  const sender = { id, url: `chrome-extension://${id}/app/index.html?embedded=1`, frameId: 7, tab: { id: 11, url: "https://web.whatsapp.com/" } };
+  assert.equal((await invoke({ type: "wa.prepare", input: { username: "@cxmi.26", text: "Borrador" } }, sender)).ok, false);
+  assert.equal((await invoke({ type: "wa.prepare", input: { username: "@Cxmi.26", chatId: "wa:peer-11@lid", text: "Borrador" } }, sender)).ok, true);
+  const request = calls.findLast(call => call.message?.action === "prepare").message.input;
+  assert.equal(request.username, "@cxmi.26");
+  assert.equal(request.chatId, "wa:peer-11@lid");
+  assert.equal(request.phone, undefined);
 });
