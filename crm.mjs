@@ -85,7 +85,7 @@ export function fillTemplate(body, client, password = "", settings = {}) {
     pago: settings.payments || "Consulta los medios de pago",
   };
   return body.replace(
-    /\{(nombre|telefono|correo|servicio|perfil|vence|contrasena|pin|negocio|pago)\}/g,
+    /\{(nombre|telefono|usuario_whatsapp|correo|servicio|perfil|vence|contrasena|pin|negocio|pago)\}/g,
     (_, key) => values[key],
   );
 }

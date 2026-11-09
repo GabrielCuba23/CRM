@@ -27,6 +27,24 @@ desde WhatsApp sin una pestaña auxiliar del CRM. El propietario elige la contra
 mediante un enlace privado de activación de un solo uso. El panel de instancias y
 las copias existentes conservan su acceso anterior hasta migrarlas por separado.
 
+## Usar el CRM desde el celular
+
+Abre https://nexo-crm.acxelcubaaraoz.workers.dev/#customers en el navegador del
+móvil y entra con el mismo correo y contraseña. La vista muestra tarjetas de
+clientes con botones de **Avisar renovación**, **Cancelación**, **Entregar cuenta**
+y **Cobrar**. Puedes editar cada mensaje y usar tus plantillas guardadas.
+
+Con teléfono, el botón abre `https://wa.me/51…?text=…`, con el número internacional
+sin el signo + y el texto preparado. WhatsApp pide confirmar el envío. Si solo
+hay @usuario, se ofrece copiarlo y abrir el mensaje para seleccionar o buscar
+el contacto en WhatsApp; no se inventa un enlace directo al usuario.
+
+La entrega toma los accesos de la cuenta asignada cuando están guardados; los
+cobros incluyen los medios de pago configurados. Preparar estos mensajes no
+modifica vencimientos ni registra cobros. **Gestionar este servicio** permite
+abrir la renovación y la ficha. Esta mejora se aplica en la web al recargar;
+la extensión distribuida permanece en la versión 1.8.0.
+
 ## Instalar la extensión
 
 1. Descarga la [extensión Nexo 1.8.0](https://drive.google.com/file/d/1vL-NuTV0AEfr4zLvod25-NBhXpb7sdvX/view)

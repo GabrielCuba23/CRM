@@ -53,6 +53,7 @@ test("WhatsApp URL round-trips accents, emoji, formatting, newlines and special 
   assert.equal(url.searchParams.get("text"), message);
   assert.equal(url.hash, "");
   assert(message.includes("07/11/2026"));
+  assert.equal(fillTemplate("Para {usuario_whatsapp}", { ...client, whatsappUsername: "@jose.ana" }), "Para @jose.ana");
   assert.throws(() => whatsappUrl(client.phone, "  "));
 });
 test("Expiry boundaries use Lima dates and do not shift with UTC", () => {

@@ -4,7 +4,7 @@ import {
   validatePromotions,
   promotionPrice,
 } from "./promotions.mjs";
-import { conversationEntries, manualMessage } from "./messaging.mjs";
+import { conversationEntries, manualMessage, whatsappContact, whatsappMessageLink } from "./messaging.mjs";
 import { initializeCompanion } from "./companion-ui.mjs";
 import { applyWorkspaceCommand } from "./companions/workspace.mjs";
 import {
@@ -398,11 +398,49 @@ function render() {
     row.append(identity, service, expiry, actions);
     $("#clients").append(row);
   }
+  renderMobileClients(matches);
   renderModules();
   renderRules();
   companionUI?.refresh();
   outreachWebUI?.refresh();
   engagementWebUI?.refresh();
+}
+const messagePurposes = [
+  ["renewal", "Avisar renovación"], ["cancellation", "Cancelación"],
+  ["delivery", "Entregar cuenta"], ["collection", "Cobrar"],
+];
+function renderMobileClients(matches) {
+  const list = $("#mobile-client-list");
+  list.replaceChildren();
+  for (const client of matches) {
+    const card = element("article", undefined, "mobile-client-card");
+    card.dataset.clientId = client.id;
+    const heading = element("div", undefined, "mobile-client-heading");
+    heading.append(element("h3", client.name), element("span", client.archived ? "Archivado" : labels[subscriptionStatus(client.expires)], "pill"));
+    const contact = whatsappContact(client);
+    const profile = client.profile ? /^perfil\b/i.test(client.profile) ? client.profile : "Perfil " + client.profile : "Sin perfil";
+    const service = element("p", `${client.service || "Sin servicio"} · ${profile}`, "mobile-client-service");
+    const meta = element("p", [contact.phone ? "+" + contact.phone : "", contact.username].filter(Boolean).join(" · ") || "Añade su teléfono o usuario en Editar", "mobile-client-meta");
+    const data = element("dl", undefined, "mobile-client-details");
+    data.append(element("dt", "Vence"), element("dd", formatDate(client.expires)), element("dt", "Precio"), element("dd", client.pricePending ? "Sin indicar" : money(client.price || 0)), element("dt", "Correo"), element("dd", client.email || "Sin indicar"));
+    const actions = element("div", undefined, "mobile-client-actions");
+    for (const [purpose, label] of messagePurposes) {
+      const action = button(label, () => openMessage(client, { purpose }), "secondary");
+      action.dataset.action = purpose;
+      action.disabled = contact.kind === "missing";
+      actions.append(action);
+    }
+    const more = element("details");
+    more.append(element("summary", "Gestionar este servicio"));
+    const management = element("div", undefined, "mobile-client-actions");
+    management.append(button(client.archived ? "Reactivar servicio" : "Registrar renovación", () => {
+      if (client.archived) {
+        editClient({ ...client, accountId: "", profile: "", expires: "" });
+        $("#client-form").dataset.reactivate = "1";
+      } else openRenew(client);
+    }), button("Editar", () => editClient(client)), button("Ficha e historial", () => growthUI.showContact(client)));
+    more.append(management); card.append(heading, service, meta, data, actions, more); list.append(card);
+  }
 }
 function editClient(c = {}) {
   delete $("#client-form").dataset.reactivate;
@@ -624,19 +662,31 @@ for (const key of fields)
   );
 function updateLink() {
   try {
-    $("#open-whatsapp").href = whatsappUrl(
-      recipient.phone,
-      $("#message-text").value,
-    );
+    const contact = whatsappMessageLink(recipient, $("#message-text").value);
+    $("#open-whatsapp").href = contact.url;
+    $("#open-whatsapp").textContent = contact.kind === "username" ? "Abrir WhatsApp y elegir contacto" : "Abrir WhatsApp →";
+    const hasUsername = Boolean(contact.username);
+    $("#copy-whatsapp-username").hidden = !hasUsername;
+    $("#copy-whatsapp-username").textContent = hasUsername ? `Copiar ${contact.username}` : "Copiar usuario";
+    $("#message-username-note").hidden = contact.kind !== "username";
+    $("#message-username-note").textContent = contact.kind === "username" ? `Este contacto usa ${contact.username}. Copia su usuario y selecciónalo o búscalo en WhatsApp. El enlace prepara el texto sin elegir un destinatario.` : "";
     $("#open-whatsapp").removeAttribute("aria-disabled");
     $("#message-error").textContent = "";
   } catch (error) {
     $("#open-whatsapp").removeAttribute("href");
     $("#open-whatsapp").setAttribute("aria-disabled", "true");
     $("#message-error").textContent = error.message;
+    $("#message-username-note").hidden = true;
+    $("#copy-whatsapp-username").hidden = !whatsappContact(recipient).username;
   }
 }
 let messageTemplateId = "";
+let selectedMessagePurpose = "";
+function messageClient(client, purpose) {
+  const account = purpose === "delivery" && accounts.find(item => item.id === client.accountId);
+  const context = { ...client, whatsappUsername: whatsappContact(client).username || client.whatsappUsername || "" };
+  return account ? { ...context, email: account.email, service: account.service } : context;
+}
 function compose() {
   messageTemplateId = $("#message-template").value;
   if (messageTemplateId === "__custom") {
@@ -646,27 +696,66 @@ function compose() {
   const t = templates.find((t) => t.id === $("#message-template").value);
   $("#message-text").value = fillTemplate(
     t.body,
-    recipient,
+    messageClient(recipient, selectedMessagePurpose),
     $("#message-password").value,
     settings,
   );
   updateLink();
 }
-function openMessage(c) {
+function serviceMessage(c, purpose) {
+  c = messageClient(c, purpose);
+  const patterns = { renewal: /renov|vencim/, cancellation: /cancel|baja|suspens/, delivery: /entrega|acceso|bienvenida/, collection: /cobro|cobranza|pago/ };
+  const password = accounts.find(account => account.id === c.accountId)?.password || "";
+  const candidates = templates.filter(template => patterns[purpose]?.test(`${template.context || ""} ${template.name}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()));
+  const saved = purpose === "delivery" && password ? candidates.find(template => template.body.includes("{contrasena}")) || candidates[0] : candidates[0];
+  if (saved) return { template: saved.id };
+  const bodies = {
+    renewal: "Hola {nombre} 👋\nTu servicio de *{servicio}* vence el *{vence}*. ¿Deseas renovarlo?\n\n{pago}",
+    cancellation: "Hola {nombre}. Te escribimos sobre la cancelación de tu servicio de *{servicio}*.\nSi deseas renovarlo o tienes alguna consulta, respóndenos y te ayudamos.",
+    delivery: `Hola {nombre} 👋\n\n*{servicio}*\nCorreo: {correo}${password ? "\nContraseña: {contrasena}" : ""}\nPerfil: {perfil}${c.pin ? "\nPIN: {pin}" : ""}\nVence: {vence}\n\nGracias por confiar en {negocio}.`,
+    collection: `Hola {nombre} 👋\nTe compartimos los datos de pago de *{servicio}*.\n${c.pricePending ? "Importe: por confirmar." : "Importe: " + money(c.price || 0)}\n\n{pago}\n\nSi ya pagaste, envíanos el comprobante para revisar tu registro.`,
+  };
+  return { body: fillTemplate(bodies[purpose] || "", c, password, settings) };
+}
+function openMessage(c, { purpose = "" } = {}) {
   currentTask = null;
   $("#confirm-task").hidden = true;
   $("#confirm-manual-message").hidden = false;
   $("#confirm-manual-message").disabled = false;
   recipient = c;
+  selectedMessagePurpose = purpose;
   $("#message-template-editor").hidden = true;
   $("#message-password").value =
     accounts.find((a) => a.id === c.accountId)?.password || "";
+  const contact = whatsappContact(c);
   $("#recipient").textContent =
-    `Para ${c.name} · ${c.phone || c.whatsappUsername || "Sin número: puedes copiar el mensaje"}`;
+    `Para ${c.name} · ${[contact.phone ? "+" + contact.phone : "", contact.username].filter(Boolean).join(" · ") || "Añade un teléfono o usuario en la ficha"}`;
   templateOptions($("#message-template"));
-  compose();
-  $("#message-dialog").showModal();
+  $("#message-action-title").textContent = messagePurposes.find(item => item[0] === purpose)?.[1] || "Enviar por WhatsApp";
+  for (const action of $("#message-purpose-actions").children) action.setAttribute("aria-pressed", String(action.dataset.action === purpose));
+  if (purpose) {
+    const selected = serviceMessage(c, purpose);
+    $("#message-template").value = selected.template || "__custom";
+    if (selected.template) compose();
+    else { messageTemplateId = "__custom"; $("#message-text").value = selected.body; updateLink(); }
+  } else compose();
+  if (!$("#message-dialog").open) $("#message-dialog").showModal();
 }
+for (const [purpose, label] of messagePurposes) {
+  const action = button(label, () => {
+    if (!recipient) return;
+    if ($("#message-text").value.trim() && !confirm("¿Reemplazar el texto con este tipo de mensaje?")) return;
+    openMessage(recipient, { purpose });
+  });
+  action.dataset.action = purpose;
+  $("#message-purpose-actions").append(action);
+}
+$("#copy-whatsapp-username").addEventListener("click", async () => {
+  const username = whatsappContact(recipient).username;
+  if (!username) return;
+  try { await copyText(username); $("#message-error").textContent = "Usuario copiado. Búscalo o selecciónalo en WhatsApp antes de enviar."; }
+  catch { $("#message-error").textContent = `Copia este usuario para buscarlo en WhatsApp: ${username}`; }
+});
 $("#message-template").addEventListener("change", async () => {
   if (confirm("¿Reemplazar el mensaje con la plantilla seleccionada?")) {
     if ($("#message-template").value === "__custom")
@@ -714,6 +803,7 @@ $("#message-dialog").addEventListener("close", async () => {
   $("#message-text").value = "";
   $("#open-whatsapp").removeAttribute("href");
   recipient = null;
+  selectedMessagePurpose = "";
   currentTask = null;
   $("#confirm-task").hidden = true;
 });

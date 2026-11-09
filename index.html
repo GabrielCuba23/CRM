@@ -695,7 +695,8 @@
             </select></label
           >
         </div>
-        <div class="table-scroll">
+        <div id="mobile-client-list" aria-label="Clientes y acciones rápidas"></div>
+        <div class="table-scroll desktop-client-table">
           <table>
             <thead>
               <tr>
@@ -1570,11 +1571,14 @@
       <div class="section-head">
         <div>
           <p class="eyebrow">PREPARA TU CONVERSACIÓN</p>
-          <h2>Enviar por WhatsApp</h2>
+          <h2 id="message-action-title">Enviar por WhatsApp</h2>
         </div>
         <button class="icon-button close" aria-label="Cerrar">×</button>
       </div>
       <p id="recipient"></p>
+      <div id="message-purpose-actions" class="service-actions" aria-label="Tipo de mensaje"></div>
+      <p id="message-username-note" class="muted" hidden></p>
+      <button id="copy-whatsapp-username" type="button" class="secondary" hidden>Copiar usuario</button>
       <label>Plantilla<select id="message-template"></select></label>
       <div class="actions">
         <button id="message-new-template" class="secondary" type="button">

@@ -1145,3 +1145,275 @@ select {
     font-size: 21px;
   }
 }
+
+/* The customer table remains available on wider screens; compact cards expose
+   the same contact and service actions without scrolling a table on a phone. */
+#mobile-client-list {
+  display: none;
+}
+.mobile-client-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #dce1ec;
+  border-radius: 16px;
+  background: #fafbfe;
+  overflow-wrap: anywhere;
+}
+.mobile-client-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mobile-client-heading > * {
+  min-width: 0;
+}
+.mobile-client-heading h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 18px;
+}
+.mobile-client-heading .pill {
+  flex: 0 0 auto;
+}
+.mobile-client-meta,
+.mobile-client-service {
+  margin: 10px 0;
+}
+.mobile-client-details {
+  display: grid;
+  grid-template-columns: minmax(0, 0.65fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.mobile-client-details > * {
+  min-width: 0;
+}
+.mobile-client-details dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.mobile-client-details dd {
+  margin: 0;
+}
+.mobile-client-actions,
+.service-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.mobile-client-actions button,
+.service-actions button {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.service-actions button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px #332078;
+  background: #e8e1ff;
+  color: #4b3599;
+}
+.mobile-client-card details .actions {
+  gap: 8px;
+}
+.dark .mobile-client-card {
+  background: #273247;
+  border-color: #3e4a62;
+}
+.dark .service-actions button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px #b4a2ff;
+  background: #393255;
+  color: #e6deff;
+}
+@media (max-width: 760px) {
+  .crm-sidebar {
+    padding: max(12px, env(safe-area-inset-top)) 14px 10px;
+    border-right: 0;
+    border-bottom: 1px solid #dce1ec;
+  }
+  .crm-sidebar nav {
+    gap: 6px;
+    margin-top: 12px;
+    padding: 3px 3px 8px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .crm-sidebar nav a {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  .crm-sidebar nav a span {
+    display: inline-block;
+  }
+  main {
+    min-width: 0;
+    padding: 20px 12px max(24px, env(safe-area-inset-bottom));
+  }
+  header,
+  .section-head {
+    flex-wrap: wrap;
+  }
+  header > *,
+  .section-head > *,
+  .actions > *,
+  .inbox-grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  header .actions {
+    width: 100%;
+    gap: 8px;
+  }
+  header .actions > button {
+    flex: 1 1 auto;
+  }
+  h2,
+  h3,
+  .panel,
+  dialog,
+  .panel p,
+  .account-card,
+  .mode-banner,
+  #recipient,
+  #inbox-contact {
+    overflow-wrap: anywhere;
+  }
+  .panel {
+    padding: 16px;
+    margin: 18px 0;
+    border-radius: 18px;
+  }
+  .inset {
+    padding: 14px;
+  }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 20px 0;
+  }
+  .metrics strong {
+    font-size: 27px;
+    overflow-wrap: anywhere;
+  }
+  button,
+  .button,
+  details > summary {
+    min-height: 44px;
+  }
+  button,
+  .button,
+  .platform-card,
+  #inbox-title {
+    overflow-wrap: anywhere;
+  }
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .checkbox {
+    min-height: 44px;
+    gap: 12px;
+    line-height: 1.5;
+  }
+  .checkbox input {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    min-height: 22px;
+  }
+  .icon-button {
+    min-width: 44px;
+    flex-shrink: 0;
+  }
+  .toolbar label {
+    width: 100%;
+  }
+  .table-scroll {
+    max-width: 100%;
+    min-width: 0;
+    overscroll-behavior-x: contain;
+  }
+  .desktop-client-table {
+    display: none;
+  }
+  #mobile-client-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .mobile-client-card {
+    padding: 14px;
+  }
+  .mobile-client-actions button,
+  .service-actions button {
+    padding: 11px 8px;
+  }
+  .mobile-client-card details .actions > * {
+    flex: 1 1 120px;
+  }
+  .template-library {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .account-card {
+    padding: 16px;
+  }
+  .account-card .actions > * {
+    flex: 1 1 120px;
+  }
+  .renewal-row {
+    gap: 12px;
+    padding: 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .renewal-row > * {
+    min-width: 0;
+  }
+  .renewal-row .actions > * {
+    flex: 1 1 120px;
+  }
+  dialog {
+    width: calc(100% - 20px);
+    max-width: 660px;
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    padding: 18px;
+    overscroll-behavior: contain;
+    scroll-padding: 18px;
+  }
+  dialog .section-head {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  dialog .section-head h2 {
+    font-size: 20px;
+  }
+  dialog .actions > * {
+    flex: 1 1 130px;
+  }
+  dialog .actions.end {
+    gap: 8px;
+  }
+  #message-dialog .actions.end > * {
+    flex-basis: 100%;
+  }
+  #message-text {
+    min-height: 210px;
+  }
+  .login-shell {
+    padding: 26px 22px;
+  }
+}
