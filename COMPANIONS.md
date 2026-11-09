@@ -45,6 +45,15 @@ modifica vencimientos ni registra cobros. **Gestionar este servicio** permite
 abrir la renovación y la ficha. Esta mejora se aplica en la web al recargar;
 la extensión distribuida permanece en la versión 1.8.0.
 
+## Perfil y secciones opcionales del menú
+
+Seguridad, Automatización, Integraciones, Configuración, Marketing y Redes
+sociales aparecen atenuadas y deshabilitadas de forma predeterminada. En
+**Perfil → Secciones del menú** marca las que quieras usar y pulsa **Guardar
+menú**. La preferencia se conserva en el CRM y se comparte entre móvil y PC.
+Los enlaces a secciones deshabilitadas llevan a Perfil para poder activarlas.
+El cambio de contraseña de la web también está disponible en Perfil.
+
 ## Instalar la extensión
 
 1. Descarga la [extensión Nexo 1.8.0](https://drive.google.com/file/d/1vL-NuTV0AEfr4zLvod25-NBhXpb7sdvX/view)
@@ -154,7 +163,7 @@ cuenta** abre el formulario en la misma barra. El envío lo confirmas en WhatsAp
 **Contraseña**, en la cabecera de la extensión, permite elegir la nueva dentro
 de Nexo. Introduce la actual, la nueva y su confirmación. Una frase de al menos
 12 caracteres es válida, sin requisitos de símbolos o mayúsculas. Al guardarla
-vuelves al ingreso en la misma barra. La web ofrece el mismo cambio en Seguridad.
+vuelves al ingreso en la misma barra. La web ofrece el mismo cambio en Perfil.
 
 ## Conversaciones
 

@@ -137,7 +137,7 @@ const assert = require("node:assert/strict");
   await stranger.goto(base);
   assert(stranger.url().endsWith("/login"));
   assert.equal((await other.request.get(base + "api/workspace")).status(), 401);
-  await page.locator("nav [data-view=security]").click();
+  await page.locator("nav [data-view=profile]").click();
   assert(
     (await page.locator("#owner-identity").innerText()).includes(
       "owner@example.com",

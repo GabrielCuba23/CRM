@@ -4,6 +4,7 @@ import datetime as dt
 import re
 
 FIELDS = {'nombre', 'telefono', 'usuario_whatsapp', 'correo', 'servicio', 'perfil', 'vence', 'pin', 'negocio', 'pago'}
+MENU_SECTION_KEYS = {'security', 'automation', 'integrations', 'settings', 'marketing', 'social'}
 
 
 def validate_workspace(state):
@@ -84,6 +85,10 @@ def validate_workspace(state):
     settings = state.get('settings')
     if not strings(settings, ['business', 'payments']) or type(settings.get('dark')) is not bool:
         fail()
+    if 'menuSections' in settings:
+        sections = settings['menuSections']
+        if not isinstance(sections, dict) or any(key not in MENU_SECTION_KEYS or type(value) is not bool for key, value in sections.items()):
+            fail()
     if 'crmName' in settings and (not isinstance(settings['crmName'], str) or len(settings['crmName']) > 80):
         fail()
     if 'logoDataUrl' in settings and (not isinstance(settings['logoDataUrl'], str) or len(settings['logoDataUrl']) > 150000 or (settings['logoDataUrl'] and not re.fullmatch(r'data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+', settings['logoDataUrl']))):
@@ -187,7 +192,7 @@ def validate_workspace(state):
     reports = state.get('reports', {'clientsWeekly':False,'financeTwiceMonthly':False,'hour':9})
     if not isinstance(reports,dict) or any(type(reports.get(k)) is not bool for k in ['clientsWeekly','financeTwiceMonthly']) or type(reports.get('hour')) is not int or not 0 <= reports['hour'] <= 23:
         raise ValueError('Configuración de reportes no válida.')
-    clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark', 'crmName', 'logoDataUrl'] if k in settings}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
+    clean = {'version': 2, 'settings': {k: settings[k] for k in ['business', 'payments', 'dark', 'crmName', 'logoDataUrl', 'menuSections'] if k in settings}, 'automation': {k: automation[k] for k in ['enabled', 'templateName', 'language', 'parameters', 'hour']}}
     clean['promotions'] = validate_promotions(state.get('promotions'))
     clean['reports'] = {k:reports[k] for k in ['clientsWeekly','financeTwiceMonthly','hour']}
     clean['procurement'] = {key: [{k:r[k] for k in fields} for r in procurement[key]] for key,fields in procurement_keys.items()}

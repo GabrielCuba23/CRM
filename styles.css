@@ -49,6 +49,36 @@ nav a {
 nav a:hover {
   background: #27474d;
 }
+.crm-sidebar nav a[aria-disabled="true"] {
+  opacity: .45;
+  filter: grayscale(1);
+  cursor: not-allowed;
+}
+.crm-sidebar nav a[aria-disabled="true"]:hover {
+  background: transparent;
+}
+.profile-menu-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px 18px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #dce1ec;
+  border-radius: 12px;
+}
+.profile-menu-options legend { font-weight: 700; padding: 0 6px; }
+.profile-menu-options > p { grid-column: 1 / -1; }
+.profile-menu-options .profile-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px;
+  cursor: pointer;
+}
+.profile-menu-option input { width: 22px; height: 22px; margin: 0; flex-shrink: 0; }
+#profile-menu-status { overflow-wrap: anywhere; }
 .crm-sidebar > p {
   margin-top: auto;
   font-size: 14px;

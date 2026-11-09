@@ -3,6 +3,14 @@ import { validateReports } from "./report-config.mjs";
 import { validateLifecycle } from "./lifecycle.mjs";
 import { validatePurchaseLinks } from "./procurement.mjs";
 import { validateGrowth } from "./growth.mjs";
+export const MENU_SECTION_KEYS = Object.freeze([
+  "security",
+  "automation",
+  "integrations",
+  "settings",
+  "marketing",
+  "social",
+]);
 export const fields = [
   "nombre",
   "telefono",
@@ -231,6 +239,19 @@ export function validateWorkspace(state) {
     typeof state.settings.dark !== "boolean"
   )
     throw Error("Configuración no válida.");
+  if ("menuSections" in state.settings) {
+    const sections = state.settings.menuSections;
+    if (
+      !sections ||
+      typeof sections !== "object" ||
+      Array.isArray(sections) ||
+      Object.entries(sections).some(
+        ([key, value]) =>
+          !MENU_SECTION_KEYS.includes(key) || typeof value !== "boolean",
+      )
+    )
+      throw Error("Preferencias del menú no válidas.");
+  }
   if (
     state.settings.crmName !== undefined &&
     (typeof state.settings.crmName !== "string" ||

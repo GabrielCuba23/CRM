@@ -60,28 +60,29 @@
             <use href="icons.svg#combos"></use>
           </svg>
           Combos y descuentos</a
-        ><a href="#security" data-view="security"
+        ><a href="#security" data-view="security" aria-disabled="true" title="Activa esta sección desde Perfil"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#security"></use>
           </svg>
           Seguridad</a
-        ><a href="#automation" data-view="automation"
+        ><a href="#automation" data-view="automation" aria-disabled="true" title="Activa esta sección desde Perfil"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#renewals"></use>
           </svg>
           Automatización</a
-        ><a href="#integrations" data-view="integrations"
+        ><a href="#integrations" data-view="integrations" aria-disabled="true" title="Activa esta sección desde Perfil"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#settings"></use></svg
           >Integraciones</a
-        ><a href="#settings" data-view="settings"
+        ><a href="#settings" data-view="settings" aria-disabled="true" title="Activa esta sección desde Perfil"
           ><svg class="nav-icon" aria-hidden="true">
             <use href="icons.svg#settings"></use>
           </svg>
           Configuración</a
         >
-        <a href="#marketing" data-view="marketing">Marketing</a
-        ><a href="#social" data-view="social">Redes sociales</a>
+        <a href="#marketing" data-view="marketing" aria-disabled="true" title="Activa esta sección desde Perfil">Marketing</a
+        ><a href="#social" data-view="social" aria-disabled="true" title="Activa esta sección desde Perfil">Redes sociales</a>
+        <a href="#profile" data-view="profile">Perfil</a>
       </nav>
       <p>
         Tu negocio, conectado.<br /><small
@@ -99,6 +100,7 @@
           </p>
         </div>
         <div class="actions">
+          <button id="open-profile" class="secondary" type="button">Perfil</button>
           <button id="logout" class="secondary" hidden>Cerrar sesión</button
           ><button
             id="theme-toggle"
@@ -1302,11 +1304,24 @@
           </div>
         </details>
       </section>
-      <section id="security" class="view panel" hidden>
-        <h2>Acceso y seguridad</h2>
-        <p id="security-description" class="mode-banner"></p>
+      <section id="profile" class="view panel" hidden>
+        <h2>Mi perfil</h2>
+        <div id="profile-email"><p id="owner-identity" class="muted">Preferencias de tu cuenta</p></div>
+        <form id="profile-menu-form">
+          <fieldset class="profile-menu-options">
+            <legend>Secciones del menú</legend>
+            <p class="muted">Activa las secciones que quieras usar. Al guardar, tu elección se conserva en este CRM.</p>
+            <label class="profile-menu-option"><input type="checkbox" name="security" /> Seguridad</label>
+            <label class="profile-menu-option"><input type="checkbox" name="automation" /> Automatización</label>
+            <label class="profile-menu-option"><input type="checkbox" name="integrations" /> Integraciones</label>
+            <label class="profile-menu-option"><input type="checkbox" name="settings" /> Configuración</label>
+            <label class="profile-menu-option"><input type="checkbox" name="marketing" /> Marketing</label>
+            <label class="profile-menu-option"><input type="checkbox" name="social" /> Redes sociales</label>
+          </fieldset>
+          <p id="profile-menu-status" role="status" aria-live="polite"></p>
+          <button id="profile-menu-save" type="submit">Guardar menú</button>
+        </form>
         <div id="server-security" hidden>
-          <p id="owner-identity" class="muted"></p>
           <p id="server-auth-description">
             Cuenta única de administrador. Sesiones de 8 horas en cookies
             HttpOnly. Los datos se almacenan en la base de datos del servidor.
@@ -1334,6 +1349,11 @@
             <button>Cambiar contraseña</button>
           </form>
         </div>
+      </section>
+      <section id="security" class="view panel" hidden>
+        <h2>Acceso y seguridad</h2>
+        <p id="security-description" class="mode-banner"></p>
+        <p><a href="#profile">Gestionar mi cuenta y contraseña en Perfil</a></p>
         <div id="local-migration" hidden class="inset">
           <h3>Importar tus datos anteriores</h3>
           <p>

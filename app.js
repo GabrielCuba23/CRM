@@ -45,6 +45,7 @@ import {
   availableProfiles,
   validateWorkspace,
   createId,
+  MENU_SECTION_KEYS,
 } from "./crm.mjs";
 const $ = (selector) => document.querySelector(selector);
 const storageKey = "crm.clients.v1";
@@ -404,6 +405,7 @@ function render() {
   companionUI?.refresh();
   outreachWebUI?.refresh();
   engagementWebUI?.refresh();
+  refreshMenuSections();
 }
 const messagePurposes = [
   ["renewal", "Avisar renovación"], ["cancellation", "Cancelación"],
@@ -1286,7 +1288,13 @@ function setView() {
   if (requested === "finance-suppliers") $("#supplier-section").open = true;
   if (requested === "templates") $("#predefined-messages").open = true;
   const view = document.getElementById(id);
-  const selected = view?.classList.contains("view") ? id : "home";
+  const disabled = MENU_SECTION_KEYS.includes(id) && settings.menuSections?.[id] !== true;
+  const selected = disabled ? "profile" : view?.classList.contains("view") ? id : "home";
+  refreshMenuSections();
+  if (disabled) {
+    $("#profile-menu-status").textContent = "Activa esta sección y guarda el menú para usarla.";
+    history.replaceState(null, "", "#profile");
+  }
   for (const node of document.querySelectorAll(".view"))
     node.hidden = node.id !== selected;
   $("#summary").hidden = selected !== "home";
@@ -1296,6 +1304,51 @@ function setView() {
       link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
+}
+function refreshMenuSections() {
+  for (const link of document.querySelectorAll('[data-view]')) {
+    const optional = MENU_SECTION_KEYS.includes(link.dataset.view);
+    if (!optional) continue;
+    const enabled = settings.menuSections?.[link.dataset.view] === true;
+    link.setAttribute('aria-disabled', String(!enabled));
+    link.classList.toggle('menu-section-disabled', !enabled);
+    link.title = enabled ? '' : 'Activa esta sección desde Perfil';
+  }
+  const form = $("#profile-menu-form");
+  if (!form || form.dataset.dirty === 'true') return;
+  for (const key of MENU_SECTION_KEYS) form.elements.namedItem(key).checked = settings.menuSections?.[key] === true;
+}
+$("#open-profile").addEventListener('click', () => { location.hash = 'profile'; });
+$("#profile-menu-form").addEventListener('change', () => {
+  $("#profile-menu-form").dataset.dirty = 'true';
+  $("#profile-menu-status").textContent = 'Cambios pendientes de guardar.';
+});
+$("#profile-menu-form").addEventListener('submit', async event => {
+  event.preventDefault();
+  const submit = $("#profile-menu-save");
+  if (submit.disabled) return;
+  submit.disabled = true;
+  const form = event.target;
+  const menuSections = Object.fromEntries(MENU_SECTION_KEYS.map(key => [key, form.elements.namedItem(key).checked]));
+  try {
+    const next = { ...settings, menuSections };
+    if (!await persistState({ settings: next })) throw Error($("#status").textContent || 'No se pudo guardar el menú.');
+    settings = next;
+    delete form.dataset.dirty;
+    refreshMenuSections();
+    setView();
+    $("#profile-menu-status").textContent = 'Menú guardado.';
+  } catch (error) { $("#profile-menu-status").textContent = error.message; }
+  finally { submit.disabled = false; }
+});
+for (const link of document.querySelectorAll('[data-view]')) {
+  link.addEventListener('click', event => {
+    if (!MENU_SECTION_KEYS.includes(link.dataset.view) || settings.menuSections?.[link.dataset.view] === true) return;
+    event.preventDefault();
+    location.hash = 'profile';
+    $("#profile-menu-status").textContent = 'Activa esta sección y guarda el menú para usarla.';
+    if (location.hash === '#profile') setView();
+  });
 }
 function initializeModules() {
   $("#today").textContent = new Date().toLocaleDateString("es-PE", {

@@ -10,6 +10,9 @@ pago. La web permite configurar líneas, respuestas y horarios desde Automatizac
 La extensión ofrece lo mismo en Chatbot, junto a Chat actual, Clientes, Cuentas
 y Campañas. El acceso sigue siendo el correo y contraseña del CRM.
 
+Para usar Automatización en la web, actívala primero desde **Perfil → Secciones
+del menú → Guardar menú**.
+
 ## Empezar
 
 Si todavía no hay líneas, la primera pantalla muestra **Añadir mi línea** y

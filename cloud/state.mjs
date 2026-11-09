@@ -79,7 +79,7 @@ export function cleanState(raw) {
     growth: validateGrowth(raw.growth || emptyGrowth()),
     version: 2,
     settings: Object.fromEntries(
-      ["business", "payments", "dark", "crmName", "logoDataUrl"]
+      ["business", "payments", "dark", "crmName", "logoDataUrl", "menuSections"]
         .filter((k) => raw.settings[k] !== undefined)
         .map((k) => [k, raw.settings[k]]),
     ),

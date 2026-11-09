@@ -162,7 +162,7 @@ El botón **Contraseña** de la cabecera de Nexo abre el cambio en la misma barr
 Introduce la actual, la nueva y su confirmación. Puedes elegir una frase de al
 menos doce caracteres sin requisitos de símbolos o mayúsculas. Al guardarla se
 cierran las sesiones y vuelves a entrar con la nueva contraseña en el panel.
-La web conserva el mismo cambio desde **Seguridad**. No se cambia una contraseña
+La web conserva el mismo cambio desde **Perfil**. No se cambia una contraseña
 por actualizar la extensión.
 
 ## Flujos de conversación en 1.7.0
